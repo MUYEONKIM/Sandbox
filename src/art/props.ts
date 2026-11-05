@@ -125,6 +125,46 @@ export function paintBanner(): Art {
   return { canvas: p.toCanvas(), ax: cx, ay: 50 };
 }
 
+export const PORTAL_FRAMES = 4;
+const PORTAL_H = 58;
+const PORTAL_BASE = 50;
+/** 포탈 그림에서 칸 중심에 맞출 세로 위치 (0~1) */
+export const PORTAL_ORIGIN_Y = PORTAL_BASE / PORTAL_H;
+
+/** 돌 고리 안에서 소용돌이가 도는 포탈. frame을 바꿔 가며 그리면 움직여 보인다. */
+export function paintPortal(color: Color, frame: number): Art {
+  const p = new Pixels(36, PORTAL_H);
+  const cx = 18;
+  const cy = 24;
+  const rx = 13;
+  const ry = 20;
+  const base = PORTAL_BASE;
+  const swirl = [shade(color, 0.45), shade(color, 0.75), color, shade(color, 1.35)];
+  const phase = (frame / PORTAL_FRAMES) * Math.PI * 2;
+
+  p.ellipse(cx, base, 16, 8, color, 90);
+  p.ellipse(cx, base - 2, 13, 6, 0x6f7480);
+  p.ellipse(cx, base - 3, 11, 5, 0x9aa0aa);
+
+  for (let y = 0; y < p.h; y++) {
+    for (let x = 0; x < p.w; x++) {
+      const nx = (x + 0.5 - cx) / rx;
+      const ny = (y + 0.5 - cy) / ry;
+      const r = Math.hypot(nx, ny);
+      if (r > 1) continue;
+      if (r > 0.8) {
+        const stone = Math.floor((Math.atan2(ny, nx) + Math.PI) * 2.4);
+        p.set(x, y, [0x8f95a0, 0xa7adb5, 0x7f8590][stone % 3]);
+      } else {
+        const wave = Math.sin(Math.atan2(ny, nx) * 3 + r * 9 - phase) * 0.5 + 0.5;
+        p.set(x, y, ramp(swirl, wave * 0.75 + (1 - r) * 0.25, x, y));
+      }
+    }
+  }
+  p.outlineOuter(0x2b2430);
+  return { canvas: p.toCanvas(), ax: cx, ay: base };
+}
+
 /** mask: 이웃 울타리 방향 비트 (+x=1, -x=2, +y=4, -y=8) */
 export function paintFence(mask: number): Art {
   const p = new Pixels(TILE_W, TILE_H + 16);

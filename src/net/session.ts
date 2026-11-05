@@ -1,3 +1,4 @@
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { BLOCKS, type BlockId } from '../blocks';
 import { MAP_SIZE } from '../config';
 import type { Slot } from '../game/inventory';
@@ -28,13 +29,20 @@ export interface SessionEvents {
   /** 내 현재 칸. 새로 들어온 플레이어에게 위치를 알릴 때 쓴다. */
   currentTile(): { x: number; y: number };
   onMove(move: PlayerMove): void;
-  /** 지금 접속 중인 플레이어 id 목록 */
+  /** 지금 같은 맵에 접속 중인 플레이어 id 목록 */
   onRoster(ids: Set<string>): void;
   onChat(message: ChatMessage): void;
   onBlocksLoaded(blocks: PlacedBlock[]): void;
   onBlockPlaced(block: PlacedBlock): void;
   onBlockRemoved(x: number, y: number): void;
   onConnection(connected: boolean): void;
+}
+
+interface ProfilePatch {
+  map?: string;
+  x?: number;
+  y?: number;
+  inventory?: Slot[];
 }
 
 const MAX_NAME = 12;
@@ -72,15 +80,16 @@ function parseBlock(row: { x?: unknown; y?: unknown; block?: unknown }): PlacedB
 
 /** 로그인한 플레이어 한 명의 서버 연결. 멀티플레이 통신은 이 파일에만 둔다. */
 export class GameSession {
-  private readonly world;
+  private channel: RealtimeChannel | null = null;
   private readonly chat;
   private events!: SessionEvents;
+  private mapId: string;
   private joined = false;
-  private pending: { x?: number; y?: number; inventory?: Slot[] } = {};
+  private pending: ProfilePatch = {};
   private saveTimer = 0;
 
   constructor(readonly profile: Profile) {
-    this.world = supabase.channel('world', { config: { private: true, presence: { key: profile.id } } });
+    this.mapId = profile.map;
     this.chat = supabase.channel('world-chat', { config: { private: true } });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') void this.flush();
@@ -90,33 +99,9 @@ export class GameSession {
   async connect(events: SessionEvents) {
     this.events = events;
     await supabase.realtime.setAuth();
+    this.joinMap();
 
-    this.world
-      .on('presence', { event: 'sync' }, () => {
-        events.onRoster(new Set(Object.keys(this.world.presenceState())));
-      })
-      .on('presence', { event: 'join' }, () => this.announce())
-      .on('broadcast', { event: 'move' }, ({ payload }) => {
-        const move = parseMove(payload);
-        if (move && move.id !== this.profile.id) events.onMove(move);
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'blocks' }, ({ new: row }) => {
-        const block = parseBlock(row);
-        if (block) events.onBlockPlaced(block);
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'blocks' }, ({ old }) => {
-        if (isTileCoord(old.x) && isTileCoord(old.y)) events.onBlockRemoved(old.x, old.y);
-      })
-      .subscribe((status) => {
-        this.joined = status === 'SUBSCRIBED';
-        events.onConnection(this.joined);
-        if (this.joined) {
-          void this.world.track({});
-          this.announce();
-          void this.syncBlocks();
-        }
-      });
-
+    // 채팅은 맵과 상관없이 모든 플레이어에게 전달된다.
     this.chat
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
         const message = parseChat(payload);
@@ -125,17 +110,66 @@ export class GameSession {
       .subscribe();
   }
 
-  /** 맵의 모든 블록을 서버 기준으로 다시 맞춘다. */
+  /** 지금 맵의 채널에 들어간다. 위치와 접속자는 같은 맵끼리만 주고받는다. */
+  private joinMap() {
+    const { events, mapId } = this;
+    const channel = supabase.channel(`world:${mapId}`, {
+      config: { private: true, presence: { key: this.profile.id } },
+    });
+    this.channel = channel;
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        events.onRoster(new Set(Object.keys(channel.presenceState())));
+      })
+      .on('presence', { event: 'join' }, () => this.announce())
+      .on('broadcast', { event: 'move' }, ({ payload }) => {
+        const move = parseMove(payload);
+        if (move && move.id !== this.profile.id) events.onMove(move);
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'blocks' }, ({ new: row }) => {
+        const block = parseBlock(row);
+        if (block && row.map === mapId) events.onBlockPlaced(block);
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'blocks' }, ({ old }) => {
+        if (old.map === mapId && isTileCoord(old.x) && isTileCoord(old.y)) events.onBlockRemoved(old.x, old.y);
+      })
+      .subscribe((status) => {
+        if (channel !== this.channel) return;
+        this.joined = status === 'SUBSCRIBED';
+        events.onConnection(this.joined);
+        if (this.joined) {
+          void channel.track({});
+          this.announce();
+          void this.syncBlocks();
+        }
+      });
+  }
+
+  /** 다른 맵으로 옮겨 간다. */
+  async changeMap(mapId: string, x: number, y: number) {
+    const previous = this.channel;
+    this.channel = null;
+    this.joined = false;
+    this.mapId = mapId;
+    if (previous) await supabase.removeChannel(previous);
+    this.joinMap();
+    this.saveLater({ map: mapId, x, y });
+    await this.flush();
+  }
+
+  /** 지금 맵의 블록을 서버 기준으로 다시 맞춘다. */
   async syncBlocks() {
-    const { data } = await supabase.from('blocks').select('x, y, block');
-    if (!data) return;
+    const { mapId } = this;
+    const { data } = await supabase.from('blocks').select('x, y, block').eq('map', mapId);
+    if (!data || mapId !== this.mapId) return;
     this.events.onBlocksLoaded(data.map(parseBlock).filter((block) => block !== null));
   }
 
   sendMove(x: number, y: number, ms: number) {
-    if (!this.joined) return;
+    if (!this.joined || !this.channel) return;
     const { id, nickname } = this.profile;
-    void this.world.send({ type: 'broadcast', event: 'move', payload: { id, nickname, x, y, ms } });
+    void this.channel.send({ type: 'broadcast', event: 'move', payload: { id, nickname, x, y, ms } });
   }
 
   private announce() {
@@ -149,17 +183,24 @@ export class GameSession {
 
   /** 다른 사람이 먼저 같은 칸에 놓았으면 false를 돌려준다. */
   async placeBlock(x: number, y: number, id: BlockId) {
-    const { error } = await supabase.from('blocks').insert({ x, y, block: id });
+    const { error } = await supabase.from('blocks').insert({ map: this.mapId, x, y, block: id });
     return !error;
   }
 
   /** 블록을 지우고 지운 블록 종류를 돌려준다. 다른 사람이 먼저 지웠으면 null이다. */
   async removeBlock(x: number, y: number): Promise<BlockId | null> {
-    const { data } = await supabase.from('blocks').delete().eq('x', x).eq('y', y).select('block').maybeSingle();
+    const { data } = await supabase
+      .from('blocks')
+      .delete()
+      .eq('map', this.mapId)
+      .eq('x', x)
+      .eq('y', y)
+      .select('block')
+      .maybeSingle();
     return data && isBlockId(data.block) ? data.block : null;
   }
 
-  saveLater(patch: { x?: number; y?: number; inventory?: Slot[] }) {
+  saveLater(patch: ProfilePatch) {
     Object.assign(this.pending, patch);
     if (!this.saveTimer) this.saveTimer = window.setTimeout(() => void this.flush(), SAVE_DELAY_MS);
   }

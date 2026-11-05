@@ -3,7 +3,6 @@ import { Terrain, type GameMap } from '../game/map';
 import { gridToWorld, ORIGIN_X, ORIGIN_Y, worldToGrid } from '../iso';
 import { fbm, frac, hash2, Pixels, ramp, shade, vnoise, type Color } from './pixels';
 
-const GRASS = [0x4c9a3e, 0x5bab43, 0x6dbd49, 0x82cc55];
 const DIRT = [0xa98150, 0xbb9560, 0xcba973, 0xdabb86];
 const PAVING = [0xd9c9a3, 0xe3d5b3, 0xcdbb92, 0xeadfc2];
 const WATER = [0x25698f, 0x2f7fa8, 0x3a93bc];
@@ -42,7 +41,7 @@ export function paintGround(map: GameMap): HTMLCanvasElement {
   /** 평지에서도 칸이 보이도록 마름모 격자를 옅게 넣는다. */
   const paintGrass = (sx: number, sy: number): Color => {
     const { gx, gy } = worldToGrid(sx + 0.5, sy + 0.5);
-    const c = ramp(GRASS, fbm(sx * 0.03, sy * 0.06) * 0.5 + 0.28, sx, sy);
+    const c = ramp(map.ground, fbm(sx * 0.03, sy * 0.06) * 0.5 + 0.28, sx, sy);
     return frac(gx) < 0.065 || frac(gy) < 0.065 ? shade(c, 0.9) : c;
   };
 
@@ -94,7 +93,7 @@ export function paintGround(map: GameMap): HTMLCanvasElement {
     if (d > ISLAND_SIDE - vnoise(sx * 0.12, 3) * 12) return;
     const light = right ? 0.72 : 0.92;
     let c: Color;
-    if (d < 3) c = 0x3f7f35;
+    if (d < 3) c = shade(map.ground[0], 0.8);
     else if (d < 12) c = ramp([0x7a5533, 0x8f6840], vnoise(sx * 0.15, sy * 0.3), sx, sy);
     else c = ramp([0x5f5a58, 0x77706c, 0x8a827c], vnoise(sx * 0.1, sy * 0.28), sx, sy);
     p.set(sx, sy, shade(c, light));

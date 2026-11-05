@@ -1,6 +1,7 @@
 import { BLOCKS, type BlockId } from '../blocks';
 import { MAP_SIZE, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
+import type { Portal } from './maps';
 
 export interface Tile {
   x: number;
@@ -16,7 +17,10 @@ export function inReach(from: Tile, to: Tile, range = PLACE_RANGE) {
 export class World {
   private readonly blocks = new Map<number, BlockId>();
 
-  constructor(readonly map: GameMap) {}
+  constructor(
+    readonly map: GameMap,
+    readonly portals: Portal[],
+  ) {}
 
   private key(x: number, y: number) {
     return x + y * MAP_SIZE;
@@ -28,6 +32,20 @@ export class World {
 
   blockAt(x: number, y: number) {
     return this.blocks.get(this.key(x, y));
+  }
+
+  /** 설치된 블록이 있는 칸 목록 */
+  blockTiles(): Tile[] {
+    return [...this.blocks.keys()].map((key) => ({ x: key % MAP_SIZE, y: Math.floor(key / MAP_SIZE) }));
+  }
+
+  portalAt(x: number, y: number) {
+    return this.portals.find((p) => p.x === x && p.y === y);
+  }
+
+  /** 포탈과 그 앞 도착 칸은 막으면 안 되므로 블록을 놓지 못한다. */
+  private isPortalArea(x: number, y: number) {
+    return this.portals.some((p) => (p.x === x && p.y === y) || (p.landing.x === x && p.landing.y === y));
   }
 
   private isOpenGround(x: number, y: number) {
@@ -52,6 +70,7 @@ export class World {
   canPlace(target: Tile, player: Tile) {
     if (!inReach(player, target)) return false;
     if (target.x === player.x && target.y === player.y) return false;
+    if (this.isPortalArea(target.x, target.y)) return false;
     return this.isOpenGround(target.x, target.y) && !this.blockAt(target.x, target.y);
   }
 

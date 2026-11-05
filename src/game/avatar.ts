@@ -46,6 +46,13 @@ export class Avatar {
     this.leftFoot = !this.leftFoot;
   }
 
+  /** 걷지 않고 바로 옮긴다. */
+  teleport(to: Tile) {
+    this.from = to;
+    this.tile = to;
+    this.t = 1;
+  }
+
   private position(): Tile {
     return {
       x: this.from.x + (this.tile.x - this.from.x) * this.t,

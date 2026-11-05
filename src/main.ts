@@ -6,8 +6,10 @@ import { currentUser, loadProfile, signOut, type Profile } from './net/auth';
 import { GameSession } from './net/session';
 import { isConfigured } from './net/supabase';
 import { ChatBox } from './ui/chat';
+import { element } from './ui/dom';
 import { Hud } from './ui/hud';
 import { showLogin } from './ui/login';
+import { Minimap } from './ui/minimap';
 import { NameTags } from './ui/nametags';
 
 function enterGame(profile: Profile) {
@@ -16,11 +18,13 @@ function enterGame(profile: Profile) {
   const inventory = new Inventory(profile.inventory);
   inventory.onChange(() => session.saveLater({ inventory: inventory.slots }));
 
-  const hud = new Hud(root, inventory, profile.nickname, async () => {
+  const side = element('side', root);
+  const hud = new Hud(root, side, inventory, profile.nickname, async () => {
     await session.flush();
     await signOut();
     location.reload();
   });
+  const minimap = new Minimap(side);
   const chat = new ChatBox(root, (text) => void session.sendChat(text));
   const tags = new NameTags(root);
 
@@ -33,7 +37,7 @@ function enterGame(profile: Profile) {
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, session);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session);
 
   new Phaser.Game({
     type: Phaser.AUTO,

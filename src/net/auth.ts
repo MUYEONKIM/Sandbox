@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 export interface Profile {
   id: string;
   nickname: string;
+  map: string;
   x: number;
   y: number;
   inventory: unknown;
@@ -52,6 +53,10 @@ export async function signOut() {
 }
 
 export async function loadProfile(id: string): Promise<Profile | null> {
-  const { data } = await supabase.from('profiles').select('id, nickname, x, y, inventory').eq('id', id).maybeSingle();
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, nickname, map, x, y, inventory')
+    .eq('id', id)
+    .maybeSingle();
   return data;
 }

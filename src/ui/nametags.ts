@@ -14,12 +14,12 @@ export class NameTags {
 
   constructor(private readonly parent: HTMLElement) {}
 
-  add(id: string, nickname: string) {
+  add(id: string, nickname: string, portal = false) {
     if (this.tags.has(id)) return;
     const root = element('player-tag', this.parent);
     const bubble = element('bubble', root);
     bubble.hidden = true;
-    element('player-name', root).textContent = nickname;
+    element(portal ? 'player-name portal-name' : 'player-name', root).textContent = nickname;
     this.tags.set(id, { root, bubble, timer: 0 });
   }
 

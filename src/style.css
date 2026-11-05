@@ -31,6 +31,7 @@ canvas {
 #hud {
   position: fixed;
   inset: 0;
+  overflow: hidden;
   pointer-events: none;
   color: var(--text);
   font: 13px/1.6 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
@@ -249,10 +250,17 @@ canvas {
   transform: translateX(-50%) rotate(45deg) scale(0.8);
 }
 
-.account {
+.side {
   position: absolute;
   top: 16px;
   right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.account {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -260,6 +268,44 @@ canvas {
   background: rgb(31 21 16 / 72%);
   border: 2px solid var(--panel-edge);
   pointer-events: auto;
+}
+
+.minimap {
+  padding: 6px 8px 8px;
+  background: rgb(31 21 16 / 78%);
+  border: 2px solid var(--panel-edge);
+}
+
+.minimap-title {
+  margin-bottom: 2px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.minimap-canvas {
+  display: block;
+}
+
+.minimap-legend {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.minimap-key::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  background: var(--dot);
+  border: 1px solid var(--panel-edge);
+}
+
+.portal-name {
+  color: #5fe3ff;
 }
 
 .account-name {

@@ -36,7 +36,7 @@ interface KeyActions {
   onChat(): void;
 }
 
-/** event.code는 물리 키 위치를 뜻해서, 한글 입력 상태에서도 WASD와 E가 동작한다. */
+/** event.code는 물리 키 위치를 뜻해서, 한글 입력 상태에서도 WASD와 I가 동작한다. */
 export class Keys {
   private readonly held = new Set<string>();
   /** 프레임 사이에 눌렀다 뗀 키도 한 칸은 움직이도록 남겨 둔다. */
@@ -66,7 +66,7 @@ export class Keys {
     const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
     if (digit) {
       this.actions.onSlot(Number(digit[1]) - 1);
-    } else if (e.code === 'KeyE') {
+    } else if (e.code === 'KeyI') {
       this.actions.onInventory();
     } else if (e.code === 'Escape') {
       this.actions.onEscape();

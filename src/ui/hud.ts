@@ -15,11 +15,12 @@ export class Hud {
 
   constructor(
     root: HTMLElement,
+    side: HTMLElement,
     private readonly inventory: Inventory,
     nickname: string,
     onSignOut: () => void,
   ) {
-    const account = element('account', root);
+    const account = element('account', side);
     element('account-name', account, 'span').textContent = nickname;
     const signOut = element('account-signout', account, 'button') as HTMLButtonElement;
     signOut.type = 'button';
@@ -31,7 +32,7 @@ export class Hud {
 
     const help = element('help', root);
     help.innerHTML =
-      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> E &nbsp; <b>채팅</b> Enter<br><b>설치</b> 좌클릭 &nbsp; <b>회수</b> 우클릭';
+      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>설치</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
 
     this.panel = element('panel', root);
     this.panel.hidden = true;

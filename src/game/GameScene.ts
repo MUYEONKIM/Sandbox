@@ -1,27 +1,20 @@
 import Phaser from 'phaser';
 import { CHAR_H, CHAR_STEPS, CHAR_W, paintCharacterSheet } from '../art/character';
 import { paintGround, WORLD_H, WORLD_W } from '../art/ground';
-import {
-  paintBanner,
-  paintBarrel,
-  paintCrate,
-  paintFence,
-  paintHouse,
-  paintPine,
-  paintTree,
-  type Art,
-} from '../art/props';
+import { paintPortal, PORTAL_FRAMES, PORTAL_ORIGIN_Y } from '../art/props';
 import { BLOCK_IDS, paintBlock, type BlockId } from '../blocks';
 import { BLOCK_HEIGHT, MAP_SIZE, PLACE_RANGE, STEP_MS, TILE_H, TILE_W, ZOOM } from '../config';
 import { depthOf, gridToWorld, tileCenter, worldToGrid } from '../iso';
 import type { ChatMessage, GameSession, PlacedBlock, PlayerMove, SessionEvents } from '../net/session';
 import type { ChatBox } from '../ui/chat';
 import type { Hud } from '../ui/hud';
+import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import { Avatar } from './avatar';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
-import { generateMap, type House } from './map';
+import { generateMap } from './map';
+import { arrivalFor, DEFAULT_MAP, isMapId, MAPS, portalsOf, type MapId, type Portal } from './maps';
 import { inReach, World, type Tile } from './world';
 
 const DEPTH_GROUND = 0;
@@ -29,15 +22,36 @@ const DEPTH_OVERLAY = 1;
 
 /** 닉네임을 띄울 높이: 발에서 머리 위까지 (아트 픽셀) */
 const HEAD_HEIGHT = 30;
+const PORTAL_TAG_HEIGHT = 48;
+const PORTAL_FRAME_MS = 140;
+
+/** 맵 가장자리에서도 캐릭터가 화면 UI에 가리지 않도록 카메라에 주는 여백 (아트 픽셀) */
+const CAMERA_PAD_X = 80;
+const CAMERA_PAD_Y = 110;
+
+const FADE_MS = 200;
+const MINIMAP_INTERVAL_MS = 100;
+
+interface PortalSprite {
+  portal: Portal;
+  image: Phaser.GameObjects.Image;
+  tag: string;
+}
 
 export class GameScene extends Phaser.Scene implements SessionEvents {
-  readonly world = new World(generateMap());
+  world!: World;
+  private mapId: MapId;
   private me!: Avatar;
   private readonly others = new Map<string, Avatar>();
+  private ground!: Phaser.GameObjects.Image;
   private ghost!: Phaser.GameObjects.Image;
   private marker!: Phaser.GameObjects.Graphics;
   private range!: Phaser.GameObjects.Graphics;
   private readonly blockImages = new Map<string, Phaser.GameObjects.Image>();
+  private portalSprites: PortalSprite[] = [];
+  private portalFrame = 0;
+  private traveling = false;
+  private nextMinimapAt = 0;
 
   /** 마우스가 가리키는 설치된 블록 */
   private hoveredBlock: Tile | null = null;
@@ -50,16 +64,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly keys: Keys,
     private readonly chat: ChatBox,
     private readonly tags: NameTags,
+    private readonly minimap: Minimap,
     private readonly session: GameSession,
   ) {
     super('game');
+    this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
   }
 
   create() {
     this.createTextures();
-    this.add.image(0, 0, 'ground').setOrigin(0, 0).setDepth(DEPTH_GROUND);
-    if (this.world.map.house) this.createHouse(this.world.map.house);
-    this.createProps();
+    this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
+    this.showMap(this.mapId);
 
     const { id, nickname, x, y } = this.session.profile;
     this.me = new Avatar(this, { x, y });
@@ -71,12 +86,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     const cam = this.cameras.main;
     cam.setZoom(ZOOM);
-    cam.setBounds(0, 0, WORLD_W, WORLD_H);
+    cam.setBounds(-CAMERA_PAD_X, -CAMERA_PAD_Y, WORLD_W + CAMERA_PAD_X * 2, WORLD_H + CAMERA_PAD_Y * 2);
     cam.startFollow(this.me.sprite, true);
 
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.hud.isOpen) return;
+      if (this.hud.isOpen || this.traveling) return;
       this.updateHover();
       if (pointer.rightButtonDown()) void this.collectBlock();
       else if (pointer.leftButtonDown()) this.placeBlock();
@@ -87,8 +102,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private createTextures() {
-    const map = this.world.map;
-    this.textures.addCanvas('ground', paintGround(map));
     for (const id of BLOCK_IDS) this.textures.addCanvas(`block-${id}`, paintBlock(id));
 
     const sheet = this.textures.addCanvas('player', paintCharacterSheet())!;
@@ -98,78 +111,72 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
-  private addArt(key: string, art: Art, x: number, y: number) {
-    if (!this.textures.exists(key)) this.textures.addCanvas(key, art.canvas);
-    const c = tileCenter(x, y);
-    this.add
-      .image(c.x, c.y, key)
-      .setOrigin(art.ax / art.canvas.width, art.ay / art.canvas.height)
-      .setDepth(depthOf(x, y));
+  /** 맵 바닥 그림은 처음 들어갈 때 한 번만 그린다. */
+  private groundTexture(id: MapId) {
+    const key = `ground-${id}`;
+    if (!this.textures.exists(key)) this.textures.addCanvas(key, paintGround(generateMap(MAPS[id].ground)));
+    return key;
   }
 
-  private createProps() {
-    const paint = {
-      tree: paintTree,
-      pine: paintPine,
-      barrel: paintBarrel,
-      crate: paintCrate,
-      banner: paintBanner,
-    };
-    for (const prop of this.world.map.props) {
-      const key = `${prop.kind}-${prop.variant}`;
-      this.addArt(key, paint[prop.kind](prop.variant), prop.x, prop.y);
-    }
-    for (const fence of this.world.map.fences) {
-      this.addArt(`fence-${fence.mask}`, paintFence(fence.mask), fence.x, fence.y);
-    }
+  private portalTexture(to: MapId, frame: number) {
+    const key = `portal-${to}-${frame}`;
+    if (!this.textures.exists(key)) this.textures.addCanvas(key, paintPortal(MAPS[to].accent, frame).canvas);
+    return key;
   }
 
-  /**
-   * 집은 여러 칸을 차지해서 깊이 값 하나로는 앞뒤를 가릴 수 없다.
-   * 화면 세로줄 단위로 잘라 줄마다 가장 앞쪽 칸의 깊이를 준다.
-   */
-  private createHouse(house: House) {
-    const art = paintHouse(house.w, house.d);
-    const texture = this.textures.addCanvas('house', art.canvas)!;
-    const stripW = TILE_W / 2;
-    const corner = gridToWorld(house.x, house.y);
-    const left = corner.x - art.ox;
-    const top = corner.y - art.oy;
-    const firstColumn = -house.d;
-    const lastColumn = house.w;
+  /** 맵 하나를 화면에 올린다. 블록과 다른 플레이어는 서버에서 받아 채운다. */
+  private showMap(id: MapId) {
+    this.mapId = id;
+    const info = MAPS[id];
+    this.world = new World(generateMap(info.ground), portalsOf(id));
+    this.ground.setTexture(this.groundTexture(id));
+    this.minimap.setMap(info.name, info.ground[2]);
 
-    const frontmost = (column: number) => {
-      const c = Math.max(firstColumn, Math.min(lastColumn - 1, column));
-      let best = 0;
-      for (let j = 0; j < house.d; j++) {
-        for (let i = 0; i < house.w; i++) {
-          if (i - j === c || i - j === c + 1) best = Math.max(best, i + j);
-        }
-      }
-      return best;
-    };
-
-    for (let sx = 0; sx < art.canvas.width; sx += stripW) {
-      const column = Math.floor((sx - art.ox) / stripW);
-      const name = `strip-${sx}`;
-      texture.add(name, 0, sx, 0, stripW, art.canvas.height);
-      this.add
-        .image(left + sx, top, 'house', name)
-        .setOrigin(0, 0)
-        .setDepth(depthOf(house.x + frontmost(column), house.y));
-    }
+    this.portalSprites = this.world.portals.map((portal) => {
+      const c = tileCenter(portal.x, portal.y);
+      const image = this.add
+        .image(c.x, c.y, this.portalTexture(portal.to, 0))
+        .setOrigin(0.5, PORTAL_ORIGIN_Y)
+        .setDepth(depthOf(portal.x, portal.y));
+      const tag = `portal-${portal.to}`;
+      this.tags.add(tag, `→ ${MAPS[portal.to].name}`, true);
+      return { portal, image, tag };
+    });
   }
 
-  update(_time: number, delta: number) {
+  private clearMap() {
+    for (const [id, avatar] of this.others) {
+      avatar.destroy();
+      this.tags.remove(id);
+    }
+    this.others.clear();
+    for (const image of this.blockImages.values()) image.destroy();
+    this.blockImages.clear();
+    for (const { image, tag } of this.portalSprites) {
+      image.destroy();
+      this.tags.remove(tag);
+    }
+    this.portalSprites = [];
+  }
+
+  update(time: number, delta: number) {
     this.advancePlayer(delta);
     for (const avatar of this.others.values()) avatar.update(delta);
+    this.animatePortals(time);
     this.updateHover();
     this.placeNameTags();
+    this.updateMinimap(time);
   }
 
   private advancePlayer(delta: number) {
     this.me.update(delta);
-    if (this.me.moving) return;
+    if (this.me.moving || this.traveling) return;
+
+    const portal = this.world.portalAt(this.me.tile.x, this.me.tile.y);
+    if (portal) {
+      this.travel(portal);
+      return;
+    }
     const dir = this.keys.takeDirection();
     if (dir && !this.hud.isOpen && !this.chat.isOpen) this.beginStep(dir);
   }
@@ -188,15 +195,51 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.drawRange();
   }
 
+  /** 포탈을 타면 화면을 어둡게 한 사이에 맵을 바꾼다. */
+  private travel(portal: Portal) {
+    this.traveling = true;
+    const cam = this.cameras.main;
+    cam.once('camerafadeoutcomplete', () => {
+      const tile = arrivalFor(portal, this.mapId);
+      this.clearMap();
+      this.showMap(portal.to);
+      this.me.teleport(tile);
+      this.drawRange();
+      void this.session.changeMap(portal.to, tile.x, tile.y);
+      cam.fadeIn(FADE_MS);
+      this.traveling = false;
+    });
+    cam.fadeOut(FADE_MS);
+  }
+
+  private animatePortals(time: number) {
+    const frame = Math.floor(time / PORTAL_FRAME_MS) % PORTAL_FRAMES;
+    if (frame === this.portalFrame) return;
+    this.portalFrame = frame;
+    for (const { portal, image } of this.portalSprites) image.setTexture(this.portalTexture(portal.to, frame));
+  }
+
   private placeNameTags() {
     const cam = this.cameras.main;
-    const place = (id: string, avatar: Avatar) => {
-      const x = (avatar.sprite.x - cam.worldView.x) * cam.zoom;
-      const y = (avatar.sprite.y - HEAD_HEIGHT - cam.worldView.y) * cam.zoom;
-      this.tags.place(id, x, y);
+    const place = (id: string, x: number, y: number) => {
+      this.tags.place(id, (x - cam.worldView.x) * cam.zoom, (y - cam.worldView.y) * cam.zoom);
     };
-    place(this.session.profile.id, this.me);
-    for (const [id, avatar] of this.others) place(id, avatar);
+    const placeAvatar = (id: string, { sprite }: Avatar) => place(id, sprite.x, sprite.y - HEAD_HEIGHT);
+
+    placeAvatar(this.session.profile.id, this.me);
+    for (const [id, avatar] of this.others) placeAvatar(id, avatar);
+    for (const { image, tag } of this.portalSprites) place(tag, image.x, image.y - PORTAL_TAG_HEIGHT);
+  }
+
+  private updateMinimap(time: number) {
+    if (time < this.nextMinimapAt) return;
+    this.nextMinimapAt = time + MINIMAP_INTERVAL_MS;
+    this.minimap.draw({
+      me: this.me.tile,
+      others: [...this.others.values()].map((avatar) => avatar.tile),
+      blocks: this.world.blockTiles(),
+      portals: this.world.portals,
+    });
   }
 
   private pointerWorld() {
@@ -310,11 +353,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!id) return;
 
     // 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
+    const { mapId } = this;
     this.spawnBlock(target, id);
     void this.session.placeBlock(target.x, target.y, id).then((placed) => {
       if (placed) return;
-      this.removeBlockAt(target.x, target.y);
       this.inventory.add(id);
+      if (mapId !== this.mapId) return;
+      this.removeBlockAt(target.x, target.y);
       void this.session.syncBlocks();
     });
   }
@@ -325,10 +370,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const id = this.world.blockAt(target.x, target.y);
     if (!id || !this.inventory.canAdd(id)) return;
 
+    const { mapId } = this;
     const removed = await this.session.removeBlock(target.x, target.y);
     if (!removed) return;
-    this.removeBlockAt(target.x, target.y);
     this.inventory.add(removed);
+    if (mapId === this.mapId) this.removeBlockAt(target.x, target.y);
   }
 
   private spawnBlock({ x, y }: Tile, id: BlockId) {
