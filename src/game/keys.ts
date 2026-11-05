@@ -1,10 +1,7 @@
+/** 격자 기준 이동량 */
 export interface Dir {
-  /** 격자 기준 이동량 */
   dx: number;
   dy: number;
-  /** 사용할 캐릭터 그림 */
-  view: 'front' | 'back';
-  flip: boolean;
 }
 
 /** 키마다 화면 기준 방향 (x: 오른쪽이 +, y: 아래가 +) */
@@ -29,12 +26,7 @@ const COMBO_MS = 50;
  */
 function toDir(sx: number, sy: number): Dir | null {
   if (!sx && !sy) return null;
-  return {
-    dx: Math.sign(sx + sy),
-    dy: Math.sign(sy - sx),
-    view: sy < 0 ? 'back' : 'front',
-    flip: sx < 0,
-  };
+  return { dx: Math.sign(sx + sy), dy: Math.sign(sy - sx) };
 }
 
 interface KeyActions {

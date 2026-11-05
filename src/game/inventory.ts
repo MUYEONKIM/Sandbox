@@ -1,4 +1,4 @@
-import type { BlockId } from '../blocks';
+import { BLOCK_IDS, BLOCKS, type BlockId } from '../blocks';
 
 export const HOTBAR_SIZE = 9;
 export const BAG_SIZE = 27;
@@ -11,14 +11,39 @@ export interface Stack {
 
 export type Slot = Stack | null;
 
+function isSlot(value: unknown): value is Slot {
+  if (value === null) return true;
+  const stack = value as Partial<Stack>;
+  return (
+    Object.hasOwn(BLOCKS, stack.id ?? '') &&
+    Number.isInteger(stack.count) &&
+    stack.count! >= 1 &&
+    stack.count! <= STACK_SIZE
+  );
+}
+
+function isSlotList(value: unknown): value is Slot[] {
+  return Array.isArray(value) && value.length === HOTBAR_SIZE + BAG_SIZE && value.every(isSlot);
+}
+
+/** 처음 가입한 플레이어의 인벤토리: 단축키 칸과 가방에 벽 블록을 한 묶음씩 넣는다. */
+function starterSlots(): Slot[] {
+  const slots: Slot[] = Array.from({ length: HOTBAR_SIZE + BAG_SIZE }, () => null);
+  BLOCK_IDS.forEach((id, i) => {
+    slots[i] = { id, count: STACK_SIZE };
+    slots[HOTBAR_SIZE + i] = { id, count: STACK_SIZE };
+  });
+  return slots;
+}
+
 /** 슬롯 0~8은 단축키 칸, 9~35는 가방 칸이다. */
 export class Inventory {
-  readonly slots: Slot[] = Array.from({ length: HOTBAR_SIZE + BAG_SIZE }, () => null);
+  readonly slots: Slot[];
   selected = 0;
   private readonly listeners: (() => void)[] = [];
 
-  constructor(start: Partial<Record<number, Stack>>) {
-    for (const [i, stack] of Object.entries(start)) this.slots[Number(i)] = stack ?? null;
+  constructor(saved: unknown) {
+    this.slots = isSlotList(saved) ? saved : starterSlots();
   }
 
   onChange(fn: () => void) {
@@ -46,6 +71,10 @@ export class Inventory {
     if (stack.count === 0) this.slots[this.selected] = null;
     this.changed();
     return stack.id;
+  }
+
+  canAdd(id: BlockId) {
+    return this.slots.some((s) => s === null || (s.id === id && s.count < STACK_SIZE));
   }
 
   /** 블록 하나를 넣는다. 가득 차면 false를 돌려준다. */

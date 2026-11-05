@@ -1,51 +1,71 @@
 import Phaser from 'phaser';
-import { LocalChat } from './game/chat';
 import { GameScene } from './game/GameScene';
-import { Inventory, STACK_SIZE } from './game/inventory';
+import { Inventory } from './game/inventory';
 import { Keys } from './game/keys';
+import { currentUser, loadProfile, signOut, type Profile } from './net/auth';
+import { GameSession } from './net/session';
+import { isConfigured } from './net/supabase';
 import { ChatBox } from './ui/chat';
 import { Hud } from './ui/hud';
+import { showLogin } from './ui/login';
+import { NameTags } from './ui/nametags';
 
-const PLAYER_NAME = '나';
+function enterGame(profile: Profile) {
+  const root = document.getElementById('hud')!;
+  const session = new GameSession(profile);
+  const inventory = new Inventory(profile.inventory);
+  inventory.onChange(() => session.saveLater({ inventory: inventory.slots }));
 
-const inventory = new Inventory({
-  0: { id: 'stone', count: STACK_SIZE },
-  1: { id: 'brick', count: STACK_SIZE },
-  2: { id: 'wood', count: STACK_SIZE },
-  3: { id: 'hedge', count: STACK_SIZE },
-  9: { id: 'stone', count: STACK_SIZE },
-  10: { id: 'brick', count: STACK_SIZE },
-  11: { id: 'wood', count: STACK_SIZE },
-  12: { id: 'hedge', count: STACK_SIZE },
-});
+  const hud = new Hud(root, inventory, profile.nickname, async () => {
+    await session.flush();
+    await signOut();
+    location.reload();
+  });
+  const chat = new ChatBox(root, (text) => void session.sendChat(text));
+  const tags = new NameTags(root);
 
-const root = document.getElementById('hud')!;
-const hud = new Hud(root, inventory);
-const chat = new ChatBox(root, new LocalChat(PLAYER_NAME), PLAYER_NAME);
+  const keys = new Keys({
+    onSlot: (index) => inventory.select(index),
+    onInventory: () => hud.toggle(),
+    onEscape: () => hud.close(),
+    onChat: () => {
+      if (!hud.isOpen) chat.open();
+    },
+  });
 
-const keys = new Keys({
-  onSlot: (index) => inventory.select(index),
-  onInventory: () => hud.toggle(),
-  onEscape: () => hud.close(),
-  onChat: () => {
-    if (!hud.isOpen) chat.open();
-  },
-});
+  const scene = new GameScene(inventory, hud, keys, chat, tags, session);
 
-const scene = new GameScene(inventory, hud, keys, chat);
+  new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game',
+    width: window.innerWidth,
+    height: window.innerHeight,
+    backgroundColor: '#2c6f93',
+    pixelArt: true,
+    scale: { mode: Phaser.Scale.RESIZE },
+    scene,
+  });
 
-new Phaser.Game({
-  type: Phaser.AUTO,
-  parent: 'game',
-  width: window.innerWidth,
-  height: window.innerHeight,
-  backgroundColor: '#2c6f93',
-  pixelArt: true,
-  scale: { mode: Phaser.Scale.RESIZE },
-  scene,
-});
-
-// 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
-if (import.meta.env.DEV) {
-  Object.assign(window, { sandbox: { scene, inventory, hud, chat } });
+  // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
+  if (import.meta.env.DEV) {
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session } });
+  }
 }
+
+async function main() {
+  if (!isConfigured) {
+    document.getElementById('game')!.textContent = '서버 설정이 없어 게임을 시작할 수 없습니다.';
+    return;
+  }
+
+  const user = (await currentUser()) ?? (await showLogin(document.body));
+  let profile = await loadProfile(user.id);
+  if (!profile) {
+    // 삭제된 계정의 세션이 남아 있으면 다시 로그인하게 한다.
+    await signOut();
+    profile = await loadProfile((await showLogin(document.body)).id);
+  }
+  if (profile) enterGame(profile);
+}
+
+void main();

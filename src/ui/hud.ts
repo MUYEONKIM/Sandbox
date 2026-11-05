@@ -10,12 +10,25 @@ export class Hud {
   private readonly label: HTMLElement;
   private readonly dragIcon: HTMLImageElement;
   private readonly slots: HTMLElement[] = [];
+  private readonly connection: HTMLElement;
   private dragFrom: number | null = null;
 
   constructor(
     root: HTMLElement,
     private readonly inventory: Inventory,
+    nickname: string,
+    onSignOut: () => void,
   ) {
+    const account = element('account', root);
+    element('account-name', account, 'span').textContent = nickname;
+    const signOut = element('account-signout', account, 'button') as HTMLButtonElement;
+    signOut.type = 'button';
+    signOut.textContent = '로그아웃';
+    signOut.addEventListener('click', onSignOut);
+
+    this.connection = element('connection', root);
+    this.connection.textContent = '서버에 연결하는 중입니다';
+
     const help = element('help', root);
     help.innerHTML =
       '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> E &nbsp; <b>채팅</b> Enter<br><b>설치</b> 좌클릭 &nbsp; <b>회수</b> 우클릭';
@@ -46,6 +59,10 @@ export class Hud {
 
   get isOpen() {
     return !this.panel.hidden;
+  }
+
+  setConnected(connected: boolean) {
+    this.connection.hidden = connected;
   }
 
   toggle() {

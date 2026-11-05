@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { paintCharacterSheet, CHAR_FOOT_Y, CHAR_H, CHAR_STEPS, CHAR_W } from '../art/character';
+import { CHAR_H, CHAR_STEPS, CHAR_W, paintCharacterSheet } from '../art/character';
 import { paintGround, WORLD_H, WORLD_W } from '../art/ground';
 import {
   paintBanner,
@@ -14,8 +14,11 @@ import {
 import { BLOCK_IDS, paintBlock, type BlockId } from '../blocks';
 import { BLOCK_HEIGHT, MAP_SIZE, PLACE_RANGE, STEP_MS, TILE_H, TILE_W, ZOOM } from '../config';
 import { depthOf, gridToWorld, tileCenter, worldToGrid } from '../iso';
+import type { ChatMessage, GameSession, PlacedBlock, PlayerMove, SessionEvents } from '../net/session';
 import type { ChatBox } from '../ui/chat';
 import type { Hud } from '../ui/hud';
+import type { NameTags } from '../ui/nametags';
+import { Avatar } from './avatar';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { generateMap, type House } from './map';
@@ -24,28 +27,17 @@ import { inReach, World, type Tile } from './world';
 const DEPTH_GROUND = 0;
 const DEPTH_OVERLAY = 1;
 
-/** 말풍선을 띄울 높이: 발에서 머리 위까지 (아트 픽셀) */
+/** 닉네임을 띄울 높이: 발에서 머리 위까지 (아트 픽셀) */
 const HEAD_HEIGHT = 30;
 
-interface Step {
-  from: Tile;
-  to: Tile;
-  t: number;
-  ms: number;
-}
-
-export class GameScene extends Phaser.Scene {
+export class GameScene extends Phaser.Scene implements SessionEvents {
   readonly world = new World(generateMap());
-  private player!: Phaser.GameObjects.Image;
+  private me!: Avatar;
+  private readonly others = new Map<string, Avatar>();
   private ghost!: Phaser.GameObjects.Image;
   private marker!: Phaser.GameObjects.Graphics;
   private range!: Phaser.GameObjects.Graphics;
   private readonly blockImages = new Map<string, Phaser.GameObjects.Image>();
-
-  tile: Tile = { ...this.world.map.spawn };
-  private step: Step | null = null;
-  private facing: Pick<Dir, 'view' | 'flip'> = { view: 'front', flip: false };
-  private leftFoot = true;
 
   /** 마우스가 가리키는 설치된 블록 */
   private hoveredBlock: Tile | null = null;
@@ -57,6 +49,8 @@ export class GameScene extends Phaser.Scene {
     private readonly hud: Hud,
     private readonly keys: Keys,
     private readonly chat: ChatBox,
+    private readonly tags: NameTags,
+    private readonly session: GameSession,
   ) {
     super('game');
   }
@@ -67,7 +61,10 @@ export class GameScene extends Phaser.Scene {
     if (this.world.map.house) this.createHouse(this.world.map.house);
     this.createProps();
 
-    this.player = this.add.image(0, 0, 'player', 'front-0').setOrigin(0.5, CHAR_FOOT_Y / CHAR_H);
+    const { id, nickname, x, y } = this.session.profile;
+    this.me = new Avatar(this, { x, y });
+    this.tags.add(id, nickname);
+
     this.range = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.marker = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.ghost = this.add.image(0, 0, `block-${BLOCK_IDS[0]}`).setOrigin(0.5, 1).setVisible(false);
@@ -75,18 +72,18 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setZoom(ZOOM);
     cam.setBounds(0, 0, WORLD_W, WORLD_H);
-    cam.startFollow(this.player, true);
+    cam.startFollow(this.me.sprite, true);
 
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (this.hud.isOpen) return;
       this.updateHover();
-      if (pointer.rightButtonDown()) this.collectBlock();
+      if (pointer.rightButtonDown()) void this.collectBlock();
       else if (pointer.leftButtonDown()) this.placeBlock();
     });
 
     this.drawRange();
-    this.syncPlayer();
+    void this.session.connect(this);
   }
 
   private createTextures() {
@@ -165,48 +162,41 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number) {
     this.advancePlayer(delta);
+    for (const avatar of this.others.values()) avatar.update(delta);
     this.updateHover();
-
-    const cam = this.cameras.main;
-    this.chat.moveBubble(
-      (this.player.x - cam.worldView.x) * cam.zoom,
-      (this.player.y - HEAD_HEIGHT - cam.worldView.y) * cam.zoom,
-    );
+    this.placeNameTags();
   }
 
   private advancePlayer(delta: number) {
-    if (this.step) {
-      this.step.t += delta / this.step.ms;
-      if (this.step.t >= 1) this.step = null;
-    }
-    if (!this.step) {
-      const dir = this.keys.takeDirection();
-      if (dir && !this.hud.isOpen && !this.chat.isOpen) this.beginStep(dir);
-    }
-    this.syncPlayer();
+    this.me.update(delta);
+    if (this.me.moving) return;
+    const dir = this.keys.takeDirection();
+    if (dir && !this.hud.isOpen && !this.chat.isOpen) this.beginStep(dir);
   }
 
-  private beginStep(dir: Dir) {
-    this.facing = dir;
-    if (!this.world.canStep(this.tile, dir.dx, dir.dy)) return;
-    const to = { x: this.tile.x + dir.dx, y: this.tile.y + dir.dy };
-    this.step = { from: this.tile, to, t: 0, ms: STEP_MS * Math.hypot(dir.dx, dir.dy) };
-    this.tile = to;
-    this.leftFoot = !this.leftFoot;
+  private beginStep({ dx, dy }: Dir) {
+    const from = this.me.tile;
+    if (!this.world.canStep(from, dx, dy)) {
+      this.me.face(dx, dy);
+      return;
+    }
+    const to = { x: from.x + dx, y: from.y + dy };
+    const ms = STEP_MS * Math.hypot(dx, dy);
+    this.me.stepTo(to, ms);
+    this.session.sendMove(to.x, to.y, ms);
+    this.session.saveLater(to);
     this.drawRange();
   }
 
-  private syncPlayer() {
-    const s = this.step;
-    const gx = s ? s.from.x + (s.to.x - s.from.x) * s.t : this.tile.x;
-    const gy = s ? s.from.y + (s.to.y - s.from.y) * s.t : this.tile.y;
-    const pos = gridToWorld(gx + 0.5, gy + 0.5);
-    const frame = s && s.t < 0.5 ? (this.leftFoot ? 1 : 2) : 0;
-    this.player
-      .setPosition(pos.x, pos.y)
-      .setFrame(`${this.facing.view}-${frame}`)
-      .setFlipX(this.facing.flip)
-      .setDepth(depthOf(gx, gy) + 1);
+  private placeNameTags() {
+    const cam = this.cameras.main;
+    const place = (id: string, avatar: Avatar) => {
+      const x = (avatar.sprite.x - cam.worldView.x) * cam.zoom;
+      const y = (avatar.sprite.y - HEAD_HEIGHT - cam.worldView.y) * cam.zoom;
+      this.tags.place(id, x, y);
+    };
+    place(this.session.profile.id, this.me);
+    for (const [id, avatar] of this.others) place(id, avatar);
   }
 
   private pointerWorld() {
@@ -249,13 +239,21 @@ export class GameScene extends Phaser.Scene {
     this.drawHover();
   }
 
+  private canPlaceAt(target: Tile) {
+    if (!this.world.canPlace(target, this.me.tile)) return false;
+    for (const { tile } of this.others.values()) {
+      if (tile.x === target.x && tile.y === target.y) return false;
+    }
+    return true;
+  }
+
   private drawHover() {
     this.marker.clear();
     this.ghost.setVisible(false);
 
     if (this.hoveredBlock) {
       const { x, y } = this.hoveredBlock;
-      const ok = inReach(this.tile, this.hoveredBlock);
+      const ok = inReach(this.me.tile, this.hoveredBlock);
       this.marker.setDepth(depthOf(x, y) + 2);
       this.strokeTile(x, y, ok ? 0xffffff : 0xff6b5e, -BLOCK_HEIGHT);
       return;
@@ -264,7 +262,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.hoveredGround) return;
     const { x, y } = this.hoveredGround;
     const stack = this.inventory.selectedStack;
-    const ok = stack !== null && this.world.canPlace(this.hoveredGround, this.tile);
+    const ok = stack !== null && this.canPlaceAt(this.hoveredGround);
     this.marker.setDepth(DEPTH_OVERLAY);
     this.strokeTile(x, y, ok ? 0xffffff : 0xff6b5e, 0);
 
@@ -291,10 +289,11 @@ export class GameScene extends Phaser.Scene {
   /** 블록을 놓을 수 있는 범위를 마름모로 표시한다. */
   private drawRange() {
     const clamp = (v: number) => Math.max(0, Math.min(MAP_SIZE, v));
-    const x0 = clamp(this.tile.x - PLACE_RANGE);
-    const y0 = clamp(this.tile.y - PLACE_RANGE);
-    const x1 = clamp(this.tile.x + PLACE_RANGE + 1);
-    const y1 = clamp(this.tile.y + PLACE_RANGE + 1);
+    const { x, y } = this.me.tile;
+    const x0 = clamp(x - PLACE_RANGE);
+    const y0 = clamp(y - PLACE_RANGE);
+    const x1 = clamp(x + PLACE_RANGE + 1);
+    const y1 = clamp(y + PLACE_RANGE + 1);
     const pts = [gridToWorld(x0, y0), gridToWorld(x1, y0), gridToWorld(x1, y1), gridToWorld(x0, y1)];
 
     this.range.clear();
@@ -306,21 +305,30 @@ export class GameScene extends Phaser.Scene {
 
   private placeBlock() {
     const target = this.hoveredGround;
-    if (!target || !this.inventory.selectedStack) return;
-    if (!this.world.canPlace(target, this.tile)) return;
+    if (!target || !this.inventory.selectedStack || !this.canPlaceAt(target)) return;
     const id = this.inventory.takeSelected();
-    if (id) this.spawnBlock(target, id);
+    if (!id) return;
+
+    // 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
+    this.spawnBlock(target, id);
+    void this.session.placeBlock(target.x, target.y, id).then((placed) => {
+      if (placed) return;
+      this.removeBlockAt(target.x, target.y);
+      this.inventory.add(id);
+      void this.session.syncBlocks();
+    });
   }
 
-  private collectBlock() {
+  private async collectBlock() {
     const target = this.hoveredBlock;
-    if (!target || !inReach(this.tile, target)) return;
+    if (!target || !inReach(this.me.tile, target)) return;
     const id = this.world.blockAt(target.x, target.y);
-    if (!id || !this.inventory.add(id)) return;
-    this.world.remove(target.x, target.y);
-    const key = `${target.x},${target.y}`;
-    this.blockImages.get(key)?.destroy();
-    this.blockImages.delete(key);
+    if (!id || !this.inventory.canAdd(id)) return;
+
+    const removed = await this.session.removeBlock(target.x, target.y);
+    if (!removed) return;
+    this.removeBlockAt(target.x, target.y);
+    this.inventory.add(removed);
   }
 
   private spawnBlock({ x, y }: Tile, id: BlockId) {
@@ -331,5 +339,66 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(depthOf(x, y));
     this.blockImages.set(`${x},${y}`, image);
+  }
+
+  private removeBlockAt(x: number, y: number) {
+    this.world.remove(x, y);
+    const key = `${x},${y}`;
+    this.blockImages.get(key)?.destroy();
+    this.blockImages.delete(key);
+  }
+
+  currentTile() {
+    return this.me.tile;
+  }
+
+  onMove({ id, nickname, x, y, ms }: PlayerMove) {
+    let avatar = this.others.get(id);
+    if (!avatar) {
+      avatar = new Avatar(this, { x, y });
+      this.others.set(id, avatar);
+      this.tags.add(id, nickname);
+      return;
+    }
+    const { tile } = avatar;
+    if (tile.x === x && tile.y === y) return;
+    const adjacent = inReach(tile, { x, y });
+    avatar.stepTo({ x, y }, adjacent ? ms : 0);
+  }
+
+  onRoster(ids: Set<string>) {
+    for (const [id, avatar] of this.others) {
+      if (ids.has(id)) continue;
+      avatar.destroy();
+      this.others.delete(id);
+      this.tags.remove(id);
+    }
+  }
+
+  onChat({ id, author, text }: ChatMessage) {
+    this.chat.show({ id, author, text });
+    this.tags.say(id, text);
+  }
+
+  onBlocksLoaded(blocks: PlacedBlock[]) {
+    const wanted = new Set(blocks.map(({ x, y }) => `${x},${y}`));
+    for (const key of [...this.blockImages.keys()]) {
+      if (wanted.has(key)) continue;
+      const [x, y] = key.split(',').map(Number);
+      this.removeBlockAt(x, y);
+    }
+    for (const block of blocks) this.onBlockPlaced(block);
+  }
+
+  onBlockPlaced({ x, y, id }: PlacedBlock) {
+    if (!this.world.blockAt(x, y)) this.spawnBlock({ x, y }, id);
+  }
+
+  onBlockRemoved(x: number, y: number) {
+    this.removeBlockAt(x, y);
+  }
+
+  onConnection(connected: boolean) {
+    this.hud.setConnected(connected);
   }
 }

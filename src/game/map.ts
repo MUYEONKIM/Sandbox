@@ -32,18 +32,15 @@ export interface GameMap {
   props: Prop[];
   fences: Fence[];
   house: House | null;
-  spawn: { x: number; y: number };
 }
 
 /** 시작 맵은 아무것도 없는 평지다. */
 export function generateMap(): GameMap {
-  const center = Math.floor(MAP_SIZE / 2);
   return {
     terrain: new Uint8Array(MAP_SIZE * MAP_SIZE).fill(Terrain.Grass),
     solid: new Uint8Array(MAP_SIZE * MAP_SIZE),
     props: [],
     fences: [],
     house: null,
-    spawn: { x: center, y: center },
   };
 }
