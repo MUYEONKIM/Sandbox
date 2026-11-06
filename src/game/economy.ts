@@ -26,6 +26,14 @@ export interface ShopWeapon {
   cooldownMs: number;
 }
 
+export interface ShopTool {
+  id: string;
+  workplace: WorkId;
+  name: string;
+  blurb: string;
+  price: number;
+}
+
 export interface ShopStat {
   id: StatId;
   name: string;
@@ -40,9 +48,11 @@ export interface EconomyData {
   workplaces: Workplace[];
   stash: { item: string; count: number }[];
   weapons: ShopWeapon[];
+  tools: ShopTool[];
   stats: ShopStat[];
   myStats: Record<StatId, number>;
   owned: WeaponId[];
+  ownedTools: string[];
 }
 
 /** 희귀 자원을 알림에서 돋보이게 하는 가격 기준 */
@@ -56,9 +66,11 @@ export class Economy {
   gold: number;
   readonly workplaces: Workplace[];
   readonly stats: ShopStat[];
+  readonly tools: ShopTool[];
   private readonly weapons: ShopWeapon[];
   private readonly myStats: Record<StatId, number>;
   private readonly owned: Set<WeaponId>;
+  private readonly ownedTools: Set<string>;
   private readonly loot = new Map<string, LootItem>();
   private readonly stash = new Map<string, number>();
   private readonly listeners: (() => void)[] = [];
@@ -67,9 +79,11 @@ export class Economy {
     this.gold = data.gold;
     this.workplaces = data.workplaces;
     this.stats = data.stats;
+    this.tools = data.tools;
     this.weapons = data.weapons;
     this.myStats = { ...data.myStats };
     this.owned = new Set(data.owned);
+    this.ownedTools = new Set(data.ownedTools);
     for (const item of data.loot) this.loot.set(item.item, item);
     for (const { item, count } of data.stash) this.stash.set(item, count);
   }
@@ -140,6 +154,10 @@ export class Economy {
     return this.owned.has(id);
   }
 
+  ownsTool(id: string) {
+    return this.ownedTools.has(id);
+  }
+
   stat(id: StatId) {
     return this.myStats[id];
   }
@@ -152,6 +170,12 @@ export class Economy {
   setWeaponBought(id: WeaponId, gold: number) {
     this.gold = gold;
     this.owned.add(id);
+    this.changed();
+  }
+
+  setToolBought(id: string, gold: number) {
+    this.gold = gold;
+    this.ownedTools.add(id);
     this.changed();
   }
 

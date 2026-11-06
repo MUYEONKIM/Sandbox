@@ -4,7 +4,7 @@ import { spriteUrl } from '../art/sprites';
 import { element } from './dom';
 
 /** 작업장 버튼에 붙이는 그림 */
-const PLACE_ICONS: Record<WorkId, string> = {
+export const PLACE_ICONS: Record<WorkId, string> = {
   quarry: 'buttons0012',
   logging: 'buttons0002',
   gathering: 'buttons0001',

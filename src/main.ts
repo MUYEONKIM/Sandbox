@@ -51,6 +51,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   const shop = new ShopWindow(root, economy, {
     onBuyWeapon: (id) => scene.buyWeapon(id),
+    onBuyTool: (tool) => scene.buyTool(tool),
     onSell: () => void scene.sellEverything(),
   });
 

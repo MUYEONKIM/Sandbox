@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { MAX_HP } from '../config';
+import { MAX_HP, TEAM_SIZE } from '../config';
 import { depthOf, gridToWorld } from '../iso';
 import { WEAPONS, type WeaponId } from '../items';
 import type { Tile } from './world';
@@ -9,15 +9,14 @@ export const TEAM_W = 22;
 export const TEAM_H = 40;
 const TEAM_FOOT_Y = 39;
 
-/** 시트에는 7명이 한 사람당 2장씩 이어져 있다. 모두 왼쪽 앞을 보고 있고 뒷모습은 없다. */
-const TEAM_SIZE = 7;
+/** 시트에는 한 사람당 2장씩 이어져 있다. 모두 왼쪽 앞을 보고 있고 뒷모습은 없다. */
 const TEAM_FRAMES = 2;
 /** 가만히 있을 때 두 장을 번갈아 보여 주는 간격. 원본 애니메이션과 같다. */
 const IDLE_FRAME_MS = 500;
 /** 걷는 그림이 따로 없어서 걸음마다 살짝 뛰어오른다. (아트 픽셀) */
 const STEP_HOP = 2;
 
-/** 플레이어 id로 캐릭터를 고른다. 어느 화면에서 봐도 같은 캐릭터가 나온다. */
+/** 캐릭터를 고른 적 없는 옛 계정은 id로 정한다. 어느 화면에서 봐도 같은 캐릭터가 나온다. */
 function memberOf(id: string) {
   let sum = 0;
   for (const char of id) sum += char.charCodeAt(0);
@@ -83,10 +82,11 @@ export class Avatar {
     id: string,
     public tile: Tile,
     hp = MAX_HP,
+    skin: number | null = null,
   ) {
     this.from = tile;
     this.hp = hp;
-    this.firstFrame = memberOf(id) * TEAM_FRAMES;
+    this.firstFrame = (skin ?? memberOf(id)) * TEAM_FRAMES;
     this.image = scene.add.image(0, 0, 'team', this.firstFrame).setOrigin(0.5, TEAM_FOOT_Y / TEAM_H);
     this.gun = scene.add.image(0, 0, 'pistol').setVisible(false);
     this.setWeapon('pistol');

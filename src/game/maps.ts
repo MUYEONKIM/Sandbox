@@ -17,6 +17,11 @@ type Corner = keyof typeof CORNERS;
 const LANDING_ALONG = 3;
 const LANDING_ACROSS = 1;
 
+/** 직사각형 구역: x0, y0, x1, y1 (끝 칸 포함) */
+export type Area = readonly [number, number, number, number];
+
+export const isInside = ([x0, y0, x1, y1]: Area, x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+
 export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
 export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | WorkId;
 
@@ -48,8 +53,10 @@ export interface MapInfo {
   links: Partial<Record<Corner, MapId>>;
   /** 작업장이면 true. 이 맵에서 자원을 캘 수 있다. */
   work?: boolean;
-  /** true면 공격과 블록 설치가 막힌다. 서버도 같은 맵을 막으므로 바꾸면 SQL도 함께 바꾼다. */
+  /** true면 공격이 막힌다. 서버도 같은 맵을 막으므로 바꾸면 SQL도 함께 바꾼다. */
   safe?: boolean;
+  /** 블록을 놓을 수 있는 구역. 없으면 놓을 수 없다. 서버의 blocks 정책도 함께 바꾼다. */
+  buildZones?: Area[];
 }
 
 /** 맵 목록. 평원을 중심으로 귀퉁이가 각 맵으로 이어지고, 작업장은 노동청에서 간다. */

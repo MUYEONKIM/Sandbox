@@ -39,7 +39,7 @@ import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
 import { Avatar, TEAM_H, TEAM_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
-import type { Economy } from './economy';
+import type { Economy, ShopTool } from './economy';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { formatLevel } from './level';
@@ -76,8 +76,8 @@ const PORTAL_FRAME_MS = 100;
 const CHIMNEY = { x: 56, y: 14 };
 const SMOKE_FRAMES = ['Smoke0000', 'Smoke0001', 'Smoke0002'] as const;
 const SMOKE_FRAME_MS = 240;
-/** 시작마을에서 클릭을 연달아 해도 안내가 쌓이지 않게 하는 간격 */
-const SAFE_NOTICE_MS = 2000;
+/** 클릭을 연달아 해도 안내가 쌓이지 않게 하는 간격 */
+const NOTICE_MS = 2000;
 
 /** 아이티공간 간판을 다는 위치 (건물 그림 기준 픽셀). 정문 앞에서도 보이는 높이다. */
 const CASTLE_SIGN = { x: 262, y: 205 };
@@ -174,7 +174,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 지금 들고 있는 무기. 없으면 null */
   private armedWith: WeaponId | null = null;
   private nextShotAt = 0;
-  private nextSafeNoticeAt = 0;
+  private nextNoticeAt = 0;
   private shotsFired = 0;
   private nextMinimapAt = 0;
 
@@ -206,8 +206,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
     this.showMap(this.mapId);
 
-    const { id, nickname, hp } = this.session.profile;
-    this.me = new Avatar(this, id, this.startTile(), hp);
+    const { id, nickname, hp, skin } = this.session.profile;
+    this.me = new Avatar(this, id, this.startTile(), hp, skin);
     this.tags.add(id, nickname);
     this.tags.setHp(id, hp);
     this.showLevel(id, this.level);
@@ -465,9 +465,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return !windowOpen && !this.traveling && !this.down;
   }
 
-  /** 시작마을처럼 공격과 블록 설치가 막힌 맵인지 */
+  /** 시작마을처럼 공격이 막힌 맵인지 */
   private get isSafeMap() {
     return MAPS[this.mapId].safe === true;
+  }
+
+  /** 이 맵에 블록 설치 구역이 있는지 */
+  private get canBuildHere() {
+    return this.world.map.buildZones.length > 0;
   }
 
   private advancePlayer(delta: number) {
@@ -593,7 +598,18 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.hud.toast(`${WEAPONS[id].name} 구매 완료`, '가방이나 단축키 칸을 확인하세요');
   }
 
-  /** 상점에서 스텟을 1 올린다. */
+  /** 상점에서 작업 도구를 산다. 효과는 서버의 harvest가 적용한다. */
+  async buyTool({ id, name }: ShopTool) {
+    const gold = await this.session.buyTool(id);
+    if (gold === null) {
+      this.hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
+      return;
+    }
+    this.economy.setToolBought(id, gold);
+    this.hud.toast(`${name} 구매 완료`, '가지고 있으면 자동으로 적용됩니다');
+  }
+
+  /** 아이티공간에서 스텟을 1 올린다. */
   async buyStat(id: StatId) {
     const bought = await this.session.buyStat(id);
     if (!bought) {
@@ -750,19 +766,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private useSelectedItem() {
-    if (this.isSafeMap) {
-      this.noticeSafeMap();
-      return;
-    }
     const weapon = this.selectedWeapon;
-    if (weapon) this.attack(weapon);
-    else this.placeBlock();
+    if (weapon && this.isSafeMap) this.notice('시작마을은 비무장지대입니다', '이곳에서는 무기를 쓸 수 없습니다.');
+    else if (weapon) this.attack(weapon);
+    else if (this.canBuildHere) this.placeBlock();
+    else if (this.inventory.selectedStack) this.notice('블록을 놓을 수 없습니다', '정해진 구역에만 놓을 수 있습니다.');
   }
 
-  private noticeSafeMap() {
-    if (this.time.now < this.nextSafeNoticeAt) return;
-    this.nextSafeNoticeAt = this.time.now + SAFE_NOTICE_MS;
-    this.hud.toast('시작마을은 비무장지대입니다', '총, 칼, 블록 전부 압수 대상입니다.');
+  private notice(title: string, detail: string) {
+    if (this.time.now < this.nextNoticeAt) return;
+    this.nextNoticeAt = this.time.now + NOTICE_MS;
+    this.hud.toast(title, detail);
   }
 
   private attack(weapon: WeaponId) {
@@ -928,7 +942,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
 
     const stack = this.inventory.selectedStack;
-    if (!this.hoveredGround || this.isSafeMap || (stack && isWeapon(stack.id))) return;
+    if (!this.hoveredGround || !this.canBuildHere || (stack && isWeapon(stack.id))) return;
     const { x, y } = this.hoveredGround;
     const ok = stack !== null && this.canPlaceAt(this.hoveredGround);
     this.marker.setDepth(DEPTH_OVERLAY);
@@ -965,7 +979,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const pts = [gridToWorld(x0, y0), gridToWorld(x1, y0), gridToWorld(x1, y1), gridToWorld(x0, y1)];
 
     this.range.clear();
-    if (this.isSafeMap) return;
+    if (!this.canBuildHere) return;
     this.range.fillStyle(0xffffff, 0.05).lineStyle(1, 0xffffff, 0.5).beginPath();
     this.range.moveTo(pts[0].x, pts[0].y);
     for (const p of pts.slice(1)) this.range.lineTo(p.x, p.y);
@@ -1052,10 +1066,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.level;
   }
 
-  onMove({ id, nickname, x, y, ms, hp, level, motion }: PlayerMove) {
+  onMove({ id, nickname, x, y, ms, hp, level, motion, skin }: PlayerMove) {
     let avatar = this.others.get(id);
     if (!avatar) {
-      avatar = new Avatar(this, id, { x, y }, hp);
+      avatar = new Avatar(this, id, { x, y }, hp, skin);
       this.others.set(id, avatar);
       this.tags.add(id, nickname);
       this.tags.setHp(id, hp);

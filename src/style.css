@@ -409,6 +409,13 @@ canvas {
   border: 2px solid var(--slot-sunken);
 }
 
+.shop-tool-icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
 .shop-stat-badge {
   flex: none;
   width: 44px;
@@ -834,6 +841,35 @@ canvas {
   border: 2px solid var(--panel-edge);
   outline: 0;
   font: inherit;
+}
+
+.login-skins {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.login-skin {
+  display: flex;
+  justify-content: center;
+  height: 88px;
+  padding: 2px 0;
+  overflow: hidden;
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+  cursor: pointer;
+}
+
+.login-skin[aria-pressed='true'] {
+  border-color: var(--gold);
+}
+
+.login-skin-face {
+  flex: none;
+  width: 44px;
+  height: 80px;
+  background-size: 176px 320px;
+  image-rendering: pixelated;
 }
 
 .login-input:focus {

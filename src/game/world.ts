@@ -1,7 +1,7 @@
 import { BLOCKS, type BlockId } from '../blocks';
 import { MAP_SIZE, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
-import type { Portal } from './maps';
+import { isInside, type Portal } from './maps';
 
 export interface Tile {
   x: number;
@@ -80,6 +80,7 @@ export class World {
   canPlace(target: Tile, player: Tile) {
     if (!inReach(player, target)) return false;
     if (target.x === player.x && target.y === player.y) return false;
+    if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     if (this.isPortalArea(target.x, target.y)) return false;
     return this.isOpenGround(target.x, target.y) && !this.blockAt(target.x, target.y);
   }

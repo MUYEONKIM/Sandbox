@@ -1,16 +1,20 @@
-import type { Economy, ShopWeapon } from '../game/economy';
+import { spriteUrl } from '../art/sprites';
+import type { Economy, ShopTool, ShopWeapon } from '../game/economy';
 import { paintItem, WEAPONS, type WeaponId } from '../items';
 import { element } from './dom';
+import { PLACE_ICONS } from './office';
 import { PurchaseWindow } from './purchase';
 
 interface ShopActions {
   onBuyWeapon(id: WeaponId): Promise<void>;
+  onBuyTool(tool: ShopTool): Promise<void>;
   onSell(): void;
 }
 
-/** 상점 창: 무기를 사고 캐 온 전리품을 판다. 실제 거래는 서버가 한다. */
+/** 상점 창: 무기와 작업 도구를 사고 캐 온 전리품을 판다. 실제 거래는 서버가 한다. */
 export class ShopWindow extends PurchaseWindow {
   private readonly weaponList: HTMLElement;
+  private readonly toolList: HTMLElement;
   private readonly stashList: HTMLElement;
   private readonly sellButton: HTMLButtonElement;
 
@@ -24,6 +28,10 @@ export class ShopWindow extends PurchaseWindow {
     element('office-section', this.root).textContent = '무기';
     this.weaponList = element('shop-weapons', this.root);
     for (const weapon of economy.forSale) this.addWeapon(weapon);
+
+    element('office-section', this.root).textContent = '작업 도구';
+    this.toolList = element('shop-stats', this.root);
+    for (const tool of economy.tools) this.addTool(tool);
 
     element('office-section', this.root).textContent = '가방 속 전리품';
     this.stashList = element('office-stash', this.root);
@@ -51,6 +59,25 @@ export class ShopWindow extends PurchaseWindow {
     const buy = this.buyButton(row, () => this.actions.onBuyWeapon(id));
     this.refreshers.push(() => {
       const owned = this.economy.owns(id);
+      buy.textContent = owned ? '보유 중' : `${price.toLocaleString()}G`;
+      buy.disabled = this.busy || owned || this.economy.gold < price;
+    });
+  }
+
+  private addTool(tool: ShopTool) {
+    const { id, workplace, name, blurb, price } = tool;
+    const row = element('shop-stat', this.toolList);
+    const icon = element('shop-tool-icon', row, 'img') as HTMLImageElement;
+    icon.src = spriteUrl(PLACE_ICONS[workplace]);
+    icon.alt = '';
+
+    const text = element('shop-stat-text', row);
+    element('shop-stat-name', text).textContent = name;
+    element('shop-stat-blurb', text).textContent = blurb;
+
+    const buy = this.buyButton(row, () => this.actions.onBuyTool(tool));
+    this.refreshers.push(() => {
+      const owned = this.economy.ownsTool(id);
       buy.textContent = owned ? '보유 중' : `${price.toLocaleString()}G`;
       buy.disabled = this.busy || owned || this.economy.gold < price;
     });

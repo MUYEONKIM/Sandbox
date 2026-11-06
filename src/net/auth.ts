@@ -21,6 +21,9 @@ export interface Profile {
   agi: number;
   luk: number;
   owned_weapons: string[];
+  owned_tools: string[];
+  /** 회원가입 때 고른 캐릭터. 옛 계정은 null이다. */
+  skin: number | null;
 }
 
 const MESSAGES: Record<string, string> = {
@@ -53,8 +56,8 @@ export async function signIn(email: string, password: string): Promise<User> {
 }
 
 /** 가입과 동시에 접속되면 사용자를, 메일 확인이 필요하면 null을 돌려준다. */
-export async function signUp(email: string, password: string, nickname: string): Promise<User | null> {
-  const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { nickname } } });
+export async function signUp(email: string, password: string, nickname: string, skin: number): Promise<User | null> {
+  const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { nickname, skin } } });
   // 닉네임은 프로필을 만들 때 DB가 검사하므로, 어긋나면 서버 오류(500)로 돌아온다.
   if (error?.status === 500) throw new Error('이미 쓰이는 닉네임입니다. 다른 닉네임을 입력해 주세요.');
   if (error) throw new Error(describe(error));
@@ -65,25 +68,28 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
-/** 노동청과 상점에서 쓸 작업장, 자원, 무기, 스텟 표와 내 자원을 읽어 온다. */
+/** 노동청과 상점에서 쓸 작업장, 자원, 무기, 도구, 스텟 표와 내 자원을 읽어 온다. */
 export async function loadEconomy(profile: Profile): Promise<EconomyData> {
-  const [workplaces, loot, stash, weapons, stats] = await Promise.all([
+  const [workplaces, loot, stash, weapons, tools, stats] = await Promise.all([
     supabase.from('workplaces').select('id, name, blurb, gather_ms').order('sort'),
     supabase.from('loot').select('item, workplace, name, blurb, price, weight'),
     supabase.from('stash').select('item, count'),
     supabase.from('weapons').select('id, blurb, price, damage, cooldown_ms').order('sort'),
+    supabase.from('tools').select('id, workplace, name, blurb, price').order('sort'),
     supabase.from('stats').select('id, name, blurb, base_price, price_step').order('sort'),
   ]);
-  const error = workplaces.error ?? loot.error ?? stash.error ?? weapons.error ?? stats.error;
+  const error = workplaces.error ?? loot.error ?? stash.error ?? weapons.error ?? tools.error ?? stats.error;
   if (error) throw new Error(error.message);
-  const { gold, str, def, agi, luk, owned_weapons: owned } = profile;
+  const { gold, str, def, agi, luk, owned_weapons: owned, owned_tools: ownedTools } = profile;
   return {
     gold,
     myStats: { str, def, agi, luk },
     owned: owned.filter(isWeapon),
+    ownedTools,
     weapons: (weapons.data ?? []).flatMap(({ id, cooldown_ms: cooldownMs, ...rest }) =>
       isWeapon(id) ? [{ ...rest, id, cooldownMs }] : [],
     ),
+    tools: (tools.data ?? []).map(({ workplace, ...rest }) => ({ ...rest, workplace: workplace as WorkId })),
     stats: (stats.data ?? []).flatMap(({ id, base_price: basePrice, price_step: priceStep, ...rest }) =>
       isStat(id) ? [{ ...rest, id, basePrice, priceStep }] : [],
     ),
@@ -101,7 +107,7 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
 export async function loadProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nickname, map, x, y, hp, gold, level::text, inventory, str, def, agi, luk, owned_weapons')
+    .select('id, nickname, map, x, y, hp, gold, level::text, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(error.message);

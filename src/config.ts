@@ -25,5 +25,8 @@ export const JUMP_MS = 340;
 
 export const MAX_HP = 100;
 
+/** 고를 수 있는 기본 캐릭터 수 */
+export const TEAM_SIZE = 7;
+
 /** 설치 블록의 높이 (아트 픽셀) */
 export const BLOCK_HEIGHT = 18;

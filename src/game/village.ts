@@ -2,7 +2,7 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { CASTLE, OFFICE, portalsOf, SHOP } from './maps';
+import { CASTLE, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
@@ -34,8 +34,6 @@ const OAK_LINE = 30;
 /** 포탈 주변은 이만큼 비워 둔다. */
 const PORTAL_CLEARANCE = 2;
 
-/** 직사각형 구역: x0, y0, x1, y1 (끝 칸 포함) */
-type Area = readonly [number, number, number, number];
 
 const STONE_ROADS: Area[] = [
   // 성문 앞 광장과 시계탑으로 가는 길
@@ -112,7 +110,6 @@ const TREELESS: Area[] = [
 
 const POND = { x: 6, y: 30, radius: 5 };
 
-const isInside = ([x0, y0, x1, y1]: Area, x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
 
 function eachTile([x0, y0, x1, y1]: Area, visit: (x: number, y: number) => void) {
   for (let y = y0; y <= y1; y++) {

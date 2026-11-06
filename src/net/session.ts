@@ -1,6 +1,6 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { BLOCKS, type BlockId } from '../blocks';
-import { MAP_SIZE, MAX_HP } from '../config';
+import { MAP_SIZE, MAX_HP, TEAM_SIZE } from '../config';
 import type { Slot } from '../game/inventory';
 import { parseLevel } from '../game/level';
 import type { StatId } from '../game/stats';
@@ -27,6 +27,8 @@ export interface PlayerMove {
   hp: number;
   level: bigint;
   motion: Motion;
+  /** 고른 캐릭터. 옛 계정은 null이다. */
+  skin: number | null;
 }
 
 /** 다른 플레이어의 공격. 화면에 보여 주기만 하고 피해 판정은 공격한 쪽이 한다. */
@@ -91,6 +93,7 @@ const isTileCoord = (v: unknown): v is number => Number.isInteger(v) && (v as nu
 const isGridCoord = (v: unknown): v is number => typeof v === 'number' && v >= -1 && v <= MAP_SIZE + 1;
 const isHp = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= MAX_HP;
 const isBlockId = (v: unknown): v is BlockId => typeof v === 'string' && Object.hasOwn(BLOCKS, v);
+const isSkin = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < TEAM_SIZE;
 
 /** 다른 플레이어가 보낸 값은 믿을 수 없으므로 형식을 확인한다. */
 function parseMove(value: unknown): PlayerMove | null {
@@ -106,6 +109,7 @@ function parseMove(value: unknown): PlayerMove | null {
     hp: isHp(m.hp) ? m.hp : MAX_HP,
     level: parseLevel(m.level) ?? 1n,
     motion: m.motion === 'run' || m.motion === 'jump' ? m.motion : 'walk',
+    skin: isSkin(m.skin) ? m.skin : null,
   };
 }
 
@@ -232,13 +236,13 @@ export class GameSession {
 
   sendMove(x: number, y: number, ms: number, motion: Motion = 'walk') {
     if (!this.joined || !this.channel) return;
-    const { id, nickname } = this.profile;
+    const { id, nickname, skin } = this.profile;
     const hp = this.events.currentHp();
     const level = this.events.currentLevel().toString();
     void this.channel.send({
       type: 'broadcast',
       event: 'move',
-      payload: { id, nickname, x, y, ms, hp, level, motion },
+      payload: { id, nickname, x, y, ms, hp, level, motion, skin },
     });
   }
 
@@ -263,6 +267,12 @@ export class GameSession {
   /** 무기를 사고 새 골드를 돌려준다. 실패하면 null이다. */
   async buyWeapon(weapon: WeaponId): Promise<number | null> {
     const { data, error } = await supabase.rpc('buy_weapon', { weapon });
+    return error ? null : (data as number);
+  }
+
+  /** 작업 도구를 사고 새 골드를 돌려준다. 실패하면 null이다. */
+  async buyTool(tool: string): Promise<number | null> {
+    const { data, error } = await supabase.rpc('buy_tool', { tool });
     return error ? null : (data as number);
   }
 

@@ -1,7 +1,7 @@
 import { Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
-import { CASTLE, MAPS, OFFICE, SHOP, type MapId } from './maps';
+import { CASTLE, MAPS, OFFICE, SHOP, type Area, type MapId } from './maps';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -25,6 +25,8 @@ export interface GameMap extends Scenery {
   /** 자원을 캘 수 있는 칸 */
   spots: Tile[];
   buildings: Building[];
+  /** 블록을 놓을 수 있는 구역 */
+  buildZones: Area[];
 }
 
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
@@ -108,6 +110,6 @@ export function generateMap(id: MapId): GameMap {
   }
   for (const { x, y } of [...scenery.props, ...scenery.trees]) solid[x + y * MAP_SIZE] = 1;
 
-  const { floor, floorTop } = MAPS[id];
-  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings };
+  const { floor, floorTop, buildZones = [] } = MAPS[id];
+  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones };
 }
