@@ -11,6 +11,16 @@ const HAND_REACH = 7;
 const HIT_FLASH_MS = 120;
 const DOWN_ALPHA = 0.4;
 
+/** 점프의 가장 높은 지점 (아트 픽셀). 벽 블록 높이보다 높아야 넘어가 보인다. */
+const JUMP_HEIGHT = 24;
+
+/** 총에 맞았을 때 뒤로 밀려나는 거리와 몸이 기우는 각도 (라디안) */
+const KNOCK_DISTANCE = 9;
+const KNOCK_LEAN = 0.28;
+const KNOCK_MS = 280;
+/** 밀려나는 데 쓰는 시간의 비율. 나머지는 천천히 돌아온다. */
+const KNOCK_OUT = 0.2;
+
 /** 대시 연기: 출발할 때 한 번 피어오르고, 달리는 동안 조금씩 남는다. */
 const SMOKE_BURST = 3;
 const SMOKE_INTERVAL_MS = 40;
@@ -24,6 +34,9 @@ const SMOKE_RISE = 9;
 export class Avatar {
   private readonly image: Phaser.GameObjects.Image;
   private readonly gun: Phaser.GameObjects.Image;
+  private readonly jumpShadow: Phaser.GameObjects.Image;
+  /** 땅 위의 위치. 카메라가 따라가므로 점프나 밀려남에 흔들리지 않는다. */
+  readonly anchor = { x: 0, y: 0 };
   private from: Tile;
   private t = 1;
   private ms = 1;
@@ -33,6 +46,10 @@ export class Avatar {
   private aimAngle: number | null = null;
   private lowerGunAt = Infinity;
   private smoking = false;
+  private airborne = false;
+  private knockX = 0;
+  private knockY = 0;
+  private knockT = 1;
   private nextSmokeAt = 0;
   hp: number;
 
@@ -48,6 +65,7 @@ export class Avatar {
       .image(0, 0, 'pistol')
       .setOrigin(PISTOL_GRIP.x / PISTOL_SIZE, PISTOL_GRIP.y / PISTOL_SIZE)
       .setVisible(false);
+    this.jumpShadow = scene.add.image(0, 0, 'jump-shadow').setVisible(false);
     this.setHp(hp);
     this.sync();
   }
@@ -63,6 +81,10 @@ export class Avatar {
   /** 지금 칸 이동이 얼마나 진행됐는지 (0~1) */
   get progress() {
     return this.t;
+  }
+
+  get jumping() {
+    return this.airborne;
   }
 
   get isDown() {
@@ -85,6 +107,20 @@ export class Avatar {
     this.ms = ms;
     this.leftFoot = !this.leftFoot;
     this.smoking = false;
+    this.airborne = false;
+  }
+
+  /** to까지 포물선을 그리며 뛴다. 제자리 점프도 된다. */
+  jumpTo(to: Tile, ms: number) {
+    this.stepTo(to, ms);
+    this.airborne = true;
+  }
+
+  /** 총알이 (dirX, dirY) 쪽으로 밀어낸다. 화면 방향의 단위 벡터다. */
+  hitBack(dirX: number, dirY: number) {
+    this.knockX = dirX;
+    this.knockY = dirY;
+    this.knockT = 0;
   }
 
   /** stepTo처럼 움직이되 발밑에 하얀 연기를 흩날린다. */
@@ -133,6 +169,7 @@ export class Avatar {
     this.from = to;
     this.tile = to;
     this.t = 1;
+    this.airborne = false;
   }
 
   /** 소수 격자 좌표로 본 지금 위치. 칸의 왼쪽 위 모서리 기준이다. */
@@ -169,28 +206,48 @@ export class Avatar {
 
   update(delta: number) {
     if (this.t < 1) this.t = Math.min(1, this.t + delta / this.ms);
+    if (this.t >= 1) this.airborne = false;
+    if (this.knockT < 1) this.knockT = Math.min(1, this.knockT + delta / KNOCK_MS);
     if (this.scene.time.now >= this.lowerGunAt) this.lowerGun();
     this.sync();
     if (this.smoking) this.leaveSmoke();
   }
 
+  /** 빠르게 밀려났다가 천천히 돌아오는 정도 (0~1) */
+  private get knockAmount() {
+    const t = this.knockT;
+    return t < KNOCK_OUT ? t / KNOCK_OUT : ((1 - t) / (1 - KNOCK_OUT)) ** 2;
+  }
+
   private sync() {
     const { x, y } = this.position();
     const pos = gridToWorld(x + 0.5, y + 0.5);
-    const frame = this.t < 0.5 ? (this.leftFoot ? 1 : 2) : 0;
-    const depth = depthOf(x, y) + 1;
+    this.anchor.x = pos.x;
+    this.anchor.y = pos.y;
+
+    const lift = this.airborne ? JUMP_HEIGHT * 4 * this.t * (1 - this.t) : 0;
+    const knock = this.knockAmount;
+    const drawX = pos.x + this.knockX * KNOCK_DISTANCE * knock;
+    const drawY = pos.y + this.knockY * KNOCK_DISTANCE * 0.6 * knock - lift;
+    const frame = this.airborne ? 1 : this.t < 0.5 ? (this.leftFoot ? 1 : 2) : 0;
+    // 공중에서는 넘어가는 벽보다 앞에 그려져야 벽에 가리지 않는다.
+    const depth = this.airborne
+      ? depthOf(Math.max(this.from.x, this.tile.x), Math.max(this.from.y, this.tile.y)) + 1
+      : depthOf(x, y) + 1;
     this.image
-      .setPosition(pos.x, pos.y)
+      .setPosition(drawX, drawY)
       .setFrame(`${this.view}-${frame}`)
       .setFlipX(this.flip)
+      .setRotation(this.knockX * KNOCK_LEAN * knock)
       .setDepth(depth);
+    this.jumpShadow.setVisible(this.airborne).setPosition(pos.x, pos.y).setDepth(depthOf(x, y));
 
     const armed = this.aimAngle !== null && !this.isDown;
     this.gun.setVisible(armed);
     if (armed) {
       const angle = this.aimAngle!;
       this.gun
-        .setPosition(pos.x + Math.cos(angle) * HAND_REACH, pos.y - HAND_HEIGHT + Math.sin(angle) * HAND_REACH * 0.5)
+        .setPosition(drawX + Math.cos(angle) * HAND_REACH, drawY - HAND_HEIGHT + Math.sin(angle) * HAND_REACH * 0.5)
         .setRotation(angle)
         .setFlipY(Math.abs(angle) > Math.PI / 2)
         .setDepth(Math.sin(angle) < 0 ? depth - 0.5 : depth + 0.5);
@@ -200,5 +257,6 @@ export class Avatar {
   destroy() {
     this.image.destroy();
     this.gun.destroy();
+    this.jumpShadow.destroy();
   }
 }

@@ -5,6 +5,8 @@ import type { Slot } from '../game/inventory';
 import type { Profile } from './auth';
 import { supabase } from './supabase';
 
+export type Motion = 'walk' | 'dash' | 'jump';
+
 export interface PlayerMove {
   id: string;
   nickname: string;
@@ -12,7 +14,7 @@ export interface PlayerMove {
   y: number;
   ms: number;
   hp: number;
-  dash: boolean;
+  motion: Motion;
 }
 
 /** 다른 플레이어가 쏜 총알. 화면에 보여 주기만 하고 피해 판정은 쏜 쪽이 한다. */
@@ -83,7 +85,7 @@ function parseMove(value: unknown): PlayerMove | null {
     y: m.y,
     ms: Math.min(Math.max(m.ms, 0), MAX_STEP_MS),
     hp: isHp(m.hp) ? m.hp : MAX_HP,
-    dash: m.dash === true,
+    motion: m.motion === 'dash' || m.motion === 'jump' ? m.motion : 'walk',
   };
 }
 
@@ -200,11 +202,11 @@ export class GameSession {
     this.events.onBlocksLoaded(data.map(parseBlock).filter((block) => block !== null));
   }
 
-  sendMove(x: number, y: number, ms: number, dash = false) {
+  sendMove(x: number, y: number, ms: number, motion: Motion = 'walk') {
     if (!this.joined || !this.channel) return;
     const { id, nickname } = this.profile;
     const hp = this.events.currentHp();
-    void this.channel.send({ type: 'broadcast', event: 'move', payload: { id, nickname, x, y, ms, hp, dash } });
+    void this.channel.send({ type: 'broadcast', event: 'move', payload: { id, nickname, x, y, ms, hp, motion } });
   }
 
   sendShot(fromX: number, fromY: number, toX: number, toY: number) {

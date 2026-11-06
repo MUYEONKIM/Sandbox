@@ -20,6 +20,8 @@ export interface BulletTarget {
 export interface BulletWorld {
   isSolid(x: number, y: number): boolean;
   targets(): BulletTarget[];
+  /** 총알이 사람에게 닿았을 때 불린다. (dx, dy)는 총알이 날아온 방향이다. */
+  onImpact(targetId: string, dx: number, dy: number): void;
 }
 
 interface Bullet {
@@ -98,6 +100,7 @@ export class Bullets {
       for (const target of this.world.targets()) {
         if (target.id === bullet.ownerId) continue;
         if (Math.hypot(bullet.x - target.x, bullet.y - target.y) > HIT_RADIUS) continue;
+        this.world.onImpact(target.id, bullet.dx, bullet.dy);
         bullet.onHit?.(target.id);
         return false;
       }

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CHAR_H, CHAR_STEPS, CHAR_W, paintCharacterSheet } from '../art/character';
-import { paintSmoke } from '../art/effects';
+import { paintJumpShadow, paintSmoke } from '../art/effects';
 import { paintGround, WORLD_H, WORLD_W } from '../art/ground';
 import { paintPortal, PORTAL_FRAMES, PORTAL_ORIGIN_Y } from '../art/props';
 import { paintBullet, paintPistol } from '../art/weapons';
@@ -10,6 +10,8 @@ import {
   DASH_COOLDOWN_MS,
   DASH_STEP_MS,
   DASH_TILES,
+  JUMP_MS,
+  JUMP_TILES,
   MAP_SIZE,
   MAX_HP,
   PLACE_RANGE,
@@ -20,7 +22,15 @@ import {
 } from '../config';
 import { depthOf, gridToWorld, tileCenter, worldToGrid } from '../iso';
 import { isWeapon, WEAPONS, type WeaponId } from '../items';
-import type { ChatMessage, GameSession, PlacedBlock, PlayerMove, PlayerShot, SessionEvents } from '../net/session';
+import type {
+  ChatMessage,
+  GameSession,
+  Motion,
+  PlacedBlock,
+  PlayerMove,
+  PlayerShot,
+  SessionEvents,
+} from '../net/session';
 import type { ChatBox } from '../ui/chat';
 import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
@@ -125,6 +135,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.bullets = new Bullets(this, {
       isSolid: (tx, ty) => this.world.blockAt(tx, ty) !== undefined,
       targets: () => this.bulletTargets(),
+      onImpact: (id, dx, dy) => this.playHit(id, dx, dy),
     });
 
     this.range = this.add.graphics().setDepth(DEPTH_OVERLAY);
@@ -134,7 +145,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const cam = this.cameras.main;
     cam.setZoom(ZOOM);
     cam.setBounds(-CAMERA_PAD_X, -CAMERA_PAD_Y, WORLD_W + CAMERA_PAD_X * 2, WORLD_H + CAMERA_PAD_Y * 2);
-    cam.startFollow(this.me.sprite, true);
+    cam.startFollow(this.me.anchor, true);
 
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -154,6 +165,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.textures.addCanvas('pistol', paintPistol());
     this.textures.addCanvas('bullet', paintBullet());
     this.textures.addCanvas('smoke', paintSmoke());
+    this.textures.addCanvas('jump-shadow', paintJumpShadow());
 
     const sheet = this.textures.addCanvas('player', paintCharacterSheet())!;
     for (let i = 0; i < CHAR_STEPS * 2; i++) {
@@ -232,7 +244,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.me.update(delta);
     if (this.traveling || this.down) return;
 
-    if (this.keys.takeDash() && this.canAct) this.dash();
+    const dashPressed = this.keys.takeDash();
+    const jumpPressed = this.keys.takeJump();
+    if (this.canAct && !this.me.jumping) {
+      if (jumpPressed) this.jump();
+      else if (dashPressed) this.dash();
+    }
 
     if (this.me.moving) {
       this.steer();
@@ -268,8 +285,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.walk = { from, dir };
   }
 
-  /** 걸음을 막 뗀 참이면 출발한 칸을 기준으로 삼아, 어디서 써도 대시 거리가 같게 한다. */
-  private get dashStart() {
+  /** 걸음을 막 뗀 참이면 출발한 칸을 기준으로 삼아, 어디서 써도 대시와 점프 거리가 같게 한다. */
+  private get actionStart() {
     const justLeft = this.walk && this.me.moving && this.me.progress < TURN_WINDOW;
     return justLeft ? this.walk!.from : this.me.tile;
   }
@@ -280,7 +297,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 방향 입력을 여기서 비워야 대시가 끝난 뒤 한 칸 더 걷지 않는다.
     const dir = this.keys.takeDirection() ?? this.lastDir;
     const { dx, dy } = dir;
-    let tile = this.dashStart;
+    let tile = this.actionStart;
     let moved = 0;
     while (moved < DASH_TILES && this.world.canStep(tile, dx, dy)) {
       tile = { x: tile.x + dx, y: tile.y + dy };
@@ -289,16 +306,40 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     if (moved === 0) return;
     this.nextDashAt = this.time.now + DASH_COOLDOWN_MS;
-    this.moveTo(tile, DASH_STEP_MS * moved * Math.hypot(dx, dy), true);
+    this.moveTo(tile, DASH_STEP_MS * moved * Math.hypot(dx, dy), 'dash');
     this.me.face(dx, dy);
     this.lastDir = dir;
     this.walk = null;
   }
 
-  private moveTo(to: Tile, ms: number, dashing = false) {
-    if (dashing) this.me.dashTo(to, ms);
+  /** 방향을 누르고 Space를 누르면 벽 하나를 넘을 수 있다. 벽 앞에서는 방향 없이 눌러도 넘는다. */
+  private jump() {
+    const from = this.actionStart;
+    const ahead = { x: from.x + this.lastDir.dx, y: from.y + this.lastDir.dy };
+    const facingWall = this.world.inBounds(ahead.x, ahead.y) && !this.world.isWalkable(ahead.x, ahead.y);
+    const dir = this.keys.takeDirection() ?? (facingWall ? this.lastDir : null);
+
+    this.moveTo(dir ? this.jumpLanding(from, dir) : from, JUMP_MS, 'jump');
+    if (dir) {
+      this.lastDir = dir;
+      this.me.face(dir.dx, dir.dy);
+    }
+    this.walk = null;
+  }
+
+  /** 벽 너머에 설 곳이 있으면 거기로, 없으면 바로 앞이나 제자리로 내린다. */
+  private jumpLanding(from: Tile, { dx, dy }: Dir): Tile {
+    const far = { x: from.x + dx * JUMP_TILES, y: from.y + dy * JUMP_TILES };
+    if (this.world.isWalkable(far.x, far.y)) return far;
+    const near = { x: from.x + dx, y: from.y + dy };
+    return this.world.isWalkable(near.x, near.y) ? near : from;
+  }
+
+  private moveTo(to: Tile, ms: number, motion: Motion = 'walk') {
+    if (motion === 'jump') this.me.jumpTo(to, ms);
+    else if (motion === 'dash') this.me.dashTo(to, ms);
     else this.me.stepTo(to, ms);
-    this.session.sendMove(to.x, to.y, ms, dashing);
+    this.session.sendMove(to.x, to.y, ms, motion);
     this.session.saveLater(to);
     this.drawRange();
   }
@@ -400,6 +441,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       void this.session.hitPlayer(target);
     });
     this.session.sendShot(fromX, fromY, aim.gx, aim.gy);
+  }
+
+  /** 총알이 날아온 방향으로 맞은 사람을 밀어낸다. 체력은 서버가 따로 처리한다. */
+  private playHit(id: string, dx: number, dy: number) {
+    const avatar = id === this.session.profile.id ? this.me : this.others.get(id);
+    if (!avatar) return;
+    const screenX = (dx - dy) * (TILE_W / 2);
+    const screenY = (dx + dy) * (TILE_H / 2);
+    const length = Math.hypot(screenX, screenY);
+    if (length > 0) avatar.hitBack(screenX / length, screenY / length);
   }
 
   private bulletTargets(): BulletTarget[] {
@@ -601,7 +652,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.me.hp;
   }
 
-  onMove({ id, nickname, x, y, ms, hp, dash }: PlayerMove) {
+  onMove({ id, nickname, x, y, ms, hp, motion }: PlayerMove) {
     let avatar = this.others.get(id);
     if (!avatar) {
       avatar = new Avatar(this, { x, y }, hp);
@@ -611,9 +662,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     const { tile } = avatar;
+    const reachable = inReach(tile, { x, y }, Math.max(DASH_TILES, JUMP_TILES) + 1);
+    if (motion === 'jump' && reachable) {
+      avatar.jumpTo({ x, y }, ms);
+      return;
+    }
     if (tile.x === x && tile.y === y) return;
-    if (!inReach(tile, { x, y }, DASH_TILES + 1)) avatar.teleport({ x, y });
-    else if (dash) avatar.dashTo({ x, y }, ms);
+    if (!reachable) avatar.teleport({ x, y });
+    else if (motion === 'dash') avatar.dashTo({ x, y }, ms);
     else avatar.stepTo({ x, y }, ms);
   }
 

@@ -44,6 +44,7 @@ export class Keys {
   /** 프레임 사이에 눌렀다 뗀 키도 한 칸은 움직이도록 남겨 둔다. */
   private readonly tapped = new Set<string>();
   private dashPressed = false;
+  private jumpPressed = false;
 
   constructor(private readonly actions: KeyActions) {
     window.addEventListener('keydown', (e) => this.down(e));
@@ -69,6 +70,9 @@ export class Keys {
       this.actions.onSlot(Number(digit[1]) - 1);
     } else if (e.key === 'Shift' || e.code.startsWith('Shift')) {
       this.dashPressed = true;
+    } else if (e.code === 'Space' || e.key === ' ') {
+      e.preventDefault();
+      this.jumpPressed = true;
     } else if (e.code === 'KeyI') {
       this.actions.onInventory();
     } else if (e.code === 'Escape') {
@@ -100,6 +104,13 @@ export class Keys {
   takeDash() {
     const pressed = this.dashPressed;
     this.dashPressed = false;
+    return pressed;
+  }
+
+  /** Space를 눌렀으면 true를 돌려주고 입력을 지운다. */
+  takeJump() {
+    const pressed = this.jumpPressed;
+    this.jumpPressed = false;
     return pressed;
   }
 }

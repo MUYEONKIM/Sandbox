@@ -23,6 +23,12 @@ export const DASH_STEP_MS = 55;
 /** 대시를 다시 쓸 수 있을 때까지의 시간 (ms) */
 export const DASH_COOLDOWN_MS = 600;
 
+/** 점프로 나아가는 칸 수. 벽 하나를 넘어 그 뒤 칸에 내린다. */
+export const JUMP_TILES = 2;
+
+/** 점프 한 번에 걸리는 시간 (ms) */
+export const JUMP_MS = 340;
+
 export const MAX_HP = 100;
 
 /** 설치 블록의 높이 (아트 픽셀) */
