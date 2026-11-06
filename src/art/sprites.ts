@@ -1,6 +1,5 @@
 /** public/sprites 폴더의 이미지를 게임 시작 전에 한 번에 읽어 둔다. */
 const NAMES = [
-  'CitizenSheet',
   'Smoke0000',
   'Smoke0001',
   'Smoke0002',
@@ -10,10 +9,11 @@ const NAMES = [
   'fish',
   'fruit',
   'inn',
-  'newgrass',
   'oaktree',
   'pinetree',
+  'team',
   'thatched',
+  'tiles',
   'watchtower',
   ...Array.from({ length: 11 }, (_, i) => `wal${String(i).padStart(4, '0')}`),
 ] as const;

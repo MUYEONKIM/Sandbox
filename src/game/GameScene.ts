@@ -36,7 +36,7 @@ import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
-import { Avatar, CITIZEN_H, CITIZEN_W } from './avatar';
+import { Avatar, TEAM_H, TEAM_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
 import type { Economy } from './economy';
 import type { Inventory } from './inventory';
@@ -249,10 +249,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.textures.addCanvas('bullet', paintBullet());
     this.textures.addCanvas('smoke', paintSmoke());
     this.textures.addCanvas('jump-shadow', paintJumpShadow());
-    this.textures.addSpriteSheet('citizens', sprite('CitizenSheet'), {
-      frameWidth: CITIZEN_W,
-      frameHeight: CITIZEN_H,
-    });
+    this.textures.addSpriteSheet('team', sprite('team'), { frameWidth: TEAM_W, frameHeight: TEAM_H });
     for (const name of SMOKE_FRAMES) this.spriteTexture(name);
   }
 
@@ -381,7 +378,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const info = MAPS[id];
     this.world = new World(generateMap(id), portalsOf(id));
     this.ground.setTexture(this.groundTexture(id));
-    this.minimap.setMap(info.name, info.ground[2]);
+    this.minimap.setMap(info.name, info.color);
     this.chimneySmoke = null;
     for (const building of this.world.map.buildings) {
       const { left, top } = this.showBuilding(building);

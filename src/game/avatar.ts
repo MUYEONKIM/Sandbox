@@ -5,21 +5,23 @@ import { WEAPONS, type WeaponId } from '../items';
 import type { Tile } from './world';
 
 /** 캐릭터 시트의 칸 크기와, 칸 안에서 발이 닿는 높이 */
-export const CITIZEN_W = 22;
-export const CITIZEN_H = 51;
-const CITIZEN_FOOT_Y = 48;
+export const TEAM_W = 22;
+export const TEAM_H = 40;
+const TEAM_FOOT_Y = 39;
 
-/** 시트에는 6명이 한 사람당 앞 4장, 뒤 4장씩 이어져 있다. */
-const CITIZEN_COUNT = 6;
-const CITIZEN_FRAMES = 8;
-/** 앞모습(또는 뒷모습) 4장 중 서 있기, 왼발, 오른발에 쓰는 칸 */
-const POSE_FRAMES = [0, 1, 3];
+/** 시트에는 7명이 한 사람당 2장씩 이어져 있다. 모두 왼쪽 앞을 보고 있고 뒷모습은 없다. */
+const TEAM_SIZE = 7;
+const TEAM_FRAMES = 2;
+/** 가만히 있을 때 두 장을 번갈아 보여 주는 간격. 원본 애니메이션과 같다. */
+const IDLE_FRAME_MS = 500;
+/** 걷는 그림이 따로 없어서 걸음마다 살짝 뛰어오른다. (아트 픽셀) */
+const STEP_HOP = 2;
 
 /** 플레이어 id로 캐릭터를 고른다. 어느 화면에서 봐도 같은 캐릭터가 나온다. */
-function citizenOf(id: string) {
+function memberOf(id: string) {
   let sum = 0;
   for (const char of id) sum += char.charCodeAt(0);
-  return sum % CITIZEN_COUNT;
+  return sum % TEAM_SIZE;
 }
 
 /** 무기를 들었을 때 손의 높이와 몸에서 떨어진 거리 (아트 픽셀) */
@@ -64,9 +66,9 @@ export class Avatar {
   private from: Tile;
   private t = 1;
   private ms = 1;
-  private view: 'front' | 'back' = 'front';
   private flip = false;
-  private leftFoot = true;
+  /** 걷는 동안 보여 줄 그림. 걸음마다 바뀐다. */
+  private stepFrame = 0;
   private aimAngle: number | null = null;
   private lowerGunAt = Infinity;
   private airborne = false;
@@ -84,8 +86,8 @@ export class Avatar {
   ) {
     this.from = tile;
     this.hp = hp;
-    this.firstFrame = citizenOf(id) * CITIZEN_FRAMES;
-    this.image = scene.add.image(0, 0, 'citizens', this.firstFrame).setOrigin(0.5, CITIZEN_FOOT_Y / CITIZEN_H);
+    this.firstFrame = memberOf(id) * TEAM_FRAMES;
+    this.image = scene.add.image(0, 0, 'team', this.firstFrame).setOrigin(0.5, TEAM_FOOT_Y / TEAM_H);
     this.gun = scene.add.image(0, 0, 'pistol').setVisible(false);
     this.setWeapon('pistol');
     this.shadow = scene.add.image(0, 0, 'jump-shadow');
@@ -114,11 +116,10 @@ export class Avatar {
     return this.hp <= 0;
   }
 
-  /** 격자 이동 방향으로 몸을 돌린다. 화면에서 위쪽이면 등을, 왼쪽이면 뒤집은 그림을 쓴다. */
+  /** 격자 이동 방향으로 몸을 돌린다. 그림이 왼쪽을 보므로 화면 오른쪽으로 갈 때 뒤집는다. */
   face(dx: number, dy: number) {
-    if (!dx && !dy) return;
-    this.view = dx + dy < 0 ? 'back' : 'front';
-    this.flip = dx - dy < 0;
+    const screenX = dx - dy;
+    if (screenX !== 0) this.flip = screenX > 0;
   }
 
   /** 지금 위치에서 to까지 걸어간다. 이동 중에 불러도 끊기지 않고 이어진다. */
@@ -128,7 +129,7 @@ export class Avatar {
     this.tile = to;
     this.t = ms > 0 ? 0 : 1;
     this.ms = ms;
-    this.leftFoot = !this.leftFoot;
+    this.stepFrame = 1 - this.stepFrame;
     this.airborne = false;
   }
 
@@ -263,12 +264,14 @@ export class Avatar {
     this.anchor.x = pos.x;
     this.anchor.y = pos.y;
 
-    const lift = this.airborne ? JUMP_HEIGHT * 4 * this.t * (1 - this.t) : 0;
+    const walking = this.t < 1 && !this.airborne;
+    const hop = walking ? STEP_HOP * Math.sin(Math.PI * this.t) : 0;
+    const lift = this.airborne ? JUMP_HEIGHT * 4 * this.t * (1 - this.t) : hop;
     const knock = this.knockAmount;
     const drawX = pos.x + this.knockX * KNOCK_DISTANCE * knock;
     const drawY = pos.y + this.knockY * KNOCK_DISTANCE * 0.6 * knock - lift;
-    const pose = this.airborne ? 1 : this.t < 0.5 ? (this.leftFoot ? 1 : 2) : 0;
-    const frame = this.firstFrame + (this.view === 'back' ? CITIZEN_FRAMES / 2 : 0) + POSE_FRAMES[pose];
+    const idleFrame = Math.floor(this.scene.time.now / IDLE_FRAME_MS) % TEAM_FRAMES;
+    const frame = this.firstFrame + (walking ? this.stepFrame : idleFrame);
     // 공중에서는 넘어가는 벽보다 앞에 그려져야 벽에 가리지 않는다.
     const depth = this.airborne
       ? depthOf(Math.max(this.from.x, this.tile.x), Math.max(this.from.y, this.tile.y)) + 1

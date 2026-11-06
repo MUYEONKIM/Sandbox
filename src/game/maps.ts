@@ -20,10 +20,28 @@ const LANDING_ACROSS = 1;
 export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
 export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | WorkId;
 
+/** tiles.png의 타일 번호. 왼쪽 위부터 오른쪽으로 센다. 번호를 여러 번 넣으면 더 자주 나온다. */
+const GRASS = [22, 23, 24];
+const DARK_GRASS = [40];
+const DIRT = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const CRACKED_DIRT = [11, 14, 15, 16];
+const SCORCHED_DIRT = [17, 18, 21];
+const STONE = [63, 63, 63, 61];
+const FARMLAND = [25, 26];
+const ICE = [110, 110, 110, 110, 113, 116];
+
+/** 타일 그림에서 윗면이 시작하는 높이. 블록보다 얇은 판은 더 아래에서 시작한다. */
+const BLOCK_TOP = 8;
+const SLAB_TOP = 12;
+
 export interface MapInfo {
   name: string;
-  /** 바닥색 네 단계 (어두운 색부터) */
-  ground: Color[];
+  /** 바닥에 섞어 까는 타일 번호 */
+  floor: number[];
+  /** 타일 그림에서 윗면이 시작하는 높이 */
+  floorTop: number;
+  /** 미니맵에 칠하는 바닥색 */
+  color: Color;
   /** 이 맵으로 가는 포탈의 색 */
   accent: Color;
   /** 귀퉁이별로 이어지는 맵 */
@@ -36,58 +54,76 @@ export interface MapInfo {
 export const MAPS: Record<MapId, MapInfo> = {
   plains: {
     name: '평원',
-    ground: [0x4c9a3e, 0x5bab43, 0x6dbd49, 0x82cc55],
+    floor: GRASS,
+    floorTop: BLOCK_TOP,
+    color: 0xa5d04f,
     accent: 0x9df08f,
     links: { right: 'desert', bottom: 'volcano', left: 'forest' },
   },
   snow: {
     name: '설원',
-    ground: [0xbfd6e4, 0xcfe1ec, 0xdeebf3, 0xedf5f9],
+    floor: ICE,
+    floorTop: SLAB_TOP,
+    color: 0x8fd0ea,
     accent: 0x7fd3ff,
     links: { bottom: 'forest' },
   },
   desert: {
     name: '사막',
-    ground: [0xcfa862, 0xdcb873, 0xe6c686, 0xeed39a],
+    floor: DIRT,
+    floorTop: BLOCK_TOP,
+    color: 0xa5714f,
     accent: 0xffc34d,
     links: { left: 'plains' },
   },
   volcano: {
     name: '화산',
-    ground: [0x3d3236, 0x483b3e, 0x544447, 0x614f4f],
+    floor: SCORCHED_DIRT,
+    floorTop: BLOCK_TOP,
+    color: 0x6e3a24,
     accent: 0xff6a3d,
     links: { top: 'plains' },
   },
   forest: {
     name: '숲',
-    ground: [0x2a6138, 0x316e41, 0x397b49, 0x438952],
+    floor: DARK_GRASS,
+    floorTop: BLOCK_TOP,
+    color: 0x3f8a35,
     accent: 0x4fdc86,
     links: { right: 'plains', top: 'snow' },
   },
   quarry: {
     name: '채석장',
-    ground: [0x8a8580, 0x98938d, 0xa6a19a, 0xb4afa7],
+    floor: STONE,
+    floorTop: BLOCK_TOP,
+    color: 0x84948c,
     accent: 0xc9c4bc,
     links: { bottom: 'plains' },
     work: true,
   },
   logging: {
     name: '벌목장',
-    ground: [0x6f5a3a, 0x7d6742, 0x8b744b, 0x998155],
+    floor: CRACKED_DIRT,
+    floorTop: BLOCK_TOP,
+    color: 0xb08468,
     accent: 0x4fdc86,
     links: { bottom: 'plains' },
     work: true,
   },
   gathering: {
     name: '채집장',
-    ground: [0x6f9a45, 0x7dab4c, 0x8cbc55, 0x9bcb60],
+    floor: FARMLAND,
+    floorTop: BLOCK_TOP,
+    color: 0x8a5a3c,
     accent: 0xf2a65a,
     links: { bottom: 'plains' },
     work: true,
   },
   fishing: {
     name: '낚시터',
-    ground: [0xb79a68, 0xc5a974, 0xd3b781, 0xdfc48e],
+    floor: GRASS,
+    floorTop: BLOCK_TOP,
+    color: 0xa5d04f,
     accent: 0x5fc8ff,
     links: { bottom: 'plains' },
     work: true,

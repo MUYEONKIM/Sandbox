@@ -4,7 +4,7 @@ import { MAP_SIZE } from '../config';
 import { MAPS, OFFICE, SHOP, type MapId } from './maps';
 import type { Tile } from './world';
 
-export const Terrain = { Grass: 0, Dirt: 1, Paving: 2, Farm: 3, Water: 4 } as const;
+export const Terrain = { Ground: 0, Water: 1 } as const;
 
 /** 맵에 놓인 건물. (x, y)는 차지하는 칸의 위쪽 모서리다. */
 export interface Building extends Tile {
@@ -14,10 +14,10 @@ export interface Building extends Tile {
 }
 
 export interface GameMap {
-  /** 바닥색 네 단계 (어두운 색부터) */
-  ground: number[];
-  /** true면 풀 그림 색을 그대로 쓴다. */
-  natural: boolean;
+  /** 바닥에 섞어 까는 타일 번호 */
+  floor: number[];
+  /** 타일 그림에서 윗면이 시작하는 높이 (아트 픽셀) */
+  floorTop: number;
   terrain: Uint8Array;
   /** 맵에 고정된 장애물 칸 */
   solid: Uint8Array;
@@ -79,7 +79,7 @@ function digPond(terrain: Uint8Array): Tile[] {
 
 /** 맵은 기본적으로 평지다. 맵마다 바닥색이 다르고, 건물이나 자원이 있는 맵은 여기서 채운다. */
 export function generateMap(id: MapId): GameMap {
-  const terrain = new Uint8Array(MAP_SIZE * MAP_SIZE).fill(Terrain.Grass);
+  const terrain = new Uint8Array(MAP_SIZE * MAP_SIZE).fill(Terrain.Ground);
   const solid = new Uint8Array(MAP_SIZE * MAP_SIZE);
   const buildings: Building[] = [];
   let spots: Tile[] = [];
@@ -101,5 +101,6 @@ export function generateMap(id: MapId): GameMap {
     }
   }
 
-  return { ground: MAPS[id].ground, natural: id === 'plains', terrain, solid, spots, buildings };
+  const { floor, floorTop } = MAPS[id];
+  return { floor, floorTop, terrain, solid, spots, buildings };
 }
