@@ -58,7 +58,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0xa5d04f,
     accent: 0x9df08f,
-    links: { right: 'desert', bottom: 'volcano', left: 'forest' },
+    links: { bottom: 'volcano', left: 'forest' },
   },
   snow: {
     name: '설원',
@@ -74,7 +74,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0xa5714f,
     accent: 0xffc34d,
-    links: { left: 'plains' },
+    links: { left: 'volcano' },
   },
   volcano: {
     name: '화산',
@@ -82,7 +82,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0x6e3a24,
     accent: 0xff6a3d,
-    links: { top: 'plains' },
+    links: { top: 'plains', right: 'desert' },
   },
   forest: {
     name: '숲',
@@ -145,16 +145,27 @@ export const OFFICE = {
   accent: 0xffd84d,
 };
 
-/** 평원 한가운데의 아이티공간. 정문 앞 칸이 포탈이고, 타면 상점 창이 열린다. */
-export const SHOP = {
+/** 평원 한가운데의 아이티공간. 포탈이 없는 건물이고, 정문 앞은 처음 서고 쓰러진 뒤 일어나는 칸이다. */
+export const CASTLE = {
   sprite: 'castle' as const,
   x: 18,
   y: 18,
   w: 11,
   d: 11,
-  door: { x: 29, y: 23 },
-  landing: { x: 31, y: 24 },
+  gate: { x: 31, y: 24 },
   name: '아이티공간',
+};
+
+/** 평원 오른쪽 귀퉁이의 상점. 문 앞 칸이 포탈이고, 타면 상점 창이 열린다. */
+export const SHOP = {
+  sprite: 'tavern' as const,
+  x: 40,
+  y: 0,
+  w: 4,
+  d: 4,
+  door: { x: 44, y: 3 },
+  landing: { x: 45, y: 5 },
+  name: '상점',
   accent: 0xff7ad9,
 };
 
@@ -204,7 +215,7 @@ export function arrivalFor(to: MapId, from: MapId) {
   return back ? back.landing : OFFICE.landing;
 }
 
-/** 쓰러진 뒤 일어나는 칸. 블록을 놓을 수 없는 포탈 앞이라 갇힐 일이 없다. */
+/** 쓰러진 뒤 일어나는 칸. 블록을 놓을 수 없는 칸이라 갇힐 일이 없다. */
 export function respawnTile(id: MapId) {
-  return id === DEFAULT_MAP ? SHOP.landing : portalsOf(id)[0].landing;
+  return id === DEFAULT_MAP ? CASTLE.gate : portalsOf(id)[0].landing;
 }

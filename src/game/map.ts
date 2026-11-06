@@ -1,7 +1,7 @@
 import { Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
-import { MAPS, OFFICE, SHOP, type MapId } from './maps';
+import { CASTLE, MAPS, OFFICE, SHOP, type MapId } from './maps';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -87,7 +87,7 @@ export function generateMap(id: MapId): GameMap {
   let scenery: Scenery = { floorTiles: new Map(), decals: new Map(), props: [], trees: [] };
 
   if (id === 'plains') {
-    for (const { sprite, x, y, w, d } of [OFFICE, SHOP]) buildings.push({ sprite, x, y, w, d });
+    for (const { sprite, x, y, w, d } of [OFFICE, CASTLE, SHOP]) buildings.push({ sprite, x, y, w, d });
     const village = layoutVillage();
     scenery = village;
     buildings.push(...village.buildings);

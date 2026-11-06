@@ -45,6 +45,7 @@ import { formatLevel } from './level';
 import { generateMap, type Building } from './map';
 import {
   arrivalFor,
+  CASTLE,
   DEFAULT_MAP,
   isMapId,
   MAPS,
@@ -53,7 +54,6 @@ import {
   portalName,
   portalsOf,
   respawnTile,
-  SHOP,
   type MapId,
   type Portal,
   type WorkId,
@@ -76,7 +76,7 @@ const SMOKE_FRAMES = ['Smoke0000', 'Smoke0001', 'Smoke0002'] as const;
 const SMOKE_FRAME_MS = 240;
 
 /** 아이티공간 간판을 다는 위치 (건물 그림 기준 픽셀). 정문 앞에서도 보이는 높이다. */
-const SHOP_SIGN = { x: 262, y: 205 };
+const CASTLE_SIGN = { x: 262, y: 205 };
 
 /** 작물 밭은 칸 하나가 아니라 4칸 너비로 그려진다. 그림에서 밭 가운데 위치 */
 const CROPS_CENTER = { x: 64, y: 58 };
@@ -384,14 +384,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private showMap(id: MapId) {
     this.mapId = id;
     const info = MAPS[id];
-    this.world = new World(generateMap(id), portalsOf(id));
+    this.world = new World(generateMap(id), portalsOf(id), respawnTile(id));
     this.ground.setTexture(this.groundTexture(id));
     this.minimap.setMap(info.name, info.color);
     this.chimneySmoke = null;
     for (const building of this.world.map.buildings) {
       const { left, top } = this.showBuilding(building);
       if (building.sprite === OFFICE.sprite) this.showChimneySmoke(left, top);
-      if (building.sprite === SHOP.sprite) this.addSign(SHOP.name, left + SHOP_SIGN.x, top + SHOP_SIGN.y);
+      if (building.sprite === CASTLE.sprite) this.addSign(CASTLE.name, left + CASTLE_SIGN.x, top + CASTLE_SIGN.y);
     }
     this.showSpots(id);
     for (const { sprite, x, y } of this.world.map.trees) this.addSprite(sprite, x, y);

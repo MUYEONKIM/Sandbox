@@ -2,7 +2,7 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { OFFICE, portalsOf, SHOP } from './maps';
+import { CASTLE, OFFICE, portalsOf, SHOP } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
@@ -48,11 +48,11 @@ const STONE_ROADS: Area[] = [
   [32, 14, 33, 33],
 ];
 
-/** 성을 두르는 길에서 네 포탈로 이어지는 길 */
+/** 성을 두르는 길에서 네 귀퉁이로 이어지는 길 */
 const DIRT_ROADS: Area[] = [
-  // 사막
-  [32, 1, 33, 13],
-  [32, 1, 44, 2],
+  // 상점
+  [34, 14, 45, 15],
+  [44, 3, 45, 15],
   // 화산
   [34, 32, 43, 33],
   [42, 32, 43, 44],
@@ -71,7 +71,6 @@ const BUILDINGS: Building[] = [
   { sprite: 'fruit', x: 38, y: 17, w: 3, d: 3 },
   { sprite: 'tailor', x: 34, y: 26, w: 3, d: 3 },
   { sprite: 'clock', x: 38, y: 22, w: 4, d: 4 },
-  { sprite: 'tavern', x: 41, y: 12, w: 4, d: 4 },
   { sprite: 'thatched', x: 37, y: 35, w: 4, d: 4 },
   { sprite: 'chapel', x: 36, y: 5, w: 5, d: 3 },
   { sprite: 'villa', x: 18, y: 4, w: 6, d: 8 },
@@ -102,10 +101,11 @@ const HEDGE_ROWS: Area[] = [
   [29, 29, 31, 29],
 ];
 
-/** 뒤에 볼거리가 있어 나무를 심지 않는 구역: 밭 앞과 시장 앞 */
+/** 뒤에 볼거리가 있어 나무를 심지 않는 구역: 밭 앞, 시장 앞, 상점 앞 */
 const TREELESS: Area[] = [
-  [16, 40, 36, 42],
-  [34, 29, 41, 31],
+  [16, 40, 41, 45],
+  [34, 22, 45, 31],
+  [38, 4, 45, 13],
 ];
 
 const POND = { x: 6, y: 30, radius: 5 };
@@ -204,7 +204,7 @@ export function layoutVillage(): Village {
     });
   }
 
-  for (const { x, y, w, d } of [OFFICE, SHOP, ...BUILDINGS]) eachTile([x, y, x + w - 1, y + d - 1], mark);
+  for (const { x, y, w, d } of [OFFICE, CASTLE, SHOP, ...BUILDINGS]) eachTile([x, y, x + w - 1, y + d - 1], mark);
 
   for (const portal of portalsOf('plains')) {
     const c = PORTAL_CLEARANCE;

@@ -8,7 +8,7 @@ interface ShopActions {
   onBuyStat(id: StatId): Promise<void>;
 }
 
-/** 아이티공간 창: 무기와 스텟을 골드로 산다. 실제 결제는 서버가 한다. */
+/** 상점 창: 무기와 스텟을 골드로 산다. 실제 결제는 서버가 한다. */
 export class ShopWindow {
   private readonly root: HTMLElement;
   private readonly wallet: HTMLElement;
@@ -26,7 +26,7 @@ export class ShopWindow {
     this.root = element('office', parent);
     this.root.hidden = true;
 
-    element('office-title', this.root).textContent = '아이티공간';
+    element('office-title', this.root).textContent = '상점';
     element('office-subtitle', this.root).textContent = '없는 것 빼고 다 팝니다. 환불은 없습니다.';
     this.wallet = element('shop-wallet', this.root);
 
