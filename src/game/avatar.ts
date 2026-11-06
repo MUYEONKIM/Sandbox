@@ -66,6 +66,8 @@ export class Avatar {
   private t = 1;
   private ms = 1;
   private flip = false;
+  /** 화면 위쪽을 보고 있으면 뒷모습을 그린다. */
+  private back = false;
   /** 걷는 동안 보여 줄 그림. 걸음마다 바뀐다. */
   private stepFrame = 0;
   private aimAngle: number | null = null;
@@ -136,6 +138,8 @@ export class Avatar {
   face(dx: number, dy: number) {
     const screenX = dx - dy;
     if (screenX !== 0) this.flip = screenX > 0;
+    const screenY = dx + dy;
+    if (screenY !== 0) this.back = screenY < 0;
   }
 
   /** 지금 위치에서 to까지 걸어간다. 이동 중에 불러도 끊기지 않고 이어진다. */
@@ -294,7 +298,7 @@ export class Avatar {
       : depthOf(x, y) + 1;
     this.image
       .setPosition(drawX, drawY)
-      .setFrame(frame)
+      .setTexture(this.back ? 'team-back' : 'team', frame)
       .setFlipX(this.flip)
       .setRotation(this.knockX * KNOCK_LEAN * knock + this.poseLean)
       .setDepth(depth);

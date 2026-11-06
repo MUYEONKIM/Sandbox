@@ -18,6 +18,7 @@ const NAMES = [
   'tailor',
   'tavern',
   'team',
+  'team-back',
   'thatched',
   'tiles',
   'treehouse',

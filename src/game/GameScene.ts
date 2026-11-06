@@ -266,6 +266,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.textures.addCanvas('smoke', paintSmoke());
     this.textures.addCanvas('jump-shadow', paintJumpShadow());
     this.textures.addSpriteSheet('team', sprite('team'), { frameWidth: TEAM_W, frameHeight: TEAM_H });
+    this.textures.addSpriteSheet('team-back', sprite('team-back'), { frameWidth: TEAM_W, frameHeight: TEAM_H });
     this.textures.addSpriteSheet('tiles', sprite('tiles'), { frameWidth: TILE_CELL, frameHeight: TILE_CELL });
     for (const name of SMOKE_FRAMES) this.spriteTexture(name);
   }
