@@ -17,11 +17,11 @@ const ROCKS = [64, 65, 67];
 /** 시드를 고정해야 모든 플레이어에게 같은 마을이 보이고 충돌 판정도 같아진다. */
 const SEED = 7919;
 
-const TREE_COUNT = 34;
-const LOG_COUNT = 7;
-const ROCK_COUNT = 7;
-const FLOWER_COUNT = 90;
-const WEED_COUNT = 110;
+const TREE_COUNT = 14;
+const LOG_COUNT = 3;
+const ROCK_COUNT = 3;
+const FLOWER_COUNT = 50;
+const WEED_COUNT = 40;
 const SLIM_TREES: SpriteName[] = ['pinetree', 'firtree'];
 const ALL_TREES: SpriteName[] = ['pinetree', 'firtree', 'oaktree'];
 

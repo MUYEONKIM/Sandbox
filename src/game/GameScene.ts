@@ -64,6 +64,7 @@ import {
 } from './maps';
 import { meleeTarget } from './melee';
 import type { StatId } from './stats';
+import { WorkFx } from './workFx';
 import { inReach, World, type Tile } from './world';
 
 const DEPTH_GROUND = 0;
@@ -167,6 +168,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 건물과 자원처럼 맵을 옮길 때 지워야 하는 그림 */
   private mapImages: Phaser.GameObjects.Image[] = [];
   private readonly covers = new CoverFader(this);
+  private readonly workFx = new WorkFx(this);
+  /** 칸별 자원 그림. 작업할 때 흔들린다. */
+  private readonly spotImages = new Map<string, Phaser.GameObjects.Image>();
   private chimneySmoke: Phaser.GameObjects.Image | null = null;
   private readonly paintedArt = new Map<string, Art>();
   /** 작업 중이면 시작 시각, 아니면 null */
@@ -299,6 +303,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setOrigin(art.ax / art.canvas.width, art.ay / art.canvas.height)
       .setDepth(depthOf(x, y));
     this.mapImages.push(image);
+    return image;
   }
 
   /** 땅에 닿는 지점을 칸 (x, y)에 맞춰 이미지를 세운다. */
@@ -313,6 +318,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setDepth(depthOf(x, y));
     this.mapImages.push(placed);
     this.covers.add(name, [placed]);
+    return placed;
   }
 
   /** 덤불이나 바위처럼 칸 위에 서 있는 타일을 놓는다. */
@@ -325,10 +331,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private showSpots(id: MapId) {
     const trees: SpriteName[] = ['oaktree', 'pinetree', 'firtree'];
     this.world.map.spots.forEach((spot, i) => {
-      if (id === 'quarry') this.addMapArt(`rock-${i % 3}`, () => paintRock(i % 3), spot.x, spot.y);
-      if (id === 'fishing') this.addMapArt('bobber', paintBobber, spot.x, spot.y);
-      if (id === 'logging') this.addSprite(trees[i % trees.length], spot.x, spot.y);
-      if (id === 'gathering') this.addCrops(spot);
+      let image: Phaser.GameObjects.Image | undefined;
+      if (id === 'quarry') image = this.addMapArt(`rock-${i % 3}`, () => paintRock(i % 3), spot.x, spot.y);
+      if (id === 'fishing') image = this.addMapArt('bobber', paintBobber, spot.x, spot.y);
+      if (id === 'logging') image = this.addSprite(trees[i % trees.length], spot.x, spot.y);
+      if (id === 'gathering') image = this.addCrops(spot);
+      if (image) this.spotImages.set(`${spot.x},${spot.y}`, image);
     });
   }
 
@@ -337,12 +345,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.spriteTexture('crops');
     const image = sprite('crops');
     const c = tileCenter(x, y);
-    this.mapImages.push(
-      this.add
-        .image(c.x, c.y, 'crops')
-        .setOrigin(CROPS_CENTER.x / image.width, CROPS_CENTER.y / image.height)
-        .setDepth(depthOf(x, y)),
-    );
+    const placed = this.add
+      .image(c.x, c.y, 'crops')
+      .setOrigin(CROPS_CENTER.x / image.width, CROPS_CENTER.y / image.height)
+      .setDepth(depthOf(x, y));
+    this.mapImages.push(placed);
+    this.covers.add('crops', [placed]);
+    return placed;
   }
 
   /**
@@ -447,6 +456,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const { tag } of this.signs) this.tags.remove(tag);
     this.signs = [];
     this.covers.clear();
+    this.workFx.clear();
+    this.spotImages.clear();
     for (const image of this.mapImages) image.destroy();
     this.mapImages = [];
     this.bullets.clear();
@@ -459,6 +470,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const avatar of this.others.values()) avatar.update(delta);
     this.bullets.update(delta);
     this.updateWork();
+    this.workFx.update(delta);
     this.updateAim();
     this.updateAutoFire();
     this.animatePortals(time);
@@ -651,12 +663,18 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     this.me.face(Math.sign(spot.x - this.me.tile.x), Math.sign(spot.y - this.me.tile.y));
     this.workStartedAt = this.time.now;
+    const place = this.economy.workplace(this.mapId);
+    if (place) {
+      const image = this.spotImages.get(`${spot.x},${spot.y}`) ?? null;
+      this.workFx.start(place.id, this.me, spot, image, place.gatherMs);
+    }
   }
 
   private stopWork() {
     if (this.workStartedAt === null) return;
     this.workStartedAt = null;
     this.tags.setProgress(this.session.profile.id, null);
+    this.workFx.stop();
   }
 
   private updateWork() {
@@ -677,6 +695,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const result = await this.session.harvest();
     const info = result ? this.economy.lootItem(result.item) : undefined;
     if (!result || !info) return;
+    this.workFx.finish(this.economy.isRare(info));
     this.economy.add(result.item, result.count);
     this.gainLevel(BigInt(result.level));
     const gained = formatLevel(BigInt(result.gained));
@@ -760,7 +779,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 무기를 들고 있으면 마우스 쪽으로 겨누고 커서를 조준점으로 바꾼다. */
   private updateAim() {
-    const weapon = this.down || this.isSafeMap ? null : this.selectedWeapon;
+    const weapon = this.down || this.isSafeMap || this.workStartedAt !== null ? null : this.selectedWeapon;
     if (weapon !== this.armedWith) {
       this.armedWith = weapon;
       this.input.setDefaultCursor(weapon ? 'crosshair' : 'default');
@@ -796,6 +815,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private attack(weapon: WeaponId) {
     if (this.time.now < this.nextShotAt) return;
+    this.stopWork();
     this.nextShotAt = this.time.now + this.economy.cooldownOf(weapon);
 
     const { x, y } = this.me.position();

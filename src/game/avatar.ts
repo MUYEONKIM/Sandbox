@@ -75,6 +75,10 @@ export class Avatar {
   private knockX = 0;
   private knockY = 0;
   private knockT = 1;
+  /** 작업 동작으로 몸을 움직이는 양 */
+  private poseX = 0;
+  private poseY = 0;
+  private poseLean = 0;
   hp: number;
 
   constructor(
@@ -110,6 +114,18 @@ export class Avatar {
 
   get jumping() {
     return this.airborne;
+  }
+
+  /** 지금 바라보는 화면 방향. 오른쪽이 1이다. */
+  get facing() {
+    return this.flip ? 1 : -1;
+  }
+
+  /** 작업 동작을 위해 몸을 옮기고 기울인다. 0을 주면 제자리로 돌아온다. */
+  pose(x: number, y: number, lean: number) {
+    this.poseX = x;
+    this.poseY = y;
+    this.poseLean = lean;
   }
 
   get isDown() {
@@ -268,8 +284,8 @@ export class Avatar {
     const hop = walking ? STEP_HOP * Math.sin(Math.PI * this.t) : 0;
     const lift = this.airborne ? JUMP_HEIGHT * 4 * this.t * (1 - this.t) : hop;
     const knock = this.knockAmount;
-    const drawX = pos.x + this.knockX * KNOCK_DISTANCE * knock;
-    const drawY = pos.y + this.knockY * KNOCK_DISTANCE * 0.6 * knock - lift;
+    const drawX = pos.x + this.knockX * KNOCK_DISTANCE * knock + this.poseX;
+    const drawY = pos.y + this.knockY * KNOCK_DISTANCE * 0.6 * knock - lift + this.poseY;
     const idleFrame = Math.floor(this.scene.time.now / IDLE_FRAME_MS) % TEAM_FRAMES;
     const frame = this.firstFrame + (walking ? this.stepFrame : idleFrame);
     // 공중에서는 넘어가는 벽보다 앞에 그려져야 벽에 가리지 않는다.
@@ -280,7 +296,7 @@ export class Avatar {
       .setPosition(drawX, drawY)
       .setFrame(frame)
       .setFlipX(this.flip)
-      .setRotation(this.knockX * KNOCK_LEAN * knock)
+      .setRotation(this.knockX * KNOCK_LEAN * knock + this.poseLean)
       .setDepth(depth);
     this.shadow.setPosition(pos.x, pos.y).setDepth(depthOf(x, y));
 
