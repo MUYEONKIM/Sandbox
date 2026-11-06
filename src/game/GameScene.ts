@@ -39,6 +39,7 @@ import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
 import { Avatar, TEAM_H, TEAM_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
+import { CoverFader } from './covers';
 import type { Economy, ShopTool } from './economy';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
@@ -164,6 +165,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private signs: Sign[] = [];
   /** 건물과 자원처럼 맵을 옮길 때 지워야 하는 그림 */
   private mapImages: Phaser.GameObjects.Image[] = [];
+  private readonly covers = new CoverFader(this);
   private chimneySmoke: Phaser.GameObjects.Image | null = null;
   private readonly paintedArt = new Map<string, Art>();
   /** 작업 중이면 시작 시각, 아니면 null */
@@ -303,12 +305,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const image = sprite(name);
     const foot = groundPoint(name);
     const c = tileCenter(x, y);
-    this.mapImages.push(
-      this.add
-        .image(c.x, c.y, name)
-        .setOrigin(foot.x / image.width, foot.y / image.height)
-        .setDepth(depthOf(x, y)),
-    );
+    const placed = this.add
+      .image(c.x, c.y, name)
+      .setOrigin(foot.x / image.width, foot.y / image.height)
+      .setDepth(depthOf(x, y));
+    this.mapImages.push(placed);
+    this.covers.add(name, [placed]);
   }
 
   /** 덤불이나 바위처럼 칸 위에 서 있는 타일을 놓는다. */
@@ -366,6 +368,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return best;
     };
 
+    const strips: Phaser.GameObjects.Image[] = [];
     for (let edge = (baseLeft % stripW) - stripW; edge < image.width; edge += stripW) {
       const sx = Math.max(edge, 0);
       const width = Math.min(edge + stripW, image.width) - sx;
@@ -374,8 +377,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (!texture.has(stripName)) texture.add(stripName, 0, sx, 0, width, image.height);
       const column = Math.round((edge - baseLeft) / stripW) - d;
       const depth = depthOf(x + frontmost(column), y);
-      this.mapImages.push(this.add.image(left + sx, top, name, stripName).setOrigin(0, 0).setDepth(depth));
+      strips.push(this.add.image(left + sx, top, name, stripName).setOrigin(0, 0).setDepth(depth));
     }
+    this.mapImages.push(...strips);
+    this.covers.add(name, strips);
     return { left, top };
   }
 
@@ -439,6 +444,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.portalSprites = [];
     for (const { tag } of this.signs) this.tags.remove(tag);
     this.signs = [];
+    this.covers.clear();
     for (const image of this.mapImages) image.destroy();
     this.mapImages = [];
     this.bullets.clear();
@@ -454,6 +460,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.updateAim();
     this.updateAutoFire();
     this.animatePortals(time);
+    this.covers.update(time, this.me.sprite);
     this.updateHover();
     this.placeNameTags();
     this.updateMinimap(time);
