@@ -78,7 +78,28 @@ interface PortalSprite {
 /** 지금 하고 있는 한 칸 걸음. 방향을 바꿀 때 출발 칸으로 돌아가 다시 계산한다. */
 interface Walk {
   from: Tile;
+  /** 플레이어가 누른 방향. 벽을 따라 미끄러질 때는 실제 이동 방향과 다르다. */
   dir: Dir;
+}
+
+/** 누른 방향이 막혔을 때 대신 가 볼 방향. 벽을 따라가거나 벽 끝을 돌아가게 된다. */
+function slideOptions({ dx, dy }: Dir): Dir[] {
+  if (dx !== 0 && dy !== 0) {
+    return [
+      { dx, dy: 0 },
+      { dx: 0, dy },
+    ];
+  }
+  if (dx !== 0) {
+    return [
+      { dx, dy: -1 },
+      { dx, dy: 1 },
+    ];
+  }
+  return [
+    { dx: -1, dy },
+    { dx: 1, dy },
+  ];
 }
 
 export class GameScene extends Phaser.Scene implements SessionEvents {
@@ -274,14 +295,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private beginStep(from: Tile, dir: Dir) {
-    const { dx, dy } = dir;
     this.lastDir = dir;
-    if (!this.world.canStep(from, dx, dy)) {
-      this.me.face(dx, dy);
+    const canGo = ({ dx, dy }: Dir) => this.world.canStep(from, dx, dy);
+    const step = canGo(dir) ? dir : slideOptions(dir).find(canGo);
+    if (!step) {
+      this.me.face(dir.dx, dir.dy);
       return;
     }
-    this.moveTo({ x: from.x + dx, y: from.y + dy }, STEP_MS * Math.hypot(dx, dy));
-    this.me.face(dx, dy);
+    this.moveTo({ x: from.x + step.dx, y: from.y + step.dy }, STEP_MS * Math.hypot(step.dx, step.dy));
+    this.me.face(step.dx, step.dy);
     this.walk = { from, dir };
   }
 
