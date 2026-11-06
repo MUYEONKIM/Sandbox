@@ -1,25 +1,47 @@
 import { Rng } from '../art/pixels';
+import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { MAPS, OFFICE, type MapId } from './maps';
 import type { Tile } from './world';
 
 export const Terrain = { Grass: 0, Dirt: 1, Paving: 2, Farm: 3, Water: 4 } as const;
 
+/** 맵에 놓인 건물. (x, y)는 차지하는 칸의 위쪽 모서리다. */
+export interface Building extends Tile {
+  sprite: SpriteName;
+  w: number;
+  d: number;
+}
+
 export interface GameMap {
   /** 바닥색 네 단계 (어두운 색부터) */
   ground: number[];
+  /** true면 풀 그림 색을 그대로 쓴다. */
+  natural: boolean;
   terrain: Uint8Array;
   /** 맵에 고정된 장애물 칸 */
   solid: Uint8Array;
   /** 자원을 캘 수 있는 칸 */
   spots: Tile[];
+  buildings: Building[];
 }
+
+/** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
+const WORK_SITE = { x: 38, y: 38, w: 4, d: 4 };
+
+/** 작업장을 꾸미는 건물 */
+const WORK_BUILDINGS: Partial<Record<MapId, SpriteName>> = {
+  quarry: 'watchtower',
+  logging: 'thatched',
+  gathering: 'fruit',
+  fishing: 'fish',
+};
 
 /** 작업장 자원은 이 간격의 격자에 흩어 놓는다. */
 const SPOT_SPACING = 6;
 /** 맵 가장자리와 포탈 근처를 비워 둔다. */
 const SPOT_MARGIN = 3;
-const PORTAL_CLEARANCE = 7;
+const PORTAL_CLEARANCE = 9;
 
 const POND_RADIUS = 13;
 const POND_CENTER = Math.floor(MAP_SIZE / 2);
@@ -59,17 +81,25 @@ function digPond(terrain: Uint8Array): Tile[] {
 export function generateMap(id: MapId): GameMap {
   const terrain = new Uint8Array(MAP_SIZE * MAP_SIZE).fill(Terrain.Grass);
   const solid = new Uint8Array(MAP_SIZE * MAP_SIZE);
+  const buildings: Building[] = [];
   let spots: Tile[] = [];
 
   if (id === 'plains') {
-    for (let y = OFFICE.y; y < OFFICE.y + OFFICE.d; y++) {
-      for (let x = OFFICE.x; x < OFFICE.x + OFFICE.w; x++) solid[x + y * MAP_SIZE] = 1;
-    }
+    buildings.push({ sprite: OFFICE.sprite, x: OFFICE.x, y: OFFICE.y, w: OFFICE.w, d: OFFICE.d });
   } else if (id === 'fishing') {
     spots = digPond(terrain);
   } else if (MAPS[id].work) {
     spots = scatterSpots(id, solid);
   }
 
-  return { ground: MAPS[id].ground, terrain, solid, spots };
+  const workBuilding = WORK_BUILDINGS[id];
+  if (workBuilding) buildings.push({ sprite: workBuilding, ...WORK_SITE });
+
+  for (const { x, y, w, d } of buildings) {
+    for (let j = y; j < y + d; j++) {
+      for (let i = x; i < x + w; i++) solid[i + j * MAP_SIZE] = 1;
+    }
+  }
+
+  return { ground: MAPS[id].ground, natural: id === 'plains', terrain, solid, spots, buildings };
 }

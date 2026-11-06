@@ -2,6 +2,7 @@ import { MAP_SIZE, TILE_H, TILE_W } from '../config';
 import { Terrain, type GameMap } from '../game/map';
 import { gridToWorld, ORIGIN_X, ORIGIN_Y, worldToGrid } from '../iso';
 import { fbm, frac, hash2, Pixels, ramp, shade, vnoise, type Color } from './pixels';
+import { spritePixels } from './sprites';
 
 const DIRT = [0xa98150, 0xbb9560, 0xcba973, 0xdabb86];
 const PAVING = [0xd9c9a3, 0xe3d5b3, 0xcdbb92, 0xeadfc2];
@@ -38,11 +39,15 @@ export function paintGround(map: GameMap): HTMLCanvasElement {
     return wobbled;
   };
 
-  /** 평지에서도 칸이 보이도록 마름모 격자를 옅게 넣는다. */
+  const grass = spritePixels('newgrass');
+
+  /** 풀 그림의 무늬에 맵 색을 입힌다. 평지에서도 칸이 보이도록 마름모 격자를 옅게 넣는다. */
   const paintGrass = (sx: number, sy: number): Color => {
     const { gx, gy } = worldToGrid(sx + 0.5, sy + 0.5);
-    const c = ramp(map.ground, fbm(sx * 0.03, sy * 0.06) * 0.5 + 0.28, sx, sy);
-    return frac(gx) < 0.065 || frac(gy) < 0.065 ? shade(c, 0.9) : c;
+    const i = ((sy % grass.height) * grass.width + (sx % grass.width)) * 4;
+    const [r, g, b] = [grass.data[i], grass.data[i + 1], grass.data[i + 2]];
+    const c = map.natural ? (r << 16) | (g << 8) | b : ramp(map.ground, ((r + g + b) / 765 - 0.2) * 2.4, sx, sy);
+    return frac(gx) < 0.065 || frac(gy) < 0.065 ? shade(c, 0.92) : c;
   };
 
   const paintWater = (sx: number, sy: number): Color => {

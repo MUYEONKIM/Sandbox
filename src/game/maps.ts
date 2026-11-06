@@ -98,12 +98,13 @@ export const DEFAULT_MAP: MapId = 'plains';
 
 /** 평원 위쪽 귀퉁이의 노동청 건물. 문 앞 칸이 포탈이다. */
 export const OFFICE = {
+  sprite: 'inn' as const,
   x: 0,
   y: 0,
-  w: 5,
+  w: 4,
   d: 4,
-  door: { x: 2, y: 4 },
-  landing: { x: 2, y: 6 },
+  door: { x: 4, y: 1 },
+  landing: { x: 6, y: 2 },
   name: '노동청',
   accent: 0xffd84d,
 };

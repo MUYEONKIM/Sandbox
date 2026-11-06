@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { loadSprites } from './art/sprites';
 import { Economy, type EconomyData } from './game/economy';
 import { GameScene } from './game/GameScene';
 import { Inventory } from './game/inventory';
@@ -85,7 +86,10 @@ async function main() {
     await signOut();
     profile = await loadProfile((await showLogin(document.body)).id);
   }
-  if (profile) enterGame(profile, await loadEconomy(profile.gold));
+  if (profile) {
+    const [economy] = await Promise.all([loadEconomy(profile.gold), loadSprites()]);
+    enterGame(profile, economy);
+  }
 }
 
 main().catch(() => {

@@ -1,9 +1,26 @@
 import type Phaser from 'phaser';
-import { CHAR_FOOT_Y, CHAR_H } from '../art/character';
 import { PISTOL_GRIP, PISTOL_SIZE } from '../art/weapons';
 import { MAX_HP } from '../config';
 import { depthOf, gridToWorld } from '../iso';
 import type { Tile } from './world';
+
+/** 캐릭터 시트의 칸 크기와, 칸 안에서 발이 닿는 높이 */
+export const CITIZEN_W = 22;
+export const CITIZEN_H = 51;
+const CITIZEN_FOOT_Y = 48;
+
+/** 시트에는 6명이 한 사람당 앞 4장, 뒤 4장씩 이어져 있다. */
+const CITIZEN_COUNT = 6;
+const CITIZEN_FRAMES = 8;
+/** 앞모습(또는 뒷모습) 4장 중 서 있기, 왼발, 오른발에 쓰는 칸 */
+const POSE_FRAMES = [0, 1, 3];
+
+/** 플레이어 id로 캐릭터를 고른다. 어느 화면에서 봐도 같은 캐릭터가 나온다. */
+function citizenOf(id: string) {
+  let sum = 0;
+  for (const char of id) sum += char.charCodeAt(0);
+  return sum % CITIZEN_COUNT;
+}
 
 /** 총을 들었을 때 손의 높이와 몸에서 떨어진 거리 (아트 픽셀) */
 const HAND_HEIGHT = 12;
@@ -34,7 +51,8 @@ const SMOKE_RISE = 9;
 export class Avatar {
   private readonly image: Phaser.GameObjects.Image;
   private readonly gun: Phaser.GameObjects.Image;
-  private readonly jumpShadow: Phaser.GameObjects.Image;
+  private readonly shadow: Phaser.GameObjects.Image;
+  private readonly firstFrame: number;
   /** 땅 위의 위치. 카메라가 따라가므로 점프나 밀려남에 흔들리지 않는다. */
   readonly anchor = { x: 0, y: 0 };
   private from: Tile;
@@ -55,17 +73,19 @@ export class Avatar {
 
   constructor(
     private readonly scene: Phaser.Scene,
+    id: string,
     public tile: Tile,
     hp = MAX_HP,
   ) {
     this.from = tile;
     this.hp = hp;
-    this.image = scene.add.image(0, 0, 'player', 'front-0').setOrigin(0.5, CHAR_FOOT_Y / CHAR_H);
+    this.firstFrame = citizenOf(id) * CITIZEN_FRAMES;
+    this.image = scene.add.image(0, 0, 'citizens', this.firstFrame).setOrigin(0.5, CITIZEN_FOOT_Y / CITIZEN_H);
     this.gun = scene.add
       .image(0, 0, 'pistol')
       .setOrigin(PISTOL_GRIP.x / PISTOL_SIZE, PISTOL_GRIP.y / PISTOL_SIZE)
       .setVisible(false);
-    this.jumpShadow = scene.add.image(0, 0, 'jump-shadow').setVisible(false);
+    this.shadow = scene.add.image(0, 0, 'jump-shadow');
     this.setHp(hp);
     this.sync();
   }
@@ -229,18 +249,19 @@ export class Avatar {
     const knock = this.knockAmount;
     const drawX = pos.x + this.knockX * KNOCK_DISTANCE * knock;
     const drawY = pos.y + this.knockY * KNOCK_DISTANCE * 0.6 * knock - lift;
-    const frame = this.airborne ? 1 : this.t < 0.5 ? (this.leftFoot ? 1 : 2) : 0;
+    const pose = this.airborne ? 1 : this.t < 0.5 ? (this.leftFoot ? 1 : 2) : 0;
+    const frame = this.firstFrame + (this.view === 'back' ? CITIZEN_FRAMES / 2 : 0) + POSE_FRAMES[pose];
     // 공중에서는 넘어가는 벽보다 앞에 그려져야 벽에 가리지 않는다.
     const depth = this.airborne
       ? depthOf(Math.max(this.from.x, this.tile.x), Math.max(this.from.y, this.tile.y)) + 1
       : depthOf(x, y) + 1;
     this.image
       .setPosition(drawX, drawY)
-      .setFrame(`${this.view}-${frame}`)
+      .setFrame(frame)
       .setFlipX(this.flip)
       .setRotation(this.knockX * KNOCK_LEAN * knock)
       .setDepth(depth);
-    this.jumpShadow.setVisible(this.airborne).setPosition(pos.x, pos.y).setDepth(depthOf(x, y));
+    this.shadow.setPosition(pos.x, pos.y).setDepth(depthOf(x, y));
 
     const armed = this.aimAngle !== null && !this.isDown;
     this.gun.setVisible(armed);
@@ -257,6 +278,6 @@ export class Avatar {
   destroy() {
     this.image.destroy();
     this.gun.destroy();
-    this.jumpShadow.destroy();
+    this.shadow.destroy();
   }
 }

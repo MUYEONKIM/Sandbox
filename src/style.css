@@ -201,6 +201,13 @@ canvas {
   cursor: pointer;
 }
 
+.office-place-icon {
+  float: left;
+  width: 56px;
+  height: 56px;
+  margin-right: 10px;
+}
+
 .office-place:hover {
   border-color: var(--gold);
 }

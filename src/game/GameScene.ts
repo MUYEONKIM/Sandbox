@@ -1,19 +1,9 @@
 import Phaser from 'phaser';
-import { CHAR_H, CHAR_STEPS, CHAR_W, paintCharacterSheet } from '../art/character';
 import { paintJumpShadow, paintSmoke } from '../art/effects';
 import { paintGround, WORLD_H, WORLD_W } from '../art/ground';
-import {
-  paintBobber,
-  paintBush,
-  paintHouse,
-  paintPine,
-  paintPortal,
-  paintRock,
-  paintTree,
-  PORTAL_FRAMES,
-  PORTAL_ORIGIN_Y,
-  type Art,
-} from '../art/props';
+import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
+import { groundPoint, sprite, type SpriteName } from '../art/sprites';
+import { WALL_ORIGIN_X, WALL_ORIGIN_Y, WALL_VARIANTS, wallVariant } from '../art/walls';
 import { paintBullet, paintPistol } from '../art/weapons';
 import { BLOCK_IDS, paintBlock, type BlockId } from '../blocks';
 import {
@@ -47,18 +37,17 @@ import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import type { OfficeWindow } from '../ui/office';
-import { Avatar } from './avatar';
+import { Avatar, CITIZEN_H, CITIZEN_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
 import type { Economy } from './economy';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
-import { generateMap } from './map';
+import { generateMap, type Building } from './map';
 import {
   arrivalFor,
   DEFAULT_MAP,
   isMapId,
   MAPS,
-  OFFICE,
   portalColor,
   portalName,
   portalsOf,
@@ -72,9 +61,17 @@ const DEPTH_GROUND = 0;
 const DEPTH_OVERLAY = 1;
 
 /** 닉네임을 띄울 높이: 발에서 머리 위까지 (아트 픽셀) */
-const HEAD_HEIGHT = 30;
+const HEAD_HEIGHT = 40;
 const PORTAL_TAG_HEIGHT = 44;
 const PORTAL_FRAME_MS = 100;
+
+/** 노동청 굴뚝 꼭대기의 위치 (건물 그림 기준 픽셀)와 연기 그림 수 */
+const CHIMNEY = { x: 56, y: 14 };
+const SMOKE_FRAMES = ['Smoke0000', 'Smoke0001', 'Smoke0002'] as const;
+const SMOKE_FRAME_MS = 240;
+
+/** 작물 밭은 칸 하나가 아니라 4칸 너비로 그려진다. 그림에서 밭 가운데 위치 */
+const CROPS_CENTER = { x: 64, y: 58 };
 
 /** 맵 가장자리에서도 캐릭터가 화면 UI에 가리지 않도록 카메라에 주는 여백 (아트 픽셀) */
 const CAMERA_PAD_X = 80;
@@ -145,6 +142,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private portalSprites: PortalSprite[] = [];
   /** 건물과 자원처럼 맵을 옮길 때 지워야 하는 그림 */
   private mapImages: Phaser.GameObjects.Image[] = [];
+  private chimneySmoke: Phaser.GameObjects.Image | null = null;
   private readonly paintedArt = new Map<string, Art>();
   /** 작업 중이면 시작 시각, 아니면 null */
   private workStartedAt: number | null = null;
@@ -181,7 +179,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.showMap(this.mapId);
 
     const { id, nickname, x, y, hp } = this.session.profile;
-    this.me = new Avatar(this, { x, y }, hp);
+    this.me = new Avatar(this, id, { x, y }, hp);
     this.tags.add(id, nickname);
     this.tags.setHp(id, hp);
 
@@ -193,7 +191,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     this.range = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.marker = this.add.graphics().setDepth(DEPTH_OVERLAY);
-    this.ghost = this.add.image(0, 0, `block-${BLOCK_IDS[0]}`).setOrigin(0.5, 1).setVisible(false);
+    this.ghost = this.add
+      .image(0, 0, `block-${BLOCK_IDS[0]}-0`)
+      .setOrigin(WALL_ORIGIN_X, WALL_ORIGIN_Y)
+      .setVisible(false);
 
     const cam = this.cameras.main;
     cam.setZoom(ZOOM);
@@ -214,17 +215,24 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private createTextures() {
-    for (const id of BLOCK_IDS) this.textures.addCanvas(`block-${id}`, paintBlock(id));
+    for (const id of BLOCK_IDS) {
+      for (let v = 0; v < WALL_VARIANTS; v++) this.textures.addCanvas(`block-${id}-${v}`, paintBlock(id, v));
+    }
     this.textures.addCanvas('pistol', paintPistol());
     this.textures.addCanvas('bullet', paintBullet());
     this.textures.addCanvas('smoke', paintSmoke());
     this.textures.addCanvas('jump-shadow', paintJumpShadow());
+    this.textures.addSpriteSheet('citizens', sprite('CitizenSheet'), {
+      frameWidth: CITIZEN_W,
+      frameHeight: CITIZEN_H,
+    });
+    for (const name of SMOKE_FRAMES) this.spriteTexture(name);
+  }
 
-    const sheet = this.textures.addCanvas('player', paintCharacterSheet())!;
-    for (let i = 0; i < CHAR_STEPS * 2; i++) {
-      const view = i < CHAR_STEPS ? 'front' : 'back';
-      sheet.add(`${view}-${i % CHAR_STEPS}`, 0, i * CHAR_W, 0, CHAR_W, CHAR_H);
-    }
+  /** public/sprites 이미지를 게임에서 쓸 수 있게 등록한다. */
+  private spriteTexture(name: SpriteName) {
+    if (!this.textures.exists(name)) this.textures.addImage(name, sprite(name));
+    return name;
   }
 
   /** 맵 바닥 그림은 처음 들어갈 때 한 번만 그린다. */
@@ -256,32 +264,55 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.mapImages.push(image);
   }
 
+  /** 땅에 닿는 지점을 칸 (x, y)에 맞춰 이미지를 세운다. */
+  private addSprite(name: SpriteName, x: number, y: number) {
+    this.spriteTexture(name);
+    const image = sprite(name);
+    const foot = groundPoint(name);
+    const c = tileCenter(x, y);
+    this.mapImages.push(
+      this.add
+        .image(c.x, c.y, name)
+        .setOrigin(foot.x / image.width, foot.y / image.height)
+        .setDepth(depthOf(x, y)),
+    );
+  }
+
   private showSpots(id: MapId) {
+    const trees: SpriteName[] = ['oaktree', 'pinetree', 'firtree'];
     this.world.map.spots.forEach((spot, i) => {
-      const variant = i % 3;
-      if (id === 'quarry') this.addMapArt(`rock-${variant}`, () => paintRock(variant), spot.x, spot.y);
-      if (id === 'gathering') this.addMapArt(`bush-${variant}`, () => paintBush(variant), spot.x, spot.y);
+      if (id === 'quarry') this.addMapArt(`rock-${i % 3}`, () => paintRock(i % 3), spot.x, spot.y);
       if (id === 'fishing') this.addMapArt('bobber', paintBobber, spot.x, spot.y);
-      if (id === 'logging') {
-        if (i % 3 === 0) this.addMapArt(`pine-${variant}`, () => paintPine(variant), spot.x, spot.y);
-        else this.addMapArt(`tree-${variant}`, () => paintTree(variant), spot.x, spot.y);
-      }
+      if (id === 'logging') this.addSprite(trees[i % trees.length], spot.x, spot.y);
+      if (id === 'gathering') this.addCrops(spot);
     });
   }
 
+  /** 작물 밭은 자원 칸을 가운데에 두고 그린다. */
+  private addCrops({ x, y }: Tile) {
+    this.spriteTexture('crops');
+    const image = sprite('crops');
+    const c = tileCenter(x, y);
+    this.mapImages.push(
+      this.add
+        .image(c.x, c.y, 'crops')
+        .setOrigin(CROPS_CENTER.x / image.width, CROPS_CENTER.y / image.height)
+        .setDepth(depthOf(x, y)),
+    );
+  }
+
   /**
-   * 노동청 건물은 여러 칸을 차지해서 깊이 값 하나로는 앞뒤를 가릴 수 없다.
+   * 건물은 여러 칸을 차지해서 깊이 값 하나로는 앞뒤를 가릴 수 없다.
    * 화면 세로줄 단위로 잘라 줄마다 가장 앞쪽 칸의 깊이를 준다.
    */
-  private showOffice() {
-    const { x, y, w, d } = OFFICE;
-    const art = paintHouse(w, d);
-    if (!this.textures.exists('office')) this.textures.addCanvas('office', art.canvas);
-    const texture = this.textures.get('office');
+  private showBuilding({ sprite: name, x, y, w, d }: Building) {
+    this.spriteTexture(name);
+    const image = sprite(name);
+    const texture = this.textures.get(name);
     const stripW = TILE_W / 2;
-    const corner = gridToWorld(x, y);
-    const left = corner.x - art.ox;
-    const top = corner.y - art.oy;
+    const left = gridToWorld(x, y + d).x;
+    const bottom = gridToWorld(x + w, y + d).y;
+    const top = bottom - groundPoint(name).y;
 
     const frontmost = (column: number) => {
       const c = Math.max(-d, Math.min(w - 1, column));
@@ -294,13 +325,24 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return best;
     };
 
-    for (let sx = 0; sx < art.canvas.width; sx += stripW) {
-      const name = `strip-${sx}`;
-      if (!texture.has(name)) texture.add(name, 0, sx, 0, stripW, art.canvas.height);
-      const column = Math.floor((sx - art.ox) / stripW);
+    for (let sx = 0; sx < image.width; sx += stripW) {
+      const stripName = `strip-${sx}`;
+      const width = Math.min(stripW, image.width - sx);
+      if (!texture.has(stripName)) texture.add(stripName, 0, sx, 0, width, image.height);
+      const column = Math.floor(sx / stripW) - d;
       const depth = depthOf(x + frontmost(column), y);
-      this.mapImages.push(this.add.image(left + sx, top, 'office', name).setOrigin(0, 0).setDepth(depth));
+      this.mapImages.push(this.add.image(left + sx, top, name, stripName).setOrigin(0, 0).setDepth(depth));
     }
+    return { left, top };
+  }
+
+  /** 노동청 굴뚝에서 연기가 피어오른다. */
+  private showChimneySmoke(left: number, top: number) {
+    this.chimneySmoke = this.add
+      .image(left + CHIMNEY.x, top + CHIMNEY.y, SMOKE_FRAMES[0])
+      .setOrigin(0.5, 1)
+      .setDepth(depthOf(MAP_SIZE, MAP_SIZE));
+    this.mapImages.push(this.chimneySmoke);
   }
 
   /** 맵 하나를 화면에 올린다. 블록과 다른 플레이어는 서버에서 받아 채운다. */
@@ -310,7 +352,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.world = new World(generateMap(id), portalsOf(id));
     this.ground.setTexture(this.groundTexture(id));
     this.minimap.setMap(info.name, info.ground[2]);
-    if (id === 'plains') this.showOffice();
+    this.chimneySmoke = null;
+    for (const building of this.world.map.buildings) {
+      const { left, top } = this.showBuilding(building);
+      if (id === 'plains') this.showChimneySmoke(left, top);
+    }
     this.showSpots(id);
 
     this.portalSprites = this.world.portals.map((portal) => {
@@ -556,6 +602,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private animatePortals(time: number) {
+    const smokeFrame = Math.floor(time / SMOKE_FRAME_MS) % SMOKE_FRAMES.length;
+    this.chimneySmoke?.setTexture(SMOKE_FRAMES[smokeFrame]);
+
     const frame = Math.floor(time / PORTAL_FRAME_MS) % PORTAL_FRAMES;
     if (frame === this.portalFrame) return;
     this.portalFrame = frame;
@@ -756,8 +805,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (stack) {
       const c = tileCenter(x, y);
       this.ghost
-        .setTexture(`block-${stack.id}`)
-        .setPosition(c.x, c.y + TILE_H / 2)
+        .setTexture(`block-${stack.id}-0`)
+        .setPosition(c.x, c.y)
         .setDepth(depthOf(x, y))
         .setAlpha(ok ? 0.7 : 0.35)
         .setTint(ok ? 0xffffff : 0xff6b5e)
@@ -825,11 +874,29 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private spawnBlock({ x, y }: Tile, id: BlockId) {
     this.world.place(x, y, id);
     const c = tileCenter(x, y);
-    const image = this.add
-      .image(c.x, c.y + TILE_H / 2, `block-${id}`)
-      .setOrigin(0.5, 1)
-      .setDepth(depthOf(x, y));
+    const image = this.add.image(c.x, c.y, `block-${id}-0`).setOrigin(WALL_ORIGIN_X, WALL_ORIGIN_Y).setDepth(depthOf(x, y));
     this.blockImages.set(`${x},${y}`, image);
+    this.connectWalls(x, y);
+  }
+
+  /** 벽이 이웃과 이어져 보이도록 자기와 주변 벽의 그림을 고른다. */
+  private connectWalls(x: number, y: number) {
+    for (const [tx, ty] of [
+      [x, y],
+      [x + 1, y],
+      [x - 1, y],
+      [x, y + 1],
+      [x, y - 1],
+    ]) {
+      const id = this.world.blockAt(tx, ty);
+      if (!id) continue;
+      const neighbors =
+        (this.world.blockAt(tx + 1, ty) ? 1 : 0) |
+        (this.world.blockAt(tx - 1, ty) ? 2 : 0) |
+        (this.world.blockAt(tx, ty + 1) ? 4 : 0) |
+        (this.world.blockAt(tx, ty - 1) ? 8 : 0);
+      this.blockImages.get(`${tx},${ty}`)?.setTexture(`block-${id}-${wallVariant(neighbors)}`);
+    }
   }
 
   private removeBlockAt(x: number, y: number) {
@@ -837,6 +904,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const key = `${x},${y}`;
     this.blockImages.get(key)?.destroy();
     this.blockImages.delete(key);
+    this.connectWalls(x, y);
   }
 
   currentTile() {
@@ -850,7 +918,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   onMove({ id, nickname, x, y, ms, hp, motion }: PlayerMove) {
     let avatar = this.others.get(id);
     if (!avatar) {
-      avatar = new Avatar(this, { x, y }, hp);
+      avatar = new Avatar(this, id, { x, y }, hp);
       this.others.set(id, avatar);
       this.tags.add(id, nickname);
       this.tags.setHp(id, hp);

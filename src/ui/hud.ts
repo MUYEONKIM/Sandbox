@@ -4,9 +4,13 @@ import { BAG_SIZE, HOTBAR_SIZE, type Inventory } from '../game/inventory';
 import { itemName, paintItem, WEAPON_IDS, type ItemId } from '../items';
 import { element } from './dom';
 
-const ICONS = Object.fromEntries(
-  [...BLOCK_IDS, ...WEAPON_IDS].map((id) => [id, paintItem(id).toDataURL()]),
-) as Record<ItemId, string>;
+/** 이미지를 읽은 뒤에 그릴 수 있어서 Hud를 만들 때 준비한다. */
+function paintIcons() {
+  return Object.fromEntries([...BLOCK_IDS, ...WEAPON_IDS].map((id) => [id, paintItem(id).toDataURL()])) as Record<
+    ItemId,
+    string
+  >;
+}
 
 const TOAST_MS = 3500;
 const TOAST_LIMIT = 4;
@@ -17,6 +21,7 @@ export class Hud {
   private readonly label: HTMLElement;
   private readonly dragIcon: HTMLImageElement;
   private readonly slots: HTMLElement[] = [];
+  private readonly icons = paintIcons();
   private readonly connection: HTMLElement;
   private readonly hpFill: HTMLElement;
   private readonly hpText: HTMLElement;
@@ -142,7 +147,7 @@ export class Hud {
     const stack = this.inventory.slots[index];
     if (this.isOpen && stack) {
       this.dragFrom = index;
-      this.dragIcon.src = ICONS[stack.id];
+      this.dragIcon.src = this.icons[stack.id];
       this.dragIcon.hidden = false;
       this.moveDragIcon(e);
       this.render();
@@ -179,7 +184,7 @@ export class Hud {
       const count = slot.querySelector<HTMLElement>('.slot-count')!;
       const dragged = this.dragFrom === i;
       icon.hidden = !stack || dragged;
-      if (stack) icon.src = ICONS[stack.id];
+      if (stack) icon.src = this.icons[stack.id];
       count.textContent = stack && !dragged ? String(stack.count) : '';
       slot.classList.toggle('selected', i === this.inventory.selected);
     });

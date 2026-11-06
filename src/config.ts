@@ -32,4 +32,4 @@ export const JUMP_MS = 340;
 export const MAX_HP = 100;
 
 /** 설치 블록의 높이 (아트 픽셀) */
-export const BLOCK_HEIGHT = 16;
+export const BLOCK_HEIGHT = 18;

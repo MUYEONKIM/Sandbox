@@ -1,6 +1,15 @@
 import type { Economy } from '../game/economy';
 import type { WorkId } from '../game/maps';
+import { spriteUrl } from '../art/sprites';
 import { element } from './dom';
+
+/** 작업장 버튼에 붙이는 그림 */
+const PLACE_ICONS: Record<WorkId, string> = {
+  quarry: 'buttons0012',
+  logging: 'buttons0002',
+  gathering: 'buttons0001',
+  fishing: 'buttons0007',
+};
 
 interface OfficeActions {
   onGo(place: WorkId): void;
@@ -28,6 +37,9 @@ export class OfficeWindow {
     for (const place of economy.workplaces) {
       const button = element('office-place', places, 'button') as HTMLButtonElement;
       button.type = 'button';
+      const icon = element('office-place-icon', button, 'img') as HTMLImageElement;
+      icon.src = spriteUrl(PLACE_ICONS[place.id]);
+      icon.alt = '';
       element('office-place-name', button).textContent = place.name;
       element('office-place-blurb', button).textContent = place.blurb;
       element('office-place-rate', button).textContent =
