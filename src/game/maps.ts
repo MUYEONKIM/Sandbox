@@ -17,6 +17,9 @@ type Corner = keyof typeof CORNERS;
 const LANDING_ALONG = 3;
 const LANDING_ACROSS = 1;
 
+export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
+export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | WorkId;
+
 export interface MapInfo {
   name: string;
   /** 바닥색 네 단계 (어두운 색부터) */
@@ -25,23 +28,23 @@ export interface MapInfo {
   accent: Color;
   /** 귀퉁이별로 이어지는 맵 */
   links: Partial<Record<Corner, MapId>>;
+  /** 작업장이면 true. 이 맵에서 자원을 캘 수 있다. */
+  work?: boolean;
 }
 
-export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest';
-
-/** 맵 목록. 평원을 중심으로 네 귀퉁이가 각 맵으로 이어진다. */
+/** 맵 목록. 평원을 중심으로 귀퉁이가 각 맵으로 이어지고, 작업장은 노동청에서 간다. */
 export const MAPS: Record<MapId, MapInfo> = {
   plains: {
     name: '평원',
     ground: [0x4c9a3e, 0x5bab43, 0x6dbd49, 0x82cc55],
     accent: 0x9df08f,
-    links: { top: 'snow', right: 'desert', bottom: 'volcano', left: 'forest' },
+    links: { right: 'desert', bottom: 'volcano', left: 'forest' },
   },
   snow: {
     name: '설원',
     ground: [0xbfd6e4, 0xcfe1ec, 0xdeebf3, 0xedf5f9],
     accent: 0x7fd3ff,
-    links: { bottom: 'plains' },
+    links: { bottom: 'forest' },
   },
   desert: {
     name: '사막',
@@ -59,11 +62,51 @@ export const MAPS: Record<MapId, MapInfo> = {
     name: '숲',
     ground: [0x2a6138, 0x316e41, 0x397b49, 0x438952],
     accent: 0x4fdc86,
-    links: { right: 'plains' },
+    links: { right: 'plains', top: 'snow' },
+  },
+  quarry: {
+    name: '채석장',
+    ground: [0x8a8580, 0x98938d, 0xa6a19a, 0xb4afa7],
+    accent: 0xc9c4bc,
+    links: { bottom: 'plains' },
+    work: true,
+  },
+  logging: {
+    name: '벌목장',
+    ground: [0x6f5a3a, 0x7d6742, 0x8b744b, 0x998155],
+    accent: 0x4fdc86,
+    links: { bottom: 'plains' },
+    work: true,
+  },
+  gathering: {
+    name: '채집장',
+    ground: [0x6f9a45, 0x7dab4c, 0x8cbc55, 0x9bcb60],
+    accent: 0xf2a65a,
+    links: { bottom: 'plains' },
+    work: true,
+  },
+  fishing: {
+    name: '낚시터',
+    ground: [0xb79a68, 0xc5a974, 0xd3b781, 0xdfc48e],
+    accent: 0x5fc8ff,
+    links: { bottom: 'plains' },
+    work: true,
   },
 };
 
 export const DEFAULT_MAP: MapId = 'plains';
+
+/** 평원 위쪽 귀퉁이의 노동청 건물. 문 앞 칸이 포탈이다. */
+export const OFFICE = {
+  x: 0,
+  y: 0,
+  w: 5,
+  d: 4,
+  door: { x: 2, y: 4 },
+  landing: { x: 2, y: 6 },
+  name: '노동청',
+  accent: 0xffd84d,
+};
 
 export function isMapId(value: unknown): value is MapId {
   return typeof value === 'string' && Object.hasOwn(MAPS, value);
@@ -72,7 +115,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  to: MapId;
+  /** 'office'는 맵을 옮기지 않고 노동청 창을 연다. */
+  to: MapId | 'office';
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
   landing: { x: number; y: number };
 }
@@ -83,11 +127,21 @@ function portalAt(corner: Corner, to: MapId): Portal {
 }
 
 export function portalsOf(id: MapId): Portal[] {
-  return (Object.entries(MAPS[id].links) as [Corner, MapId][]).map(([corner, to]) => portalAt(corner, to));
+  const portals = (Object.entries(MAPS[id].links) as [Corner, MapId][]).map(([corner, to]) => portalAt(corner, to));
+  if (id === 'plains') portals.push({ ...OFFICE.door, to: 'office', landing: OFFICE.landing });
+  return portals;
 }
 
-/** 포탈을 타고 나서 도착할 칸: 도착한 맵에서 돌아오는 포탈 앞이다. */
-export function arrivalFor(portal: Portal, from: MapId) {
-  const back = portalsOf(portal.to).find((p) => p.to === from);
-  return back ? back.landing : portal.landing;
+export function portalName(portal: Portal) {
+  return portal.to === 'office' ? OFFICE.name : MAPS[portal.to].name;
+}
+
+export function portalColor(portal: Portal) {
+  return portal.to === 'office' ? OFFICE.accent : MAPS[portal.to].accent;
+}
+
+/** from에서 to로 넘어갔을 때 서는 칸: 돌아오는 포탈 앞이고, 작업장에서 돌아오면 노동청 앞이다. */
+export function arrivalFor(to: MapId, from: MapId) {
+  const back = portalsOf(to).find((p) => p.to === from);
+  return back ? back.landing : OFFICE.landing;
 }

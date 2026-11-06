@@ -2,7 +2,18 @@ import Phaser from 'phaser';
 import { CHAR_H, CHAR_STEPS, CHAR_W, paintCharacterSheet } from '../art/character';
 import { paintJumpShadow, paintSmoke } from '../art/effects';
 import { paintGround, WORLD_H, WORLD_W } from '../art/ground';
-import { paintPortal, PORTAL_FRAMES, PORTAL_ORIGIN_Y } from '../art/props';
+import {
+  paintBobber,
+  paintBush,
+  paintHouse,
+  paintPine,
+  paintPortal,
+  paintRock,
+  paintTree,
+  PORTAL_FRAMES,
+  PORTAL_ORIGIN_Y,
+  type Art,
+} from '../art/props';
 import { paintBullet, paintPistol } from '../art/weapons';
 import { BLOCK_IDS, paintBlock, type BlockId } from '../blocks';
 import {
@@ -35,12 +46,26 @@ import type { ChatBox } from '../ui/chat';
 import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
+import type { OfficeWindow } from '../ui/office';
 import { Avatar } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
+import type { Economy } from './economy';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { generateMap } from './map';
-import { arrivalFor, DEFAULT_MAP, isMapId, MAPS, portalsOf, type MapId, type Portal } from './maps';
+import {
+  arrivalFor,
+  DEFAULT_MAP,
+  isMapId,
+  MAPS,
+  OFFICE,
+  portalColor,
+  portalName,
+  portalsOf,
+  type MapId,
+  type Portal,
+  type WorkId,
+} from './maps';
 import { inReach, World, type Tile } from './world';
 
 const DEPTH_GROUND = 0;
@@ -118,6 +143,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private range!: Phaser.GameObjects.Graphics;
   private readonly blockImages = new Map<string, Phaser.GameObjects.Image>();
   private portalSprites: PortalSprite[] = [];
+  /** 건물과 자원처럼 맵을 옮길 때 지워야 하는 그림 */
+  private mapImages: Phaser.GameObjects.Image[] = [];
+  private readonly paintedArt = new Map<string, Art>();
+  /** 작업 중이면 시작 시각, 아니면 null */
+  private workStartedAt: number | null = null;
   private portalFrame = 0;
   private traveling = false;
   private down = false;
@@ -138,6 +168,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly tags: NameTags,
     private readonly minimap: Minimap,
     private readonly session: GameSession,
+    private readonly economy: Economy,
+    private readonly office: OfficeWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -170,7 +202,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.hud.isOpen || this.traveling || this.down) return;
+      if (!this.canAct && !this.chat.isOpen) return;
       this.updateHover();
       if (pointer.rightButtonDown()) void this.collectBlock();
       else if (pointer.leftButtonDown()) this.useSelectedItem();
@@ -198,32 +230,97 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 맵 바닥 그림은 처음 들어갈 때 한 번만 그린다. */
   private groundTexture(id: MapId) {
     const key = `ground-${id}`;
-    if (!this.textures.exists(key)) this.textures.addCanvas(key, paintGround(generateMap(MAPS[id].ground)));
+    if (!this.textures.exists(key)) this.textures.addCanvas(key, paintGround(generateMap(id)));
     return key;
   }
 
-  private portalTexture(to: MapId, frame: number) {
-    const key = `portal-${to}-${frame}`;
-    if (!this.textures.exists(key)) this.textures.addCanvas(key, paintPortal(MAPS[to].accent, frame).canvas);
+  private portalTexture(portal: Portal, frame: number) {
+    const key = `portal-${portal.to}-${frame}`;
+    if (!this.textures.exists(key)) this.textures.addCanvas(key, paintPortal(portalColor(portal), frame).canvas);
     return key;
+  }
+
+  /** 칸 (x, y)에 서 있는 그림을 놓는다. 맵을 옮기면 지워진다. */
+  private addMapArt(key: string, paint: () => Art, x: number, y: number) {
+    let art = this.paintedArt.get(key);
+    if (!art) {
+      art = paint();
+      this.paintedArt.set(key, art);
+      this.textures.addCanvas(key, art.canvas);
+    }
+    const c = tileCenter(x, y);
+    const image = this.add
+      .image(c.x, c.y, key)
+      .setOrigin(art.ax / art.canvas.width, art.ay / art.canvas.height)
+      .setDepth(depthOf(x, y));
+    this.mapImages.push(image);
+  }
+
+  private showSpots(id: MapId) {
+    this.world.map.spots.forEach((spot, i) => {
+      const variant = i % 3;
+      if (id === 'quarry') this.addMapArt(`rock-${variant}`, () => paintRock(variant), spot.x, spot.y);
+      if (id === 'gathering') this.addMapArt(`bush-${variant}`, () => paintBush(variant), spot.x, spot.y);
+      if (id === 'fishing') this.addMapArt('bobber', paintBobber, spot.x, spot.y);
+      if (id === 'logging') {
+        if (i % 3 === 0) this.addMapArt(`pine-${variant}`, () => paintPine(variant), spot.x, spot.y);
+        else this.addMapArt(`tree-${variant}`, () => paintTree(variant), spot.x, spot.y);
+      }
+    });
+  }
+
+  /**
+   * 노동청 건물은 여러 칸을 차지해서 깊이 값 하나로는 앞뒤를 가릴 수 없다.
+   * 화면 세로줄 단위로 잘라 줄마다 가장 앞쪽 칸의 깊이를 준다.
+   */
+  private showOffice() {
+    const { x, y, w, d } = OFFICE;
+    const art = paintHouse(w, d);
+    if (!this.textures.exists('office')) this.textures.addCanvas('office', art.canvas);
+    const texture = this.textures.get('office');
+    const stripW = TILE_W / 2;
+    const corner = gridToWorld(x, y);
+    const left = corner.x - art.ox;
+    const top = corner.y - art.oy;
+
+    const frontmost = (column: number) => {
+      const c = Math.max(-d, Math.min(w - 1, column));
+      let best = 0;
+      for (let j = 0; j < d; j++) {
+        for (let i = 0; i < w; i++) {
+          if (i - j === c || i - j === c + 1) best = Math.max(best, i + j);
+        }
+      }
+      return best;
+    };
+
+    for (let sx = 0; sx < art.canvas.width; sx += stripW) {
+      const name = `strip-${sx}`;
+      if (!texture.has(name)) texture.add(name, 0, sx, 0, stripW, art.canvas.height);
+      const column = Math.floor((sx - art.ox) / stripW);
+      const depth = depthOf(x + frontmost(column), y);
+      this.mapImages.push(this.add.image(left + sx, top, 'office', name).setOrigin(0, 0).setDepth(depth));
+    }
   }
 
   /** 맵 하나를 화면에 올린다. 블록과 다른 플레이어는 서버에서 받아 채운다. */
   private showMap(id: MapId) {
     this.mapId = id;
     const info = MAPS[id];
-    this.world = new World(generateMap(info.ground), portalsOf(id));
+    this.world = new World(generateMap(id), portalsOf(id));
     this.ground.setTexture(this.groundTexture(id));
     this.minimap.setMap(info.name, info.ground[2]);
+    if (id === 'plains') this.showOffice();
+    this.showSpots(id);
 
     this.portalSprites = this.world.portals.map((portal) => {
       const c = tileCenter(portal.x, portal.y);
       const image = this.add
-        .image(c.x, c.y, this.portalTexture(portal.to, 0))
+        .image(c.x, c.y, this.portalTexture(portal, 0))
         .setOrigin(0.5, PORTAL_ORIGIN_Y)
         .setDepth(depthOf(portal.x, portal.y));
       const tag = `portal-${portal.to}`;
-      this.tags.add(tag, `→ ${MAPS[portal.to].name}`, true);
+      this.tags.add(tag, `→ ${portalName(portal)}`, true);
       return { portal, image, tag };
     });
   }
@@ -241,6 +338,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.tags.remove(tag);
     }
     this.portalSprites = [];
+    for (const image of this.mapImages) image.destroy();
+    this.mapImages = [];
     this.bullets.clear();
   }
 
@@ -250,6 +349,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.advancePlayer(delta);
     for (const avatar of this.others.values()) avatar.update(delta);
     this.bullets.update(delta);
+    this.updateWork();
     this.updateAim();
     this.animatePortals(time);
     this.updateHover();
@@ -258,12 +358,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private get canAct() {
-    return !this.hud.isOpen && !this.chat.isOpen && !this.traveling && !this.down;
+    return !this.hud.isOpen && !this.office.isOpen && !this.chat.isOpen && !this.traveling && !this.down;
   }
 
   private advancePlayer(delta: number) {
+    const wasMoving = this.me.moving;
     this.me.update(delta);
     if (this.traveling || this.down) return;
+
+    if (this.keys.takeWork() && this.canAct) this.toggleWork();
 
     const dashPressed = this.keys.takeDash();
     const jumpPressed = this.keys.takeJump();
@@ -277,9 +380,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
 
-    const portal = this.world.portalAt(this.me.tile.x, this.me.tile.y);
+    // 막 도착했을 때만 탄다. 노동청 창을 닫은 뒤 그 자리에서 다시 열리지 않게 한다.
+    const portal = wasMoving ? this.world.portalAt(this.me.tile.x, this.me.tile.y) : undefined;
     if (portal) {
-      this.travel(portal);
+      if (portal.to === 'office') this.office.open();
+      else this.travel(portal.to);
       return;
     }
     const dir = this.keys.takeDirection();
@@ -358,6 +463,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private moveTo(to: Tile, ms: number, motion: Motion = 'walk') {
+    this.stopWork();
     if (motion === 'jump') this.me.jumpTo(to, ms);
     else if (motion === 'dash') this.me.dashTo(to, ms);
     else this.me.stepTo(to, ms);
@@ -366,17 +472,83 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.drawRange();
   }
 
+  /** 노동청 창에서 작업장을 골랐을 때 */
+  goToWork(place: WorkId) {
+    this.office.close();
+    this.travel(place);
+  }
+
+  /** 가진 자원을 모두 판다. 금액은 서버가 계산한다. */
+  async sellEverything() {
+    const before = this.economy.gold;
+    const gold = await this.session.sellAll();
+    if (gold === null) {
+      this.hud.toast('정산에 실패했습니다', '잠시 후 다시 시도해 주세요');
+      return;
+    }
+    this.economy.setSold(gold);
+    this.hud.toast(`+${(gold - before).toLocaleString()}G`, '수고하셨습니다. 내일도 나오세요.');
+  }
+
+  /** F로 작업을 시작하거나 멈춘다. 움직이면 멈춘다. */
+  private toggleWork() {
+    if (this.workStartedAt !== null) {
+      this.stopWork();
+      return;
+    }
+    if (!MAPS[this.mapId].work) {
+      this.hud.toast('여기선 할 일이 없습니다', '노동청에 가서 일감을 받으세요');
+      return;
+    }
+    const spot = this.world.spotNear(this.me.tile);
+    if (!spot) {
+      this.hud.toast('손이 안 닿습니다', '자원 바로 옆에 붙어서 F를 누르세요');
+      return;
+    }
+    this.me.face(Math.sign(spot.x - this.me.tile.x), Math.sign(spot.y - this.me.tile.y));
+    this.workStartedAt = this.time.now;
+  }
+
+  private stopWork() {
+    if (this.workStartedAt === null) return;
+    this.workStartedAt = null;
+    this.tags.setProgress(this.session.profile.id, null);
+  }
+
+  private updateWork() {
+    if (this.workStartedAt === null) return;
+    const place = this.economy.workplace(this.mapId);
+    if (!place) {
+      this.stopWork();
+      return;
+    }
+    const progress = (this.time.now - this.workStartedAt) / place.gatherMs;
+    this.tags.setProgress(this.session.profile.id, progress);
+    if (progress < 1) return;
+    this.workStartedAt = this.time.now;
+    void this.collectResource();
+  }
+
+  private async collectResource() {
+    const item = await this.session.harvest();
+    const info = item ? this.economy.lootItem(item) : undefined;
+    if (!item || !info) return;
+    this.economy.add(item);
+    this.hud.toast(`${info.name} 획득 (${info.price}G)`, info.blurb, this.economy.isRare(info));
+  }
+
   /** 포탈을 타면 화면을 어둡게 한 사이에 맵을 바꾼다. */
-  private travel(portal: Portal) {
+  private travel(to: MapId) {
     this.traveling = true;
+    this.stopWork();
     const cam = this.cameras.main;
     cam.once('camerafadeoutcomplete', () => {
-      const tile = arrivalFor(portal, this.mapId);
+      const tile = arrivalFor(to, this.mapId);
       this.clearMap();
-      this.showMap(portal.to);
+      this.showMap(to);
       this.me.teleport(tile);
       this.drawRange();
-      void this.session.changeMap(portal.to, tile.x, tile.y);
+      void this.session.changeMap(to, tile.x, tile.y);
       cam.fadeIn(FADE_MS);
       this.traveling = false;
     });
@@ -387,7 +559,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const frame = Math.floor(time / PORTAL_FRAME_MS) % PORTAL_FRAMES;
     if (frame === this.portalFrame) return;
     this.portalFrame = frame;
-    for (const { portal, image } of this.portalSprites) image.setTexture(this.portalTexture(portal.to, frame));
+    for (const { portal, image } of this.portalSprites) image.setTexture(this.portalTexture(portal, frame));
   }
 
   private placeNameTags() {
@@ -491,6 +663,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private goDown() {
     if (this.down) return;
     this.down = true;
+    this.stopWork();
     this.hud.showDown(true);
     this.time.delayedCall(RESPAWN_MS, () => void this.respawn());
   }

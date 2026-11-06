@@ -45,6 +45,7 @@ export class Keys {
   private readonly tapped = new Set<string>();
   private dashPressed = false;
   private jumpPressed = false;
+  private workPressed = false;
 
   constructor(private readonly actions: KeyActions) {
     window.addEventListener('keydown', (e) => this.down(e));
@@ -73,6 +74,8 @@ export class Keys {
     } else if (e.code === 'Space' || e.key === ' ') {
       e.preventDefault();
       this.jumpPressed = true;
+    } else if (e.code === 'KeyF') {
+      this.workPressed = true;
     } else if (e.code === 'KeyI') {
       this.actions.onInventory();
     } else if (e.code === 'Escape') {
@@ -104,6 +107,13 @@ export class Keys {
   takeDash() {
     const pressed = this.dashPressed;
     this.dashPressed = false;
+    return pressed;
+  }
+
+  /** F를 눌렀으면 true를 돌려주고 입력을 지운다. */
+  takeWork() {
+    const pressed = this.workPressed;
+    this.workPressed = false;
     return pressed;
   }
 

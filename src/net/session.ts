@@ -215,6 +215,18 @@ export class GameSession {
     void this.channel.send({ type: 'broadcast', event: 'shot', payload });
   }
 
+  /** 자원 하나를 캔다. 작업 간격을 어기거나 작업장이 아니면 null을 돌려준다. */
+  async harvest(): Promise<string | null> {
+    const { data, error } = await supabase.rpc('harvest');
+    return error ? null : (data as string);
+  }
+
+  /** 가진 자원을 모두 팔고 새 골드를 돌려준다. */
+  async sellAll(): Promise<number | null> {
+    const { data, error } = await supabase.rpc('sell_all');
+    return error ? null : (data as number);
+  }
+
   /** 내 총알이 맞았음을 서버에 알린다. 피해량과 체력은 서버가 계산한다. */
   async hitPlayer(target: string) {
     await supabase.rpc('hit_player', { target });

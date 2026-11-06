@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
+import { Economy, type EconomyData } from './game/economy';
 import { GameScene } from './game/GameScene';
 import { Inventory } from './game/inventory';
 import { Keys } from './game/keys';
-import { currentUser, loadProfile, signOut, type Profile } from './net/auth';
+import { currentUser, loadEconomy, loadProfile, signOut, type Profile } from './net/auth';
 import { GameSession } from './net/session';
 import { isConfigured } from './net/supabase';
 import { ChatBox } from './ui/chat';
@@ -11,8 +12,9 @@ import { Hud } from './ui/hud';
 import { showLogin } from './ui/login';
 import { Minimap } from './ui/minimap';
 import { NameTags } from './ui/nametags';
+import { OfficeWindow } from './ui/office';
 
-function enterGame(profile: Profile) {
+function enterGame(profile: Profile, economyData: EconomyData) {
   const root = document.getElementById('hud')!;
   const session = new GameSession(profile);
   const inventory = new Inventory(profile.inventory);
@@ -25,20 +27,33 @@ function enterGame(profile: Profile) {
     location.reload();
   });
   hud.setHp(profile.hp);
+
+  const economy = new Economy(economyData);
+  hud.setGold(economy.gold);
+  economy.onChange(() => hud.setGold(economy.gold));
+
   const minimap = new Minimap(side);
   const chat = new ChatBox(root, (text) => void session.sendChat(text));
   const tags = new NameTags(root);
 
+  const office = new OfficeWindow(root, economy, {
+    onGo: (place) => scene.goToWork(place),
+    onSell: () => void scene.sellEverything(),
+  });
+
   const keys = new Keys({
     onSlot: (index) => inventory.select(index),
     onInventory: () => hud.toggle(),
-    onEscape: () => hud.close(),
+    onEscape: () => {
+      hud.close();
+      office.close();
+    },
     onChat: () => {
-      if (!hud.isOpen) chat.open();
+      if (!hud.isOpen && !office.isOpen) chat.open();
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office);
 
   new Phaser.Game({
     type: Phaser.AUTO,
@@ -53,7 +68,7 @@ function enterGame(profile: Profile) {
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office } });
   }
 }
 
@@ -70,7 +85,7 @@ async function main() {
     await signOut();
     profile = await loadProfile((await showLogin(document.body)).id);
   }
-  if (profile) enterGame(profile);
+  if (profile) enterGame(profile, await loadEconomy(profile.gold));
 }
 
 main().catch(() => {

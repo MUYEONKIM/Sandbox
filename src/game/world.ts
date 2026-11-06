@@ -39,6 +39,11 @@ export class World {
     return [...this.blocks.keys()].map((key) => ({ x: key % MAP_SIZE, y: Math.floor(key / MAP_SIZE) }));
   }
 
+  /** 캐릭터 주변 8칸 안에 있는 자원 칸을 찾는다. */
+  spotNear(player: Tile) {
+    return this.map.spots.find((spot) => inReach(player, spot));
+  }
+
   portalAt(x: number, y: number) {
     return this.portals.find((p) => p.x === x && p.y === y);
   }

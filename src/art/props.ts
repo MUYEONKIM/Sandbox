@@ -125,6 +125,67 @@ export function paintBanner(): Art {
   return { canvas: p.toCanvas(), ax: cx, ay: 50 };
 }
 
+/** 여러 덩어리를 겹친 울퉁불퉁한 덩어리를 그린다. 바위와 덤불에 쓴다. */
+function paintLump(seed: number, palette: Color[], outline: Color, size: number): Pixels {
+  const p = new Pixels(size, size);
+  const cx = size / 2;
+  const rng = new Rng(seed * 131 + 17);
+  const lumps: { x: number; y: number; r: number }[] = [];
+  for (let i = 0; i < 9; i++) {
+    const a = rng.next() * Math.PI * 2;
+    const d = Math.sqrt(rng.next()) * (size * 0.26);
+    lumps.push({ x: cx + Math.cos(a) * d, y: size * 0.58 + Math.sin(a) * d * 0.6, r: size * (0.14 + rng.next() * 0.1) });
+  }
+  lumps.sort((a, b) => a.y - b.y);
+  for (const lump of lumps) {
+    for (let y = Math.floor(lump.y - lump.r); y <= lump.y + lump.r; y++) {
+      for (let x = Math.floor(lump.x - lump.r); x <= lump.x + lump.r; x++) {
+        const nx = (x + 0.5 - lump.x) / lump.r;
+        const ny = (y + 0.5 - lump.y) / lump.r;
+        if (nx * nx + ny * ny > 1) continue;
+        const t = 0.55 - nx * 0.3 - ny * 0.42 + (hash2(x, y) - 0.5) * 0.14;
+        p.set(x, y, ramp(palette, t, x, y));
+      }
+    }
+  }
+  p.outlineOuter(outline);
+  return p;
+}
+
+const ROCK = [0x5f5f68, 0x7a7a84, 0x96969f, 0xb7b7bf];
+const BUSH = [0x2a6b35, 0x3b8a43, 0x57a84f, 0x7fc765];
+
+/** 채석장의 바위 무더기 */
+export function paintRock(seed: number): Art {
+  const size = 36;
+  const p = paintLump(seed, ROCK, 0x34343c, size);
+  return { canvas: p.toCanvas(), ax: size / 2, ay: size - 8 };
+}
+
+/** 채집장의 열매 덤불 */
+export function paintBush(seed: number): Art {
+  const size = 36;
+  const p = paintLump(seed + 40, BUSH, 0x173f22, size);
+  const rng = new Rng(seed * 53 + 9);
+  for (let i = 0; i < 7; i++) {
+    const x = rng.int(9, size - 10);
+    const y = rng.int(12, size - 12);
+    p.rect(x, y, 2, 2, 0xe0524c);
+    p.set(x, y, 0xffb3a6);
+  }
+  return { canvas: p.toCanvas(), ax: size / 2, ay: size - 8 };
+}
+
+/** 낚시터 물가에 떠 있는 찌 */
+export function paintBobber(): Art {
+  const p = new Pixels(16, 16);
+  p.ellipse(8, 11, 7, 3.5, 0xa8dde6, 110);
+  p.rect(7, 3, 2, 4, 0xffffff);
+  p.rect(6, 7, 4, 3, 0xe0524c);
+  p.rect(7, 10, 2, 1, 0xa33530);
+  return { canvas: p.toCanvas(), ax: 8, ay: 11 };
+}
+
 export const PORTAL_FRAMES = 8;
 const PORTAL_W = 48;
 const PORTAL_H = 80;

@@ -8,6 +8,9 @@ const ICONS = Object.fromEntries(
   [...BLOCK_IDS, ...WEAPON_IDS].map((id) => [id, paintItem(id).toDataURL()]),
 ) as Record<ItemId, string>;
 
+const TOAST_MS = 3500;
+const TOAST_LIMIT = 4;
+
 /** 화면 위 UI: 단축키 칸, 인벤토리 창, 조작 안내 */
 export class Hud {
   private readonly panel: HTMLElement;
@@ -18,6 +21,8 @@ export class Hud {
   private readonly hpFill: HTMLElement;
   private readonly hpText: HTMLElement;
   private readonly downNotice: HTMLElement;
+  private readonly gold: HTMLElement;
+  private readonly toastBox: HTMLElement;
   private dragFrom: number | null = null;
 
   constructor(
@@ -29,17 +34,20 @@ export class Hud {
   ) {
     const account = element('account', side);
     element('account-name', account, 'span').textContent = nickname;
+    this.gold = element('account-gold', account, 'span');
     const signOut = element('account-signout', account, 'button') as HTMLButtonElement;
     signOut.type = 'button';
     signOut.textContent = '로그아웃';
     signOut.addEventListener('click', onSignOut);
+
+    this.toastBox = element('toasts', root);
 
     this.connection = element('connection', root);
     this.connection.textContent = '서버에 연결하는 중입니다';
 
     const help = element('help', root);
     help.innerHTML =
-      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>대시</b> Shift &nbsp; <b>점프</b> Space<br><b>설치 / 사격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
+      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>대시</b> Shift &nbsp; <b>점프</b> Space &nbsp; <b>작업</b> F<br><b>설치 / 사격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
 
     this.panel = element('panel', root);
     this.panel.hidden = true;
@@ -87,6 +95,19 @@ export class Hud {
 
   showDown(down: boolean) {
     this.downNotice.hidden = !down;
+  }
+
+  setGold(gold: number) {
+    this.gold.textContent = `${gold.toLocaleString()}G`;
+  }
+
+  /** 화면 아래쪽에 잠깐 뜨는 알림 */
+  toast(title: string, detail = '', rare = false) {
+    const box = element(rare ? 'toast rare' : 'toast', this.toastBox);
+    element('toast-title', box).textContent = title;
+    if (detail) element('toast-detail', box).textContent = detail;
+    while (this.toastBox.childElementCount > TOAST_LIMIT) this.toastBox.firstElementChild?.remove();
+    window.setTimeout(() => box.remove(), TOAST_MS);
   }
 
   toggle() {

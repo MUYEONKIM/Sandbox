@@ -1,4 +1,6 @@
 import type { AuthError, User } from '@supabase/supabase-js';
+import type { EconomyData } from '../game/economy';
+import type { WorkId } from '../game/maps';
 import { supabase } from './supabase';
 
 export interface Profile {
@@ -8,6 +10,7 @@ export interface Profile {
   x: number;
   y: number;
   hp: number;
+  gold: number;
   inventory: unknown;
 }
 
@@ -53,10 +56,32 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+/** 노동청에서 쓸 작업장, 자원 목록, 내 자원을 읽어 온다. */
+export async function loadEconomy(gold: number): Promise<EconomyData> {
+  const [workplaces, loot, stash] = await Promise.all([
+    supabase.from('workplaces').select('id, name, blurb, gather_ms').order('sort'),
+    supabase.from('loot').select('item, workplace, name, blurb, price, weight'),
+    supabase.from('stash').select('item, count'),
+  ]);
+  const error = workplaces.error ?? loot.error ?? stash.error;
+  if (error) throw new Error(error.message);
+  return {
+    gold,
+    loot: loot.data ?? [],
+    stash: stash.data ?? [],
+    workplaces: (workplaces.data ?? []).map(({ id, name, blurb, gather_ms: gatherMs }) => ({
+      id: id as WorkId,
+      name,
+      blurb,
+      gatherMs,
+    })),
+  };
+}
+
 export async function loadProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nickname, map, x, y, hp, inventory')
+    .select('id, nickname, map, x, y, hp, gold, inventory')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(error.message);
