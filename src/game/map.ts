@@ -2,6 +2,7 @@ import { Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { MAPS, OFFICE, SHOP, type MapId } from './maps';
+import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
 export const Terrain = { Ground: 0, Water: 1 } as const;
@@ -13,7 +14,7 @@ export interface Building extends Tile {
   d: number;
 }
 
-export interface GameMap {
+export interface GameMap extends Scenery {
   /** 바닥에 섞어 까는 타일 번호 */
   floor: number[];
   /** 타일 그림에서 윗면이 시작하는 높이 (아트 픽셀) */
@@ -83,9 +84,14 @@ export function generateMap(id: MapId): GameMap {
   const solid = new Uint8Array(MAP_SIZE * MAP_SIZE);
   const buildings: Building[] = [];
   let spots: Tile[] = [];
+  let scenery: Scenery = { floorTiles: new Map(), decals: new Map(), props: [], trees: [] };
 
   if (id === 'plains') {
     for (const { sprite, x, y, w, d } of [OFFICE, SHOP]) buildings.push({ sprite, x, y, w, d });
+    const village = layoutVillage();
+    scenery = village;
+    buildings.push(...village.buildings);
+    for (const { x, y } of village.water) terrain[x + y * MAP_SIZE] = Terrain.Water;
   } else if (id === 'fishing') {
     spots = digPond(terrain);
   } else if (MAPS[id].work) {
@@ -100,7 +106,8 @@ export function generateMap(id: MapId): GameMap {
       for (let i = x; i < x + w; i++) solid[i + j * MAP_SIZE] = 1;
     }
   }
+  for (const { x, y } of [...scenery.props, ...scenery.trees]) solid[x + y * MAP_SIZE] = 1;
 
   const { floor, floorTop } = MAPS[id];
-  return { floor, floorTop, terrain, solid, spots, buildings };
+  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings };
 }

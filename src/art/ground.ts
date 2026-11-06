@@ -5,8 +5,11 @@ import { hash2 } from './pixels';
 import { sprite } from './sprites';
 
 /** tiles.png는 32×32 칸이 가로 11개씩 놓인 그림이다. */
-const CELL = 32;
+export const TILE_CELL = 32;
 const COLUMNS = 11;
+
+/** 꽃과 바위 타일은 블록 윗면 위에 놓이도록 그려져 있어 그만큼 올려 그린다. */
+export const DECOR_LIFT = 8;
 
 /** 연못에 까는 물 타일. 잔잔한 타일을 여러 번 넣어 파도가 가끔만 보이게 한다. */
 const WATER_TILES = [93, 93, 93, 93, 92, 94, 95, 88];
@@ -34,14 +37,22 @@ export function paintGround(map: GameMap): HTMLCanvasElement {
   const context = canvas.getContext('2d')!;
   const sheet = sprite('tiles');
 
+  const draw = (tile: number, left: number, top: number) => {
+    const sx = (tile % COLUMNS) * TILE_CELL;
+    const sy = Math.floor(tile / COLUMNS) * TILE_CELL;
+    context.drawImage(sheet, sx, sy, TILE_CELL, TILE_CELL, left, top, TILE_CELL, TILE_CELL);
+  };
+
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
-      const water = map.terrain[x + y * MAP_SIZE] === Terrain.Water;
-      const tile = pick(water ? WATER_TILES : map.floor, x, y);
-      const sx = (tile % COLUMNS) * CELL;
-      const sy = Math.floor(tile / COLUMNS) * CELL;
+      const index = x + y * MAP_SIZE;
+      const water = map.terrain[index] === Terrain.Water;
       const corner = gridToWorld(x, y);
-      context.drawImage(sheet, sx, sy, CELL, CELL, corner.x - CELL / 2, corner.y - map.floorTop, CELL, CELL);
+      const left = corner.x - TILE_CELL / 2;
+      const top = corner.y - map.floorTop;
+      draw(map.floorTiles.get(index) ?? pick(water ? WATER_TILES : map.floor, x, y), left, top);
+      const decal = map.decals.get(index);
+      if (decal !== undefined) draw(decal, left, top - DECOR_LIFT);
     }
   }
   return canvas;

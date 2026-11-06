@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { paintJumpShadow, paintSmoke } from '../art/effects';
-import { paintGround, WORLD_H, WORLD_W } from '../art/ground';
+import { DECOR_LIFT, paintGround, TILE_CELL, WORLD_H, WORLD_W } from '../art/ground';
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
 import { WALL_ORIGIN_X, WALL_ORIGIN_Y, WALL_VARIANTS, wallVariant } from '../art/walls';
@@ -250,6 +250,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.textures.addCanvas('smoke', paintSmoke());
     this.textures.addCanvas('jump-shadow', paintJumpShadow());
     this.textures.addSpriteSheet('team', sprite('team'), { frameWidth: TEAM_W, frameHeight: TEAM_H });
+    this.textures.addSpriteSheet('tiles', sprite('tiles'), { frameWidth: TILE_CELL, frameHeight: TILE_CELL });
     for (const name of SMOKE_FRAMES) this.spriteTexture(name);
   }
 
@@ -302,6 +303,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     );
   }
 
+  /** 덤불이나 바위처럼 칸 위에 서 있는 타일을 놓는다. */
+  private addTileProp(tile: number, x: number, y: number) {
+    const corner = gridToWorld(x, y);
+    const top = corner.y - this.world.map.floorTop - DECOR_LIFT;
+    this.mapImages.push(this.add.image(corner.x, top, 'tiles', tile).setOrigin(0.5, 0).setDepth(depthOf(x, y)));
+  }
+
   private showSpots(id: MapId) {
     const trees: SpriteName[] = ['oaktree', 'pinetree', 'firtree'];
     this.world.map.spots.forEach((spot, i) => {
@@ -335,7 +343,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const texture = this.textures.get(name);
     const stripW = TILE_W / 2;
     /** 그림 안에서 건물 바닥의 왼쪽 끝 위치. 그림이 바닥보다 넓으면 가운데를 맞춘다. */
-    const baseLeft = (image.width - (w + d) * stripW) / 2;
+    const baseLeft = Math.floor((image.width - (w + d) * stripW) / 2);
     const left = gridToWorld(x, y + d).x - baseLeft;
     const top = gridToWorld(x + w, y + d).y - groundPoint(name).y;
 
@@ -386,6 +394,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (building.sprite === SHOP.sprite) this.addSign(SHOP.name, left + SHOP_SIGN.x, top + SHOP_SIGN.y);
     }
     this.showSpots(id);
+    for (const { sprite, x, y } of this.world.map.trees) this.addSprite(sprite, x, y);
+    for (const { tile, x, y } of this.world.map.props) this.addTileProp(tile, x, y);
 
     this.portalSprites = this.world.portals.map((portal) => {
       const c = tileCenter(portal.x, portal.y);
