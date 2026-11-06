@@ -2,15 +2,15 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { CASTLE, FAME, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
+import { CASTLE, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
-const PAVING = [63, 63, 63, 63, 61];
+export const PAVING = [63, 63, 63, 63, 61];
 const DIRT_ROAD = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-const HEDGES = [27, 28];
-const FLOWERS = [41, 44, 46, 47];
-const WEEDS = [42, 43, 45];
+export const HEDGES = [27, 28];
+export const FLOWERS = [41, 44, 46, 47];
+export const WEEDS = [42, 43, 45];
 const LOGS = [48, 49, 50, 51, 52];
 const ROCKS = [64, 65, 67];
 
@@ -22,7 +22,7 @@ const LOG_COUNT = 3;
 const ROCK_COUNT = 3;
 const FLOWER_COUNT = 50;
 const WEED_COUNT = 40;
-const SLIM_TREES: SpriteName[] = ['pinetree', 'firtree'];
+export const SLIM_TREES: SpriteName[] = ['pinetree', 'firtree'];
 const ALL_TREES: SpriteName[] = ['pinetree', 'firtree', 'oaktree'];
 
 /**
@@ -30,9 +30,6 @@ const ALL_TREES: SpriteName[] = ['pinetree', 'firtree', 'oaktree'];
  * 뒤에 가릴 것이 적은 맵 안쪽 귀퉁이(x + y가 작은 곳)에만 심는다.
  */
 const OAK_LINE = 30;
-
-/** 포탈 주변은 이만큼 비워 둔다. */
-const PORTAL_CLEARANCE = 2;
 
 
 const STONE_ROADS: Area[] = [
@@ -113,16 +110,16 @@ const TREELESS: Area[] = [
 const POND = { x: 6, y: 30, radius: 5 };
 
 
-function eachTile([x0, y0, x1, y1]: Area, visit: (x: number, y: number) => void) {
+export function eachTile([x0, y0, x1, y1]: Area, visit: (x: number, y: number) => void) {
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) visit(x, y);
   }
 }
 
-const tileIndex = (x: number, y: number) => x + y * MAP_SIZE;
+export const tileIndex = (x: number, y: number) => x + y * MAP_SIZE;
 
 /** 같은 칸에는 항상 같은 타일이 나오도록 좌표로 고른다. */
-function pickTile(tiles: number[], x: number, y: number) {
+export function pickTile(tiles: number[], x: number, y: number) {
   return tiles[Math.floor(hash2(x, y) * tiles.length)];
 }
 
@@ -150,14 +147,9 @@ export interface Village extends Scenery {
   water: Tile[];
 }
 
-/** 시작마을: 성을 두른 돌길, 포탈로 가는 흙길, 그 사이의 집과 나무, 꽃을 배치한다. */
-export function layoutVillage(): Village {
-  const rng = new Rng(SEED);
-  const floorTiles = new Map<number, number>();
-  const decals = new Map<number, number>();
-  const props: TileProp[] = [];
-  const trees: Tree[] = [...FIXED_TREES];
-  const water: Tile[] = [];
+/** 칸을 차지해 가며 장식을 흩어 놓는 도구. 시드가 같으면 항상 같은 배치가 나온다. */
+export function makePlot(seed: number) {
+  const rng = new Rng(seed);
   /** 길, 건물, 물처럼 이미 쓰고 있는 칸 */
   const used = new Uint8Array(MAP_SIZE * MAP_SIZE);
 
@@ -192,6 +184,18 @@ export function layoutVillage(): Village {
     }
   };
 
+  return { rng, mark, isFree, hasRoom, scatter };
+}
+
+/** 시작마을: 성을 두른 돌길, 포탈로 가는 흙길, 그 사이의 집과 나무, 꽃을 배치한다. */
+export function layoutVillage(): Village {
+  const { rng, mark, isFree, hasRoom, scatter } = makePlot(SEED);
+  const floorTiles = new Map<number, number>();
+  const decals = new Map<number, number>();
+  const props: TileProp[] = [];
+  const trees: Tree[] = [...FIXED_TREES];
+  const water: Tile[] = [];
+
   for (const area of STONE_ROADS) {
     eachTile(area, (x, y) => {
       floorTiles.set(tileIndex(x, y), pickTile(PAVING, x, y));
@@ -208,7 +212,7 @@ export function layoutVillage(): Village {
   for (const { x, y, w, d } of [OFFICE, CASTLE, SHOP, ...BUILDINGS]) eachTile([x, y, x + w - 1, y + d - 1], mark);
 
   for (const portal of portalsOf('plains')) {
-    const c = PORTAL_CLEARANCE;
+    const c = PORTAL_MARGIN;
     eachTile([portal.x - c, portal.y - c, portal.x + c, portal.y + c], mark);
     mark(portal.landing.x, portal.landing.y);
   }

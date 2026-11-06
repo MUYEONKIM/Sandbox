@@ -86,6 +86,8 @@ const NOTICE_MS = 2000;
 const CASTLE_SIGN = { x: 176, y: 205 };
 /** 상점 간판을 다는 위치 (건물 그림 기준 픽셀) */
 const SHOP_SIGN = { x: 115, y: 40 };
+/** 아파트 이름을 띄우는 위치 (건물 그림 기준 픽셀). 지붕 위 가운데다. */
+const APARTMENT_SIGN = { x: 104, y: 44 };
 
 /** 작물 밭은 칸 하나가 아니라 4칸 너비로 그려진다. 그림에서 밭 가운데 위치 */
 const CROPS_CENTER = { x: 64, y: 58 };
@@ -418,6 +420,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (building.sprite === OFFICE.sprite) this.showChimneySmoke(left, top);
       if (building.sprite === CASTLE.sprite) this.addSign(CASTLE.name, left + CASTLE_SIGN.x, top + CASTLE_SIGN.y);
       if (building.sprite === SHOP.sprite) this.addSign(SHOP.name, left + SHOP_SIGN.x, top + SHOP_SIGN.y);
+      if (building.label) this.addSign(building.label, left + APARTMENT_SIGN.x, top + APARTMENT_SIGN.y);
     }
     this.showSpots(id);
     for (const { sprite, x, y } of this.world.map.trees) this.addSprite(sprite, x, y);

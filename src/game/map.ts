@@ -2,6 +2,7 @@ import { Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, MAPS, OFFICE, SHOP, type Area, type MapId } from './maps';
+import { layoutResidence } from './residence';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -12,6 +13,8 @@ export interface Building extends Tile {
   sprite: SpriteName;
   w: number;
   d: number;
+  /** 건물 위에 띄울 이름 */
+  label?: string;
 }
 
 export interface GameMap extends Scenery {
@@ -94,6 +97,10 @@ export function generateMap(id: MapId): GameMap {
     scenery = village;
     buildings.push(...village.buildings);
     for (const { x, y } of village.water) terrain[x + y * MAP_SIZE] = Terrain.Water;
+  } else if (id === 'residence') {
+    const residence = layoutResidence();
+    scenery = residence;
+    buildings.push(...residence.buildings);
   } else if (id === 'fishing') {
     spots = digPond(terrain);
   } else if (MAPS[id].work) {

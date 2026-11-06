@@ -3,6 +3,7 @@ const NAMES = [
   'Smoke0000',
   'Smoke0001',
   'Smoke0002',
+  'apartment',
   'board',
   'castle',
   'chapel',

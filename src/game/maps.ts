@@ -17,13 +17,16 @@ type Corner = keyof typeof CORNERS;
 const LANDING_ALONG = 3;
 const LANDING_ACROSS = 1;
 
+/** 포탈 주변은 이만큼 비워 둔다. */
+export const PORTAL_MARGIN = 2;
+
 /** 직사각형 구역: x0, y0, x1, y1 (끝 칸 포함) */
 export type Area = readonly [number, number, number, number];
 
 export const isInside = ([x0, y0, x1, y1]: Area, x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
 
 export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
-export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | WorkId;
+export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | 'residence' | WorkId;
 
 /** tiles.png의 타일 번호. 왼쪽 위부터 오른쪽으로 센다. 번호를 여러 번 넣으면 더 자주 나온다. */
 const GRASS = [22, 23, 24];
@@ -67,7 +70,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0xa5d04f,
     accent: 0x9df08f,
-    links: { right: 'desert', bottom: 'volcano', left: 'forest' },
+    links: { right: 'desert', bottom: 'residence', left: 'forest' },
     safe: true,
   },
   snow: {
@@ -84,7 +87,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0xa5714f,
     accent: 0xffc34d,
-    links: { left: 'plains' },
+    links: { left: 'plains', right: 'volcano' },
   },
   volcano: {
     name: '화산',
@@ -92,6 +95,14 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0x6e3a24,
     accent: 0xff6a3d,
+    links: { left: 'desert' },
+  },
+  residence: {
+    name: '주거단지',
+    floor: GRASS,
+    floorTop: BLOCK_TOP,
+    color: 0x8fcf6a,
+    accent: 0xffb3c8,
     links: { top: 'plains' },
   },
   forest: {
