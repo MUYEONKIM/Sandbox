@@ -11,6 +11,12 @@ const HAND_REACH = 7;
 const HIT_FLASH_MS = 120;
 const DOWN_ALPHA = 0.4;
 
+/** 대시 잔상: 이 간격으로 남겨서 서서히 사라지게 한다. */
+const TRAIL_INTERVAL_MS = 35;
+const TRAIL_FADE_MS = 200;
+const TRAIL_ALPHA = 0.35;
+const TRAIL_TINT = 0xbfe6ff;
+
 /** 맵 위의 캐릭터 하나. 내 캐릭터와 다른 플레이어가 함께 쓴다. */
 export class Avatar {
   private readonly image: Phaser.GameObjects.Image;
@@ -23,6 +29,8 @@ export class Avatar {
   private leftFoot = true;
   private aimAngle: number | null = null;
   private lowerGunAt = Infinity;
+  private trailing = false;
+  private nextTrailAt = 0;
   hp: number;
 
   constructor(
@@ -73,6 +81,39 @@ export class Avatar {
     this.t = ms > 0 ? 0 : 1;
     this.ms = ms;
     this.leftFoot = !this.leftFoot;
+    this.trailing = false;
+  }
+
+  /** stepTo처럼 움직이되 지나간 자리에 옅은 잔상을 남긴다. */
+  dashTo(to: Tile, ms: number) {
+    this.stepTo(to, ms);
+    this.trailing = true;
+    this.nextTrailAt = 0;
+  }
+
+  private leaveTrail() {
+    if (!this.moving) {
+      this.trailing = false;
+      return;
+    }
+    const now = this.scene.time.now;
+    if (now < this.nextTrailAt) return;
+    this.nextTrailAt = now + TRAIL_INTERVAL_MS;
+
+    const { image } = this;
+    const ghost = this.scene.add
+      .image(image.x, image.y, 'player', image.frame.name)
+      .setOrigin(image.originX, image.originY)
+      .setFlipX(image.flipX)
+      .setDepth(image.depth - 0.1)
+      .setAlpha(TRAIL_ALPHA)
+      .setTint(TRAIL_TINT);
+    this.scene.tweens.add({
+      targets: ghost,
+      alpha: 0,
+      duration: TRAIL_FADE_MS,
+      onComplete: () => ghost.destroy(),
+    });
   }
 
   /** 걷지 않고 바로 옮긴다. */
@@ -118,6 +159,7 @@ export class Avatar {
     if (this.t < 1) this.t = Math.min(1, this.t + delta / this.ms);
     if (this.scene.time.now >= this.lowerGunAt) this.lowerGun();
     this.sync();
+    if (this.trailing) this.leaveTrail();
   }
 
   private sync() {

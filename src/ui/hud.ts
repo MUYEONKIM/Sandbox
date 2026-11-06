@@ -39,7 +39,7 @@ export class Hud {
 
     const help = element('help', root);
     help.innerHTML =
-      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>대시</b> 같은 방향 두 번<br><b>설치 / 사격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
+      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>대시</b> Shift<br><b>설치 / 사격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
 
     this.panel = element('panel', root);
     this.panel.hidden = true;

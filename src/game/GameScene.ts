@@ -6,6 +6,7 @@ import { paintBullet, paintPistol } from '../art/weapons';
 import { BLOCK_IDS, paintBlock, type BlockId } from '../blocks';
 import {
   BLOCK_HEIGHT,
+  DASH_COOLDOWN_MS,
   DASH_STEP_MS,
   DASH_TILES,
   MAP_SIZE,
@@ -74,6 +75,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private mapId: MapId;
   private me!: Avatar;
   private walk: Walk | null = null;
+  /** 방향키 없이 Shift를 누르면 이 방향으로 대시한다. 처음에는 화면 아래를 본다. */
+  private lastDir: Dir = { dx: 1, dy: 1 };
+  private nextDashAt = 0;
   private readonly others = new Map<string, Avatar>();
   private bullets!: Bullets;
   private ground!: Phaser.GameObjects.Image;
@@ -226,12 +230,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.me.update(delta);
     if (this.traveling || this.down) return;
 
-    const dash = this.keys.takeDash();
-    if (dash && this.canAct) {
-      // 대시를 부른 키 입력이 대시가 끝난 뒤 한 칸 더 걷게 하지 않도록 비운다.
-      this.keys.takeDirection();
-      this.dash(dash);
-    }
+    if (this.keys.takeDash() && this.canAct) this.dash();
 
     if (this.me.moving) {
       this.steer();
@@ -257,6 +256,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private beginStep(from: Tile, dir: Dir) {
     const { dx, dy } = dir;
+    this.lastDir = dir;
     if (!this.world.canStep(from, dx, dy)) {
       this.me.face(dx, dy);
       return;
@@ -266,8 +266,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.walk = { from, dir };
   }
 
-  /** 지금 향하는 칸에서 DASH_TILES칸 더 빠르게 나아간다. 벽이나 포탈을 만나면 거기서 멈춘다. */
-  private dash({ dx, dy }: Dir) {
+  /** 누르고 있는 방향으로 DASH_TILES칸 빠르게 나아간다. 벽이나 포탈을 만나면 거기서 멈춘다. */
+  private dash() {
+    if (this.time.now < this.nextDashAt) return;
+    // 방향 입력을 여기서 비워야 대시가 끝난 뒤 한 칸 더 걷지 않는다.
+    const dir = this.keys.takeDirection() ?? this.lastDir;
+    const { dx, dy } = dir;
     let tile = this.me.tile;
     let moved = 0;
     while (moved < DASH_TILES && this.world.canStep(tile, dx, dy)) {
@@ -276,13 +280,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (this.world.portalAt(tile.x, tile.y)) break;
     }
     if (moved === 0) return;
-    this.moveTo(tile, DASH_STEP_MS * moved * Math.hypot(dx, dy));
+    this.nextDashAt = this.time.now + DASH_COOLDOWN_MS;
+    this.moveTo(tile, DASH_STEP_MS * moved * Math.hypot(dx, dy), true);
     this.me.face(dx, dy);
+    this.lastDir = dir;
     this.walk = null;
   }
 
-  private moveTo(to: Tile, ms: number) {
-    this.me.stepTo(to, ms);
+  private moveTo(to: Tile, ms: number, dashing = false) {
+    if (dashing) this.me.dashTo(to, ms);
+    else this.me.stepTo(to, ms);
     this.session.sendMove(to.x, to.y, ms);
     this.session.saveLater(to);
     this.drawRange();
@@ -597,8 +604,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     const { tile } = avatar;
     if (tile.x === x && tile.y === y) return;
-    const walking = inReach(tile, { x, y }, DASH_TILES + 1);
-    avatar.stepTo({ x, y }, walking ? ms : 0);
+    const inRange = inReach(tile, { x, y }, DASH_TILES + 1);
+    if (!inRange) avatar.teleport({ x, y });
+    else if (inReach(tile, { x, y })) avatar.stepTo({ x, y }, ms);
+    else avatar.dashTo({ x, y }, ms);
   }
 
   onShot({ id, fromX, fromY, toX, toY }: PlayerShot) {

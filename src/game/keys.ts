@@ -21,9 +21,6 @@ const MOVE_KEYS: Record<string, readonly [number, number]> = {
   KeyD: RIGHT,
 };
 
-/** 같은 방향 키를 이 시간 안에 다시 누르면 대시한다. */
-const DOUBLE_TAP_MS = 260;
-
 /**
  * 화면 방향을 격자 방향으로 바꾼다.
  * 위 키는 화면 위쪽 칸(-1,-1), 오른쪽 키는 화면 오른쪽 칸(+1,-1)으로 간다.
@@ -46,8 +43,7 @@ export class Keys {
   private readonly held = new Set<string>();
   /** 프레임 사이에 눌렀다 뗀 키도 한 칸은 움직이도록 남겨 둔다. */
   private readonly tapped = new Set<string>();
-  private lastTap: { direction: readonly [number, number]; time: number } | null = null;
-  private dash: Dir | null = null;
+  private dashPressed = false;
 
   constructor(private readonly actions: KeyActions) {
     window.addEventListener('keydown', (e) => this.down(e));
@@ -64,7 +60,6 @@ export class Keys {
       if (e.repeat) return;
       this.held.add(e.code);
       this.tapped.add(e.code);
-      this.detectDoubleTap(MOVE_KEYS[e.code]);
       return;
     }
     if (e.repeat) return;
@@ -72,6 +67,8 @@ export class Keys {
     const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
     if (digit) {
       this.actions.onSlot(Number(digit[1]) - 1);
+    } else if (e.key === 'Shift' || e.code.startsWith('Shift')) {
+      this.dashPressed = true;
     } else if (e.code === 'KeyI') {
       this.actions.onInventory();
     } else if (e.code === 'Escape') {
@@ -80,13 +77,6 @@ export class Keys {
       e.preventDefault();
       this.actions.onChat();
     }
-  }
-
-  private detectDoubleTap(direction: readonly [number, number]) {
-    const time = performance.now();
-    const repeated = this.lastTap?.direction === direction && time - this.lastTap.time < DOUBLE_TAP_MS;
-    this.lastTap = repeated ? null : { direction, time };
-    if (repeated) this.dash = this.currentDir();
   }
 
   private currentDir() {
@@ -106,10 +96,10 @@ export class Keys {
     return dir;
   }
 
-  /** 대시 입력이 있었으면 그 방향을 돌려준다. */
-  takeDash(): Dir | null {
-    const { dash } = this;
-    this.dash = null;
-    return dash;
+  /** Shift를 눌렀으면 true를 돌려주고 입력을 지운다. */
+  takeDash() {
+    const pressed = this.dashPressed;
+    this.dashPressed = false;
+    return pressed;
   }
 }
