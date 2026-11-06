@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { CHAR_H, CHAR_STEPS, CHAR_W, paintCharacterSheet } from '../art/character';
+import { paintSmoke } from '../art/effects';
 import { paintGround, WORLD_H, WORLD_W } from '../art/ground';
 import { paintPortal, PORTAL_FRAMES, PORTAL_ORIGIN_Y } from '../art/props';
 import { paintBullet, paintPistol } from '../art/weapons';
@@ -152,6 +153,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const id of BLOCK_IDS) this.textures.addCanvas(`block-${id}`, paintBlock(id));
     this.textures.addCanvas('pistol', paintPistol());
     this.textures.addCanvas('bullet', paintBullet());
+    this.textures.addCanvas('smoke', paintSmoke());
 
     const sheet = this.textures.addCanvas('player', paintCharacterSheet())!;
     for (let i = 0; i < CHAR_STEPS * 2; i++) {

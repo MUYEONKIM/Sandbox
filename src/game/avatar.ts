@@ -11,11 +11,14 @@ const HAND_REACH = 7;
 const HIT_FLASH_MS = 120;
 const DOWN_ALPHA = 0.4;
 
-/** 대시 잔상: 이 간격으로 남겨서 서서히 사라지게 한다. */
-const TRAIL_INTERVAL_MS = 35;
-const TRAIL_FADE_MS = 200;
-const TRAIL_ALPHA = 0.35;
-const TRAIL_TINT = 0xbfe6ff;
+/** 대시 연기: 출발할 때 한 번 피어오르고, 달리는 동안 조금씩 남는다. */
+const SMOKE_BURST = 3;
+const SMOKE_INTERVAL_MS = 40;
+const SMOKE_LIFE_MS = 380;
+const SMOKE_ALPHA = 0.75;
+/** 연기가 흩어지는 좌우 폭과 떠오르는 높이 (아트 픽셀) */
+const SMOKE_SPREAD = 7;
+const SMOKE_RISE = 9;
 
 /** 맵 위의 캐릭터 하나. 내 캐릭터와 다른 플레이어가 함께 쓴다. */
 export class Avatar {
@@ -29,8 +32,8 @@ export class Avatar {
   private leftFoot = true;
   private aimAngle: number | null = null;
   private lowerGunAt = Infinity;
-  private trailing = false;
-  private nextTrailAt = 0;
+  private smoking = false;
+  private nextSmokeAt = 0;
   hp: number;
 
   constructor(
@@ -81,38 +84,47 @@ export class Avatar {
     this.t = ms > 0 ? 0 : 1;
     this.ms = ms;
     this.leftFoot = !this.leftFoot;
-    this.trailing = false;
+    this.smoking = false;
   }
 
-  /** stepTo처럼 움직이되 지나간 자리에 옅은 잔상을 남긴다. */
+  /** stepTo처럼 움직이되 발밑에 하얀 연기를 흩날린다. */
   dashTo(to: Tile, ms: number) {
+    for (let i = 0; i < SMOKE_BURST; i++) this.puff();
     this.stepTo(to, ms);
-    this.trailing = true;
-    this.nextTrailAt = 0;
+    this.smoking = true;
+    this.nextSmokeAt = this.scene.time.now + SMOKE_INTERVAL_MS;
   }
 
-  private leaveTrail() {
+  private leaveSmoke() {
     if (!this.moving) {
-      this.trailing = false;
+      this.smoking = false;
       return;
     }
     const now = this.scene.time.now;
-    if (now < this.nextTrailAt) return;
-    this.nextTrailAt = now + TRAIL_INTERVAL_MS;
+    if (now < this.nextSmokeAt) return;
+    this.nextSmokeAt = now + SMOKE_INTERVAL_MS;
+    this.puff();
+  }
 
-    const { image } = this;
-    const ghost = this.scene.add
-      .image(image.x, image.y, 'player', image.frame.name)
-      .setOrigin(image.originX, image.originY)
-      .setFlipX(image.flipX)
-      .setDepth(image.depth - 0.1)
-      .setAlpha(TRAIL_ALPHA)
-      .setTint(TRAIL_TINT);
+  /** 연기 한 덩이를 발밑에 놓고, 흩어지며 떠올라 사라지게 한다. */
+  private puff() {
+    const { x, y, depth } = this.image;
+    const spread = () => (Math.random() - 0.5) * SMOKE_SPREAD * 2;
+    const scale = 0.6 + Math.random() * 0.5;
+    const smoke = this.scene.add
+      .image(x + spread(), y + Math.random() * 3, 'smoke')
+      .setDepth(depth - 0.1)
+      .setAlpha(SMOKE_ALPHA)
+      .setScale(scale);
     this.scene.tweens.add({
-      targets: ghost,
+      targets: smoke,
+      x: smoke.x + spread(),
+      y: smoke.y - SMOKE_RISE * (0.5 + Math.random() * 0.5),
+      scale: scale * 1.7,
       alpha: 0,
-      duration: TRAIL_FADE_MS,
-      onComplete: () => ghost.destroy(),
+      duration: SMOKE_LIFE_MS,
+      ease: 'Sine.easeOut',
+      onComplete: () => smoke.destroy(),
     });
   }
 
@@ -159,7 +171,7 @@ export class Avatar {
     if (this.t < 1) this.t = Math.min(1, this.t + delta / this.ms);
     if (this.scene.time.now >= this.lowerGunAt) this.lowerGun();
     this.sync();
-    if (this.trailing) this.leaveTrail();
+    if (this.smoking) this.leaveSmoke();
   }
 
   private sync() {
