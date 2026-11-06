@@ -1,3 +1,4 @@
+import { MAX_HP } from '../config';
 import { element } from './dom';
 
 const BUBBLE_MS = 4000;
@@ -5,6 +6,7 @@ const BUBBLE_MS = 4000;
 interface Tag {
   root: HTMLElement;
   bubble: HTMLElement;
+  hp: HTMLElement | null;
   timer: number;
 }
 
@@ -20,7 +22,13 @@ export class NameTags {
     const bubble = element('bubble', root);
     bubble.hidden = true;
     element(portal ? 'player-name portal-name' : 'player-name', root).textContent = nickname;
-    this.tags.set(id, { root, bubble, timer: 0 });
+    const hp = portal ? null : element('player-hp-fill', element('player-hp', root));
+    this.tags.set(id, { root, bubble, hp, timer: 0 });
+  }
+
+  setHp(id: string, hp: number) {
+    const bar = this.tags.get(id)?.hp;
+    if (bar) bar.style.width = `${(hp / MAX_HP) * 100}%`;
   }
 
   /** 화면 좌표 (x, y) 위로 옮긴다. */

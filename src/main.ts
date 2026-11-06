@@ -24,6 +24,7 @@ function enterGame(profile: Profile) {
     await signOut();
     location.reload();
   });
+  hud.setHp(profile.hp);
   const minimap = new Minimap(side);
   const chat = new ChatBox(root, (text) => void session.sendChat(text));
   const tags = new NameTags(root);
@@ -72,4 +73,6 @@ async function main() {
   if (profile) enterGame(profile);
 }
 
-void main();
+main().catch(() => {
+  document.getElementById('game')!.textContent = '서버에 연결하지 못했습니다. 잠시 후 새로고침해 주세요.';
+});

@@ -4,20 +4,25 @@ export interface Dir {
   dy: number;
 }
 
+const UP = [0, -1] as const;
+const DOWN = [0, 1] as const;
+const LEFT = [-1, 0] as const;
+const RIGHT = [1, 0] as const;
+
 /** 키마다 화면 기준 방향 (x: 오른쪽이 +, y: 아래가 +) */
 const MOVE_KEYS: Record<string, readonly [number, number]> = {
-  ArrowUp: [0, -1],
-  KeyW: [0, -1],
-  ArrowDown: [0, 1],
-  KeyS: [0, 1],
-  ArrowLeft: [-1, 0],
-  KeyA: [-1, 0],
-  ArrowRight: [1, 0],
-  KeyD: [1, 0],
+  ArrowUp: UP,
+  KeyW: UP,
+  ArrowDown: DOWN,
+  KeyS: DOWN,
+  ArrowLeft: LEFT,
+  KeyA: LEFT,
+  ArrowRight: RIGHT,
+  KeyD: RIGHT,
 };
 
-/** 두 키를 함께 누를 때 손가락이 어긋나는 시간만큼 첫걸음을 기다린다. */
-const COMBO_MS = 50;
+/** 같은 방향 키를 이 시간 안에 다시 누르면 대시한다. */
+const DOUBLE_TAP_MS = 260;
 
 /**
  * 화면 방향을 격자 방향으로 바꾼다.
@@ -41,7 +46,8 @@ export class Keys {
   private readonly held = new Set<string>();
   /** 프레임 사이에 눌렀다 뗀 키도 한 칸은 움직이도록 남겨 둔다. */
   private readonly tapped = new Set<string>();
-  private readyAt = 0;
+  private lastTap: { direction: readonly [number, number]; time: number } | null = null;
+  private dash: Dir | null = null;
 
   constructor(private readonly actions: KeyActions) {
     window.addEventListener('keydown', (e) => this.down(e));
@@ -56,9 +62,9 @@ export class Keys {
     if (e.code in MOVE_KEYS) {
       e.preventDefault();
       if (e.repeat) return;
-      if (!this.held.size && !this.tapped.size) this.readyAt = performance.now() + COMBO_MS;
       this.held.add(e.code);
       this.tapped.add(e.code);
+      this.detectDoubleTap(MOVE_KEYS[e.code]);
       return;
     }
     if (e.repeat) return;
@@ -76,16 +82,34 @@ export class Keys {
     }
   }
 
-  /** 지금 움직일 방향을 돌려준다. */
-  takeDirection(): Dir | null {
-    if (performance.now() < this.readyAt) return null;
+  private detectDoubleTap(direction: readonly [number, number]) {
+    const time = performance.now();
+    const repeated = this.lastTap?.direction === direction && time - this.lastTap.time < DOUBLE_TAP_MS;
+    this.lastTap = repeated ? null : { direction, time };
+    if (repeated) this.dash = this.currentDir();
+  }
+
+  private currentDir() {
     let sx = 0;
     let sy = 0;
     for (const code of new Set([...this.held, ...this.tapped])) {
       sx += MOVE_KEYS[code][0];
       sy += MOVE_KEYS[code][1];
     }
-    this.tapped.clear();
     return toDir(Math.sign(sx), Math.sign(sy));
+  }
+
+  /** 지금 움직일 방향을 돌려준다. */
+  takeDirection(): Dir | null {
+    const dir = this.currentDir();
+    this.tapped.clear();
+    return dir;
+  }
+
+  /** 대시 입력이 있었으면 그 방향을 돌려준다. */
+  takeDash(): Dir | null {
+    const { dash } = this;
+    this.dash = null;
+    return dash;
   }
 }

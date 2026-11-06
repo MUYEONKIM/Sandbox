@@ -2,15 +2,29 @@ import Phaser from 'phaser';
 import { CHAR_H, CHAR_STEPS, CHAR_W, paintCharacterSheet } from '../art/character';
 import { paintGround, WORLD_H, WORLD_W } from '../art/ground';
 import { paintPortal, PORTAL_FRAMES, PORTAL_ORIGIN_Y } from '../art/props';
+import { paintBullet, paintPistol } from '../art/weapons';
 import { BLOCK_IDS, paintBlock, type BlockId } from '../blocks';
-import { BLOCK_HEIGHT, MAP_SIZE, PLACE_RANGE, STEP_MS, TILE_H, TILE_W, ZOOM } from '../config';
+import {
+  BLOCK_HEIGHT,
+  DASH_STEP_MS,
+  DASH_TILES,
+  MAP_SIZE,
+  MAX_HP,
+  PLACE_RANGE,
+  STEP_MS,
+  TILE_H,
+  TILE_W,
+  ZOOM,
+} from '../config';
 import { depthOf, gridToWorld, tileCenter, worldToGrid } from '../iso';
-import type { ChatMessage, GameSession, PlacedBlock, PlayerMove, SessionEvents } from '../net/session';
+import { isWeapon, WEAPONS, type WeaponId } from '../items';
+import type { ChatMessage, GameSession, PlacedBlock, PlayerMove, PlayerShot, SessionEvents } from '../net/session';
 import type { ChatBox } from '../ui/chat';
 import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import { Avatar } from './avatar';
+import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { generateMap } from './map';
@@ -22,8 +36,8 @@ const DEPTH_OVERLAY = 1;
 
 /** 닉네임을 띄울 높이: 발에서 머리 위까지 (아트 픽셀) */
 const HEAD_HEIGHT = 30;
-const PORTAL_TAG_HEIGHT = 48;
-const PORTAL_FRAME_MS = 140;
+const PORTAL_TAG_HEIGHT = 44;
+const PORTAL_FRAME_MS = 100;
 
 /** 맵 가장자리에서도 캐릭터가 화면 UI에 가리지 않도록 카메라에 주는 여백 (아트 픽셀) */
 const CAMERA_PAD_X = 80;
@@ -32,17 +46,36 @@ const CAMERA_PAD_Y = 110;
 const FADE_MS = 200;
 const MINIMAP_INTERVAL_MS = 100;
 
+/** 프레임이 오래 끊겼을 때 캐릭터가 순간이동하지 않도록 한 프레임의 시간을 제한한다. */
+const MAX_FRAME_MS = 100;
+
+/** 칸 이동의 이 지점까지는 방향을 바꿀 수 있다. */
+const TURN_WINDOW = 0.5;
+
+/** 총을 쏜 다른 플레이어의 총이 보이는 시간 */
+const REMOTE_AIM_MS = 700;
+const RESPAWN_MS = 3000;
+const RESPAWN_RETRY_MS = 1000;
+
 interface PortalSprite {
   portal: Portal;
   image: Phaser.GameObjects.Image;
   tag: string;
 }
 
+/** 지금 하고 있는 한 칸 걸음. 방향을 바꿀 때 출발 칸으로 돌아가 다시 계산한다. */
+interface Walk {
+  from: Tile;
+  dir: Dir;
+}
+
 export class GameScene extends Phaser.Scene implements SessionEvents {
   world!: World;
   private mapId: MapId;
   private me!: Avatar;
+  private walk: Walk | null = null;
   private readonly others = new Map<string, Avatar>();
+  private bullets!: Bullets;
   private ground!: Phaser.GameObjects.Image;
   private ghost!: Phaser.GameObjects.Image;
   private marker!: Phaser.GameObjects.Graphics;
@@ -51,6 +84,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private portalSprites: PortalSprite[] = [];
   private portalFrame = 0;
   private traveling = false;
+  private down = false;
+  private armed = false;
+  private nextShotAt = 0;
   private nextMinimapAt = 0;
 
   /** 마우스가 가리키는 설치된 블록 */
@@ -76,9 +112,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
     this.showMap(this.mapId);
 
-    const { id, nickname, x, y } = this.session.profile;
-    this.me = new Avatar(this, { x, y });
+    const { id, nickname, x, y, hp } = this.session.profile;
+    this.me = new Avatar(this, { x, y }, hp);
     this.tags.add(id, nickname);
+    this.tags.setHp(id, hp);
+
+    this.bullets = new Bullets(this, {
+      isSolid: (tx, ty) => this.world.blockAt(tx, ty) !== undefined,
+      targets: () => this.bulletTargets(),
+    });
 
     this.range = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.marker = this.add.graphics().setDepth(DEPTH_OVERLAY);
@@ -91,18 +133,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.hud.isOpen || this.traveling) return;
+      if (this.hud.isOpen || this.traveling || this.down) return;
       this.updateHover();
       if (pointer.rightButtonDown()) void this.collectBlock();
-      else if (pointer.leftButtonDown()) this.placeBlock();
+      else if (pointer.leftButtonDown()) this.useSelectedItem();
     });
 
     this.drawRange();
     void this.session.connect(this);
+    if (this.me.isDown) this.goDown();
   }
 
   private createTextures() {
     for (const id of BLOCK_IDS) this.textures.addCanvas(`block-${id}`, paintBlock(id));
+    this.textures.addCanvas('pistol', paintPistol());
+    this.textures.addCanvas('bullet', paintBullet());
 
     const sheet = this.textures.addCanvas('player', paintCharacterSheet())!;
     for (let i = 0; i < CHAR_STEPS * 2; i++) {
@@ -157,20 +202,41 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.tags.remove(tag);
     }
     this.portalSprites = [];
+    this.bullets.clear();
   }
 
-  update(time: number, delta: number) {
+  update(time: number) {
+    // Phaser의 delta는 포커스가 바뀐 뒤 잠시 16.7ms로 묶여 프레임이 낮으면 움직임이 느려진다.
+    const delta = Math.min(this.game.loop.rawDelta, MAX_FRAME_MS);
     this.advancePlayer(delta);
     for (const avatar of this.others.values()) avatar.update(delta);
+    this.bullets.update(delta);
+    this.updateAim();
     this.animatePortals(time);
     this.updateHover();
     this.placeNameTags();
     this.updateMinimap(time);
   }
 
+  private get canAct() {
+    return !this.hud.isOpen && !this.chat.isOpen && !this.traveling && !this.down;
+  }
+
   private advancePlayer(delta: number) {
     this.me.update(delta);
-    if (this.me.moving || this.traveling) return;
+    if (this.traveling || this.down) return;
+
+    const dash = this.keys.takeDash();
+    if (dash && this.canAct) {
+      // 대시를 부른 키 입력이 대시가 끝난 뒤 한 칸 더 걷게 하지 않도록 비운다.
+      this.keys.takeDirection();
+      this.dash(dash);
+    }
+
+    if (this.me.moving) {
+      this.steer();
+      return;
+    }
 
     const portal = this.world.portalAt(this.me.tile.x, this.me.tile.y);
     if (portal) {
@@ -178,17 +244,44 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     const dir = this.keys.takeDirection();
-    if (dir && !this.hud.isOpen && !this.chat.isOpen) this.beginStep(dir);
+    if (dir && this.canAct) this.beginStep(this.me.tile, dir);
   }
 
-  private beginStep({ dx, dy }: Dir) {
-    const from = this.me.tile;
+  /** 칸 이동을 막 시작했다면 새로 누른 방향으로 바로 튼다. 다음 칸까지 기다리지 않아도 된다. */
+  private steer() {
+    if (!this.walk || this.me.progress > TURN_WINDOW || !this.canAct) return;
+    const dir = this.keys.takeDirection();
+    if (!dir || (dir.dx === this.walk.dir.dx && dir.dy === this.walk.dir.dy)) return;
+    this.beginStep(this.walk.from, dir);
+  }
+
+  private beginStep(from: Tile, dir: Dir) {
+    const { dx, dy } = dir;
     if (!this.world.canStep(from, dx, dy)) {
       this.me.face(dx, dy);
       return;
     }
-    const to = { x: from.x + dx, y: from.y + dy };
-    const ms = STEP_MS * Math.hypot(dx, dy);
+    this.moveTo({ x: from.x + dx, y: from.y + dy }, STEP_MS * Math.hypot(dx, dy));
+    this.me.face(dx, dy);
+    this.walk = { from, dir };
+  }
+
+  /** 지금 향하는 칸에서 DASH_TILES칸 더 빠르게 나아간다. 벽이나 포탈을 만나면 거기서 멈춘다. */
+  private dash({ dx, dy }: Dir) {
+    let tile = this.me.tile;
+    let moved = 0;
+    while (moved < DASH_TILES && this.world.canStep(tile, dx, dy)) {
+      tile = { x: tile.x + dx, y: tile.y + dy };
+      moved++;
+      if (this.world.portalAt(tile.x, tile.y)) break;
+    }
+    if (moved === 0) return;
+    this.moveTo(tile, DASH_STEP_MS * moved * Math.hypot(dx, dy));
+    this.me.face(dx, dy);
+    this.walk = null;
+  }
+
+  private moveTo(to: Tile, ms: number) {
     this.me.stepTo(to, ms);
     this.session.sendMove(to.x, to.y, ms);
     this.session.saveLater(to);
@@ -247,6 +340,96 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.cameras.main.getWorldPoint(pointer.x, pointer.y);
   }
 
+  private get selectedWeapon(): WeaponId | null {
+    const stack = this.inventory.selectedStack;
+    return stack && isWeapon(stack.id) ? stack.id : null;
+  }
+
+  /** 무기를 들고 있으면 총을 마우스 쪽으로 겨누고 커서를 조준점으로 바꾼다. */
+  private updateAim() {
+    const armed = this.selectedWeapon !== null && !this.down;
+    if (armed !== this.armed) {
+      this.armed = armed;
+      this.input.setDefaultCursor(armed ? 'crosshair' : 'default');
+      if (!armed) this.me.lowerGun();
+    }
+    if (!armed) return;
+    const w = this.pointerWorld();
+    const { x, y } = this.me.sprite;
+    this.me.aim(Math.atan2(w.y - (y - BULLET_HEIGHT), w.x - x));
+  }
+
+  private useSelectedItem() {
+    const weapon = this.selectedWeapon;
+    if (weapon) this.shoot(weapon);
+    else this.placeBlock();
+  }
+
+  private shoot(weapon: WeaponId) {
+    const { cooldownMs, range } = WEAPONS[weapon];
+    if (this.time.now < this.nextShotAt) return;
+    this.nextShotAt = this.time.now + cooldownMs;
+
+    const { x, y } = this.me.position();
+    const fromX = x + 0.5;
+    const fromY = y + 0.5;
+    // 총알이 떠서 날아가므로 그 높이만큼 내려서 마우스가 가리킨 곳을 지나가게 한다.
+    const w = this.pointerWorld();
+    const aim = worldToGrid(w.x, w.y + BULLET_HEIGHT);
+    const dx = aim.gx - fromX;
+    const dy = aim.gy - fromY;
+    if (dx === 0 && dy === 0) return;
+
+    this.me.face(Math.sign(dx), Math.sign(dy));
+    this.bullets.fire(this.session.profile.id, fromX, fromY, aim.gx, aim.gy, range, (target) => {
+      void this.session.hitPlayer(target);
+    });
+    this.session.sendShot(fromX, fromY, aim.gx, aim.gy);
+  }
+
+  private bulletTargets(): BulletTarget[] {
+    const targets: BulletTarget[] = [];
+    const add = (id: string, avatar: Avatar) => {
+      if (avatar.isDown) return;
+      const { x, y } = avatar.position();
+      targets.push({ id, x: x + 0.5, y: y + 0.5 });
+    };
+    add(this.session.profile.id, this.me);
+    for (const [id, avatar] of this.others) add(id, avatar);
+    return targets;
+  }
+
+  /** 체력이 0이 되면 잠시 뒤 맵 중앙에서 다시 시작한다. */
+  private goDown() {
+    if (this.down) return;
+    this.down = true;
+    this.hud.showDown(true);
+    this.time.delayedCall(RESPAWN_MS, () => void this.respawn());
+  }
+
+  private async respawn() {
+    if (!(await this.session.respawn())) {
+      this.time.delayedCall(RESPAWN_RETRY_MS, () => void this.respawn());
+      return;
+    }
+    const center = Math.floor(MAP_SIZE / 2);
+    const tile = { x: center, y: center };
+    this.me.teleport(tile);
+    this.setMyHp(MAX_HP);
+    this.down = false;
+    this.hud.showDown(false);
+    this.drawRange();
+    this.session.sendMove(tile.x, tile.y, 0);
+    this.session.saveLater(tile);
+  }
+
+  private setMyHp(hp: number) {
+    this.me.setHp(hp);
+    this.hud.setHp(hp);
+    this.tags.setHp(this.session.profile.id, hp);
+    if (hp <= 0) this.goDown();
+  }
+
   private hitsCube(x: number, y: number, wx: number, wy: number) {
     const c = tileCenter(x, y);
     const across = Math.abs(wx - c.x) / (TILE_W / 2);
@@ -302,9 +485,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
 
-    if (!this.hoveredGround) return;
-    const { x, y } = this.hoveredGround;
     const stack = this.inventory.selectedStack;
+    if (!this.hoveredGround || (stack && isWeapon(stack.id))) return;
+    const { x, y } = this.hoveredGround;
     const ok = stack !== null && this.canPlaceAt(this.hoveredGround);
     this.marker.setDepth(DEPTH_OVERLAY);
     this.strokeTile(x, y, ok ? 0xffffff : 0xff6b5e, 0);
@@ -348,9 +531,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private placeBlock() {
     const target = this.hoveredGround;
-    if (!target || !this.inventory.selectedStack || !this.canPlaceAt(target)) return;
-    const id = this.inventory.takeSelected();
-    if (!id) return;
+    const stack = this.inventory.selectedStack;
+    if (!target || !stack || isWeapon(stack.id) || !this.canPlaceAt(target)) return;
+    const id = stack.id;
+    this.inventory.takeSelected();
 
     // 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
     const { mapId } = this;
@@ -398,18 +582,41 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.me.tile;
   }
 
-  onMove({ id, nickname, x, y, ms }: PlayerMove) {
+  currentHp() {
+    return this.me.hp;
+  }
+
+  onMove({ id, nickname, x, y, ms, hp }: PlayerMove) {
     let avatar = this.others.get(id);
     if (!avatar) {
-      avatar = new Avatar(this, { x, y });
+      avatar = new Avatar(this, { x, y }, hp);
       this.others.set(id, avatar);
       this.tags.add(id, nickname);
+      this.tags.setHp(id, hp);
       return;
     }
     const { tile } = avatar;
     if (tile.x === x && tile.y === y) return;
-    const adjacent = inReach(tile, { x, y });
-    avatar.stepTo({ x, y }, adjacent ? ms : 0);
+    const walking = inReach(tile, { x, y }, DASH_TILES + 1);
+    avatar.stepTo({ x, y }, walking ? ms : 0);
+  }
+
+  onShot({ id, fromX, fromY, toX, toY }: PlayerShot) {
+    const avatar = this.others.get(id);
+    if (!avatar) return;
+    const from = gridToWorld(fromX, fromY);
+    const to = gridToWorld(toX, toY);
+    avatar.aim(Math.atan2(to.y - from.y, to.x - from.x), REMOTE_AIM_MS);
+    this.bullets.fire(id, fromX, fromY, toX, toY, WEAPONS.pistol.range);
+  }
+
+  onHp(id: string, hp: number) {
+    if (id === this.session.profile.id) {
+      this.setMyHp(hp);
+      return;
+    }
+    this.others.get(id)?.setHp(hp);
+    this.tags.setHp(id, hp);
   }
 
   onRoster(ids: Set<string>) {

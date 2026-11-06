@@ -12,7 +12,15 @@ export const MAP_SIZE = 46;
 export const PLACE_RANGE = 1;
 
 /** 마름모 변을 따라 한 칸 이동하는 시간 (ms). 꼭짓점 방향은 거리만큼 더 걸린다. */
-export const STEP_MS = 150;
+export const STEP_MS = 120;
+
+/** 대시로 더 나아가는 칸 수. 처음 누른 한 칸을 더해 모두 3칸을 간다. */
+export const DASH_TILES = 2;
+
+/** 대시 중 한 칸을 지나는 시간 (ms) */
+export const DASH_STEP_MS = 55;
+
+export const MAX_HP = 100;
 
 /** 설치 블록의 높이 (아트 픽셀) */
 export const BLOCK_HEIGHT = 16;

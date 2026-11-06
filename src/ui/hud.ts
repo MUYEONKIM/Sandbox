@@ -1,8 +1,12 @@
-import { BLOCK_IDS, BLOCKS, paintBlock, type BlockId } from '../blocks';
+import { BLOCK_IDS } from '../blocks';
+import { MAX_HP } from '../config';
 import { BAG_SIZE, HOTBAR_SIZE, type Inventory } from '../game/inventory';
+import { itemName, paintItem, WEAPON_IDS, type ItemId } from '../items';
 import { element } from './dom';
 
-const ICONS = Object.fromEntries(BLOCK_IDS.map((id) => [id, paintBlock(id).toDataURL()])) as Record<BlockId, string>;
+const ICONS = Object.fromEntries(
+  [...BLOCK_IDS, ...WEAPON_IDS].map((id) => [id, paintItem(id).toDataURL()]),
+) as Record<ItemId, string>;
 
 /** 화면 위 UI: 단축키 칸, 인벤토리 창, 조작 안내 */
 export class Hud {
@@ -11,6 +15,9 @@ export class Hud {
   private readonly dragIcon: HTMLImageElement;
   private readonly slots: HTMLElement[] = [];
   private readonly connection: HTMLElement;
+  private readonly hpFill: HTMLElement;
+  private readonly hpText: HTMLElement;
+  private readonly downNotice: HTMLElement;
   private dragFrom: number | null = null;
 
   constructor(
@@ -32,15 +39,22 @@ export class Hud {
 
     const help = element('help', root);
     help.innerHTML =
-      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>설치</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
+      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>대시</b> 같은 방향 두 번<br><b>설치 / 사격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
 
     this.panel = element('panel', root);
     this.panel.hidden = true;
     element('panel-title', this.panel).textContent = '인벤토리';
     const bag = element('slots bag', this.panel);
 
+    this.downNotice = element('down-notice', root);
+    this.downNotice.textContent = '쓰러졌습니다. 잠시 후 맵 중앙에서 다시 시작합니다.';
+    this.downNotice.hidden = true;
+
     const bottom = element('bottom', root);
     this.label = element('selected-name', bottom);
+    const hp = element('hp', bottom);
+    this.hpFill = element('hp-fill', hp);
+    this.hpText = element('hp-text', hp);
     const hotbar = element('slots hotbar', bottom);
 
     for (let i = 0; i < HOTBAR_SIZE + BAG_SIZE; i++) {
@@ -64,6 +78,15 @@ export class Hud {
 
   setConnected(connected: boolean) {
     this.connection.hidden = connected;
+  }
+
+  setHp(hp: number) {
+    this.hpFill.style.width = `${(hp / MAX_HP) * 100}%`;
+    this.hpText.textContent = `HP ${hp} / ${MAX_HP}`;
+  }
+
+  showDown(down: boolean) {
+    this.downNotice.hidden = !down;
   }
 
   toggle() {
@@ -140,6 +163,6 @@ export class Hud {
       slot.classList.toggle('selected', i === this.inventory.selected);
     });
     const selected = this.inventory.selectedStack;
-    this.label.textContent = selected ? BLOCKS[selected.id].name : '';
+    this.label.textContent = selected ? itemName(selected.id) : '';
   }
 }

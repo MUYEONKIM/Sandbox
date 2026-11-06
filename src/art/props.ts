@@ -1,6 +1,6 @@
 import { TILE_H, TILE_W } from '../config';
 import { paintCube, type FaceShader } from './cube';
-import { frac, hash2, Pixels, ramp, Rng, shade, type Color } from './pixels';
+import { clamp01, frac, hash2, Pixels, ramp, Rng, shade, type Color } from './pixels';
 
 /** canvas와, 그 안에서 칸 중심에 맞출 지점 */
 export interface Art {
@@ -125,43 +125,61 @@ export function paintBanner(): Art {
   return { canvas: p.toCanvas(), ax: cx, ay: 50 };
 }
 
-export const PORTAL_FRAMES = 4;
-const PORTAL_H = 58;
-const PORTAL_BASE = 50;
+export const PORTAL_FRAMES = 8;
+const PORTAL_W = 48;
+const PORTAL_H = 80;
+const PORTAL_BASE = 66;
+const PORTAL_SPARKS = 14;
 /** 포탈 그림에서 칸 중심에 맞출 세로 위치 (0~1) */
 export const PORTAL_ORIGIN_Y = PORTAL_BASE / PORTAL_H;
 
-/** 돌 고리 안에서 소용돌이가 도는 포탈. frame을 바꿔 가며 그리면 움직여 보인다. */
+/** 투명도를 몇 단계로 끊어 도트 느낌을 살린다. */
+const stepAlpha = (a: number) => Math.round(clamp01(a) * 5) * 51;
+
+/** 땅에 빛나는 고리가 있고 그 위로 빛기둥과 빛 알갱이가 솟아오르는 포탈 */
 export function paintPortal(color: Color, frame: number): Art {
-  const p = new Pixels(36, PORTAL_H);
-  const cx = 18;
-  const cy = 24;
-  const rx = 13;
-  const ry = 20;
+  const p = new Pixels(PORTAL_W, PORTAL_H);
+  const cx = PORTAL_W / 2;
   const base = PORTAL_BASE;
-  const swirl = [shade(color, 0.45), shade(color, 0.75), color, shade(color, 1.35)];
-  const phase = (frame / PORTAL_FRAMES) * Math.PI * 2;
+  const phase = frame / PORTAL_FRAMES;
+  const bright = shade(color, 1.5);
+  const beamTop = 8;
 
-  p.ellipse(cx, base, 16, 8, color, 90);
-  p.ellipse(cx, base - 2, 13, 6, 0x6f7480);
-  p.ellipse(cx, base - 3, 11, 5, 0x9aa0aa);
-
-  for (let y = 0; y < p.h; y++) {
-    for (let x = 0; x < p.w; x++) {
-      const nx = (x + 0.5 - cx) / rx;
-      const ny = (y + 0.5 - cy) / ry;
-      const r = Math.hypot(nx, ny);
-      if (r > 1) continue;
-      if (r > 0.8) {
-        const stone = Math.floor((Math.atan2(ny, nx) + Math.PI) * 2.4);
-        p.set(x, y, [0x8f95a0, 0xa7adb5, 0x7f8590][stone % 3]);
-      } else {
-        const wave = Math.sin(Math.atan2(ny, nx) * 3 + r * 9 - phase) * 0.5 + 0.5;
-        p.set(x, y, ramp(swirl, wave * 0.75 + (1 - r) * 0.25, x, y));
-      }
+  // 위로 올라가며 흐려지는 빛기둥
+  for (let y = beamTop; y < base; y++) {
+    const rise = (base - y) / (base - beamTop);
+    const halfWidth = 15 - rise * 5;
+    for (let x = 0; x < PORTAL_W; x++) {
+      const across = Math.abs(x + 0.5 - cx) / halfWidth;
+      if (across >= 1) continue;
+      const streak = 0.65 + 0.35 * Math.sin(x * 1.1 + rise * 8 - phase * Math.PI * 2);
+      const a = (1 - rise) ** 1.3 * (1 - across * across) * streak;
+      if (stepAlpha(a) > 0) p.set(x, y, a > 0.5 ? bright : color, stepAlpha(a));
     }
   }
-  p.outlineOuter(0x2b2430);
+
+  // 땅에서 퍼지는 빛과 고리
+  const pulse = 1 + Math.sin(phase * Math.PI * 2) * 0.08;
+  for (let y = base - 14; y < base + 14; y++) {
+    for (let x = 0; x < PORTAL_W; x++) {
+      const r = Math.hypot((x + 0.5 - cx) / (21 * pulse), (y + 0.5 - base) / (10.5 * pulse));
+      if (r > 1) continue;
+      if (r > 0.8) p.set(x, y, bright, 230);
+      else if (r < 0.42) p.set(x, y, 0xffffff, stepAlpha(0.9 - r));
+      else p.set(x, y, color, stepAlpha(1 - r));
+    }
+  }
+
+  // 위로 떠오르는 빛 알갱이. frame이 한 바퀴 돌면 제자리로 돌아온다.
+  for (let i = 0; i < PORTAL_SPARKS; i++) {
+    const t = frac(hash2(i, 2) + phase);
+    const x = cx + (hash2(i, 1) - 0.5) * 30;
+    const y = base - t * (base - beamTop) - 2;
+    const a = stepAlpha(1 - t);
+    if (a === 0) continue;
+    p.set(x, y, 0xffffff, a);
+    if (i % 3 === 0) p.set(x + 1, y, bright, a);
+  }
   return { canvas: p.toCanvas(), ax: cx, ay: base };
 }
 
