@@ -14,7 +14,7 @@ export const PLACE_RANGE = 1;
 /** 마름모 변을 따라 한 칸 이동하는 시간 (ms). 꼭짓점 방향은 거리만큼 더 걸린다. */
 export const STEP_MS = 120;
 
-/** 대시로 나아가는 칸 수. 걷는 중에 쓰면 향하던 칸에서 이만큼 더 간다. */
+/** 대시로 나아가는 칸 수 */
 export const DASH_TILES = 2;
 
 /** 대시 중 한 칸을 지나는 시간 (ms) */

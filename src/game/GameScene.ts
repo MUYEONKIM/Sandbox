@@ -268,13 +268,19 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.walk = { from, dir };
   }
 
+  /** 걸음을 막 뗀 참이면 출발한 칸을 기준으로 삼아, 어디서 써도 대시 거리가 같게 한다. */
+  private get dashStart() {
+    const justLeft = this.walk && this.me.moving && this.me.progress < TURN_WINDOW;
+    return justLeft ? this.walk!.from : this.me.tile;
+  }
+
   /** 누르고 있는 방향으로 DASH_TILES칸 빠르게 나아간다. 벽이나 포탈을 만나면 거기서 멈춘다. */
   private dash() {
     if (this.time.now < this.nextDashAt) return;
     // 방향 입력을 여기서 비워야 대시가 끝난 뒤 한 칸 더 걷지 않는다.
     const dir = this.keys.takeDirection() ?? this.lastDir;
     const { dx, dy } = dir;
-    let tile = this.me.tile;
+    let tile = this.dashStart;
     let moved = 0;
     while (moved < DASH_TILES && this.world.canStep(tile, dx, dy)) {
       tile = { x: tile.x + dx, y: tile.y + dy };
@@ -292,7 +298,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private moveTo(to: Tile, ms: number, dashing = false) {
     if (dashing) this.me.dashTo(to, ms);
     else this.me.stepTo(to, ms);
-    this.session.sendMove(to.x, to.y, ms);
+    this.session.sendMove(to.x, to.y, ms, dashing);
     this.session.saveLater(to);
     this.drawRange();
   }
@@ -595,7 +601,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.me.hp;
   }
 
-  onMove({ id, nickname, x, y, ms, hp }: PlayerMove) {
+  onMove({ id, nickname, x, y, ms, hp, dash }: PlayerMove) {
     let avatar = this.others.get(id);
     if (!avatar) {
       avatar = new Avatar(this, { x, y }, hp);
@@ -606,10 +612,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     const { tile } = avatar;
     if (tile.x === x && tile.y === y) return;
-    const inRange = inReach(tile, { x, y }, DASH_TILES + 1);
-    if (!inRange) avatar.teleport({ x, y });
-    else if (inReach(tile, { x, y })) avatar.stepTo({ x, y }, ms);
-    else avatar.dashTo({ x, y }, ms);
+    if (!inReach(tile, { x, y }, DASH_TILES + 1)) avatar.teleport({ x, y });
+    else if (dash) avatar.dashTo({ x, y }, ms);
+    else avatar.stepTo({ x, y }, ms);
   }
 
   onShot({ id, fromX, fromY, toX, toY }: PlayerShot) {
