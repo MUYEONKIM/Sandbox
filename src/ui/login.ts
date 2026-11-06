@@ -57,7 +57,7 @@ export function showLogin(parent: HTMLElement): Promise<User> {
   return new Promise((resolve) => {
     const screen = element('login', parent);
     const form = element('login-panel', screen, 'form') as HTMLFormElement;
-    element('login-title', form, 'h1').textContent = '아이소 샌드박스';
+    element('login-title', form, 'h1').textContent = 'ITS SandBox';
 
     const email = field(form, '이메일', 'email', 'email');
     const password = field(form, '비밀번호', 'password', 'current-password');
