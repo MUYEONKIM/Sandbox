@@ -34,6 +34,7 @@ import type { ChatBox } from '../ui/chat';
 import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
+import type { CastleWindow } from '../ui/castle';
 import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
 import { Avatar, TEAM_H, TEAM_W } from './avatar';
@@ -54,6 +55,7 @@ import {
   portalName,
   portalsOf,
   respawnTile,
+  SHOP,
   type MapId,
   type Portal,
   type WorkId,
@@ -74,9 +76,13 @@ const PORTAL_FRAME_MS = 100;
 const CHIMNEY = { x: 56, y: 14 };
 const SMOKE_FRAMES = ['Smoke0000', 'Smoke0001', 'Smoke0002'] as const;
 const SMOKE_FRAME_MS = 240;
+/** 시작마을에서 클릭을 연달아 해도 안내가 쌓이지 않게 하는 간격 */
+const SAFE_NOTICE_MS = 2000;
 
 /** 아이티공간 간판을 다는 위치 (건물 그림 기준 픽셀). 정문 앞에서도 보이는 높이다. */
 const CASTLE_SIGN = { x: 262, y: 205 };
+/** 상점 간판을 다는 위치 (건물 그림 기준 픽셀) */
+const SHOP_SIGN = { x: 115, y: 40 };
 
 /** 작물 밭은 칸 하나가 아니라 4칸 너비로 그려진다. 그림에서 밭 가운데 위치 */
 const CROPS_CENTER = { x: 64, y: 58 };
@@ -168,6 +174,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 지금 들고 있는 무기. 없으면 null */
   private armedWith: WeaponId | null = null;
   private nextShotAt = 0;
+  private nextSafeNoticeAt = 0;
   private shotsFired = 0;
   private nextMinimapAt = 0;
 
@@ -187,6 +194,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly economy: Economy,
     private readonly office: OfficeWindow,
     private readonly shop: ShopWindow,
+    private readonly castle: CastleWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -384,7 +392,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private showMap(id: MapId) {
     this.mapId = id;
     const info = MAPS[id];
-    this.world = new World(generateMap(id), portalsOf(id), respawnTile(id));
+    this.world = new World(generateMap(id), portalsOf(id));
     this.ground.setTexture(this.groundTexture(id));
     this.minimap.setMap(info.name, info.color);
     this.chimneySmoke = null;
@@ -392,6 +400,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const { left, top } = this.showBuilding(building);
       if (building.sprite === OFFICE.sprite) this.showChimneySmoke(left, top);
       if (building.sprite === CASTLE.sprite) this.addSign(CASTLE.name, left + CASTLE_SIGN.x, top + CASTLE_SIGN.y);
+      if (building.sprite === SHOP.sprite) this.addSign(SHOP.name, left + SHOP_SIGN.x, top + SHOP_SIGN.y);
     }
     this.showSpots(id);
     for (const { sprite, x, y } of this.world.map.trees) this.addSprite(sprite, x, y);
@@ -451,8 +460,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private get canAct() {
-    const windowOpen = this.hud.isOpen || this.office.isOpen || this.shop.isOpen || this.chat.isOpen;
+    const windowOpen =
+      this.hud.isOpen || this.office.isOpen || this.shop.isOpen || this.castle.isOpen || this.chat.isOpen;
     return !windowOpen && !this.traveling && !this.down;
+  }
+
+  /** 시작마을처럼 공격과 블록 설치가 막힌 맵인지 */
+  private get isSafeMap() {
+    return MAPS[this.mapId].safe === true;
   }
 
   private advancePlayer(delta: number) {
@@ -474,6 +489,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (portal) {
       if (portal.to === 'office') this.office.open();
       else if (portal.to === 'shop') this.shop.open();
+      else if (portal.to === 'castle') this.castle.open();
       else this.travel(portal.to);
       return;
     }
@@ -713,7 +729,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 무기를 들고 있으면 마우스 쪽으로 겨누고 커서를 조준점으로 바꾼다. */
   private updateAim() {
-    const weapon = this.down ? null : this.selectedWeapon;
+    const weapon = this.down || this.isSafeMap ? null : this.selectedWeapon;
     if (weapon !== this.armedWith) {
       this.armedWith = weapon;
       this.input.setDefaultCursor(weapon ? 'crosshair' : 'default');
@@ -729,14 +745,24 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 연사 무기는 누르고 있는 동안 계속 쏜다. */
   private updateAutoFire() {
     const weapon = this.selectedWeapon;
-    if (!weapon || !WEAPONS[weapon].auto || !this.canAct) return;
+    if (!weapon || !WEAPONS[weapon].auto || !this.canAct || this.isSafeMap) return;
     if (this.input.activePointer.leftButtonDown()) this.attack(weapon);
   }
 
   private useSelectedItem() {
+    if (this.isSafeMap) {
+      this.noticeSafeMap();
+      return;
+    }
     const weapon = this.selectedWeapon;
     if (weapon) this.attack(weapon);
     else this.placeBlock();
+  }
+
+  private noticeSafeMap() {
+    if (this.time.now < this.nextSafeNoticeAt) return;
+    this.nextSafeNoticeAt = this.time.now + SAFE_NOTICE_MS;
+    this.hud.toast('시작마을은 비무장지대입니다', '총, 칼, 블록 전부 압수 대상입니다.');
   }
 
   private attack(weapon: WeaponId) {
@@ -902,7 +928,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
 
     const stack = this.inventory.selectedStack;
-    if (!this.hoveredGround || (stack && isWeapon(stack.id))) return;
+    if (!this.hoveredGround || this.isSafeMap || (stack && isWeapon(stack.id))) return;
     const { x, y } = this.hoveredGround;
     const ok = stack !== null && this.canPlaceAt(this.hoveredGround);
     this.marker.setDepth(DEPTH_OVERLAY);
@@ -939,6 +965,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const pts = [gridToWorld(x0, y0), gridToWorld(x1, y0), gridToWorld(x1, y1), gridToWorld(x0, y1)];
 
     this.range.clear();
+    if (this.isSafeMap) return;
     this.range.fillStyle(0xffffff, 0.05).lineStyle(1, 0xffffff, 0.5).beginPath();
     this.range.moveTo(pts[0].x, pts[0].y);
     for (const p of pts.slice(1)) this.range.lineTo(p.x, p.y);

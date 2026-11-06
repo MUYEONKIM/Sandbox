@@ -41,6 +41,8 @@ const STONE_ROADS: Area[] = [
   // 성문 앞 광장과 시계탑으로 가는 길
   [29, 19, 33, 28],
   [34, 23, 37, 24],
+  // 상점으로 가는 길
+  [18, 12, 19, 13],
   // 성을 두르는 길
   [14, 14, 33, 15],
   [14, 32, 33, 33],
@@ -48,11 +50,11 @@ const STONE_ROADS: Area[] = [
   [32, 14, 33, 33],
 ];
 
-/** 성을 두르는 길에서 네 귀퉁이로 이어지는 길 */
+/** 성을 두르는 길에서 네 포탈로 이어지는 길 */
 const DIRT_ROADS: Area[] = [
-  // 상점
-  [34, 14, 45, 15],
-  [44, 3, 45, 15],
+  // 사막
+  [32, 1, 33, 13],
+  [32, 1, 44, 2],
   // 화산
   [34, 32, 43, 33],
   [42, 32, 43, 44],
@@ -71,9 +73,9 @@ const BUILDINGS: Building[] = [
   { sprite: 'fruit', x: 38, y: 17, w: 3, d: 3 },
   { sprite: 'tailor', x: 34, y: 26, w: 3, d: 3 },
   { sprite: 'clock', x: 38, y: 22, w: 4, d: 4 },
+  { sprite: 'tavern', x: 41, y: 12, w: 4, d: 4 },
   { sprite: 'thatched', x: 37, y: 35, w: 4, d: 4 },
   { sprite: 'chapel', x: 36, y: 5, w: 5, d: 3 },
-  { sprite: 'villa', x: 18, y: 4, w: 6, d: 8 },
   { sprite: 'house', x: 27, y: 6, w: 3, d: 5 },
   { sprite: 'house', x: 10, y: 6, w: 3, d: 5 },
   { sprite: 'house', x: 33, y: 36, w: 3, d: 5 },
@@ -105,7 +107,7 @@ const HEDGE_ROWS: Area[] = [
 const TREELESS: Area[] = [
   [16, 40, 41, 45],
   [34, 22, 45, 31],
-  [38, 4, 45, 13],
+  [16, 12, 31, 17],
 ];
 
 const POND = { x: 6, y: 30, radius: 5 };

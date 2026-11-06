@@ -1,79 +1,38 @@
-import type { Economy, ShopStat, ShopWeapon } from '../game/economy';
-import { statEffect, type StatId } from '../game/stats';
+import type { Economy, ShopWeapon } from '../game/economy';
 import { paintItem, WEAPONS, type WeaponId } from '../items';
 import { element } from './dom';
+import { PurchaseWindow } from './purchase';
 
 interface ShopActions {
   onBuyWeapon(id: WeaponId): Promise<void>;
-  onBuyStat(id: StatId): Promise<void>;
+  onSell(): void;
 }
 
-/** 상점 창: 무기와 스텟을 골드로 산다. 실제 결제는 서버가 한다. */
-export class ShopWindow {
-  private readonly root: HTMLElement;
-  private readonly wallet: HTMLElement;
+/** 상점 창: 무기를 사고 캐 온 전리품을 판다. 실제 거래는 서버가 한다. */
+export class ShopWindow extends PurchaseWindow {
   private readonly weaponList: HTMLElement;
-  private readonly statList: HTMLElement;
-  private readonly refreshers: (() => void)[] = [];
-  /** 결제가 끝나기 전에 또 눌러 두 번 사는 일이 없도록 버튼을 막아 둔다. */
-  private busy = false;
+  private readonly stashList: HTMLElement;
+  private readonly sellButton: HTMLButtonElement;
 
   constructor(
     parent: HTMLElement,
-    private readonly economy: Economy,
+    economy: Economy,
     private readonly actions: ShopActions,
   ) {
-    this.root = element('office', parent);
-    this.root.hidden = true;
-
-    element('office-title', this.root).textContent = '상점';
-    element('office-subtitle', this.root).textContent = '없는 것 빼고 다 팝니다. 환불은 없습니다.';
-    this.wallet = element('shop-wallet', this.root);
+    super(parent, economy, '상점', '없는 것 빼고 다 팝니다. 캐 온 것도 사 드립니다. 환불은 없습니다.');
 
     element('office-section', this.root).textContent = '무기';
     this.weaponList = element('shop-weapons', this.root);
-    element('office-section', this.root).textContent = '능력치';
-    this.statList = element('shop-stats', this.root);
-
-    const close = element('office-close', this.root, 'button') as HTMLButtonElement;
-    close.type = 'button';
-    close.textContent = '나가기 (Esc)';
-    close.addEventListener('click', () => this.close());
-
     for (const weapon of economy.forSale) this.addWeapon(weapon);
-    for (const stat of economy.stats) this.addStat(stat);
 
-    economy.onChange(() => this.render());
-    this.render();
-  }
+    element('office-section', this.root).textContent = '가방 속 전리품';
+    this.stashList = element('office-stash', this.root);
+    this.sellButton = element('office-sell', this.root, 'button') as HTMLButtonElement;
+    this.sellButton.type = 'button';
+    this.sellButton.addEventListener('click', () => actions.onSell());
+    this.refreshers.push(() => this.showStash());
 
-  get isOpen() {
-    return !this.root.hidden;
-  }
-
-  open() {
-    this.render();
-    this.root.hidden = false;
-  }
-
-  close() {
-    this.root.hidden = true;
-  }
-
-  private buyButton(parent: HTMLElement, buy: () => Promise<void>) {
-    const button = element('shop-buy', parent, 'button') as HTMLButtonElement;
-    button.type = 'button';
-    button.addEventListener('click', async () => {
-      this.busy = true;
-      this.render();
-      try {
-        await buy();
-      } finally {
-        this.busy = false;
-        this.render();
-      }
-    });
-    return button;
+    this.finish();
   }
 
   private addWeapon(weapon: ShopWeapon) {
@@ -97,30 +56,19 @@ export class ShopWindow {
     });
   }
 
-  private addStat(stat: ShopStat) {
-    const { id, name, blurb } = stat;
-    const row = element('shop-stat', this.statList);
-    const badge = element('shop-stat-badge', row);
-    element('shop-stat-id', badge).textContent = id.toUpperCase();
-    const value = element('shop-stat-value', badge);
-
-    const text = element('shop-stat-text', row);
-    const title = element('shop-stat-name', text);
-    element('shop-stat-blurb', text).textContent = blurb;
-
-    const buy = this.buyButton(row, () => this.actions.onBuyStat(id));
-    this.refreshers.push(() => {
-      const owned = this.economy.stat(id);
-      const price = this.economy.statPrice(stat);
-      value.textContent = String(owned);
-      title.textContent = `${name} · ${statEffect(id, owned)}`;
-      buy.textContent = `+1 · ${price.toLocaleString()}G`;
-      buy.disabled = this.busy || this.economy.gold < price;
-    });
-  }
-
-  private render() {
-    this.wallet.textContent = `보유 골드 ${this.economy.gold.toLocaleString()}G`;
-    for (const refresh of this.refreshers) refresh();
+  private showStash() {
+    this.stashList.replaceChildren();
+    const entries = this.economy.entries();
+    if (!entries.length) {
+      element('office-empty', this.stashList).textContent = '아직 아무것도 없습니다. 일을 하십시오.';
+    }
+    for (const { name, price, count } of entries) {
+      const row = element('office-stash-row', this.stashList);
+      element('office-stash-name', row, 'span').textContent = `${name} x${count}`;
+      element('office-stash-price', row, 'span').textContent = `${(price * count).toLocaleString()}G`;
+    }
+    const value = this.economy.stashValue;
+    this.sellButton.disabled = value === 0;
+    this.sellButton.textContent = value ? `전부 팔기 (+${value.toLocaleString()}G)` : '팔 것이 없습니다';
   }
 }

@@ -48,6 +48,8 @@ export interface MapInfo {
   links: Partial<Record<Corner, MapId>>;
   /** 작업장이면 true. 이 맵에서 자원을 캘 수 있다. */
   work?: boolean;
+  /** true면 공격과 블록 설치가 막힌다. 서버도 같은 맵을 막으므로 바꾸면 SQL도 함께 바꾼다. */
+  safe?: boolean;
 }
 
 /** 맵 목록. 평원을 중심으로 귀퉁이가 각 맵으로 이어지고, 작업장은 노동청에서 간다. */
@@ -58,7 +60,8 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0xa5d04f,
     accent: 0x9df08f,
-    links: { bottom: 'volcano', left: 'forest' },
+    links: { right: 'desert', bottom: 'volcano', left: 'forest' },
+    safe: true,
   },
   snow: {
     name: '설원',
@@ -74,7 +77,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0xa5714f,
     accent: 0xffc34d,
-    links: { left: 'volcano' },
+    links: { left: 'plains' },
   },
   volcano: {
     name: '화산',
@@ -82,7 +85,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0x6e3a24,
     accent: 0xff6a3d,
-    links: { top: 'plains', right: 'desert' },
+    links: { top: 'plains' },
   },
   forest: {
     name: '숲',
@@ -145,28 +148,30 @@ export const OFFICE = {
   accent: 0xffd84d,
 };
 
-/** 평원 한가운데의 아이티공간. 포탈이 없는 건물이고, 정문 앞은 처음 서고 쓰러진 뒤 일어나는 칸이다. */
+/** 평원 한가운데의 아이티공간. 정문 앞 칸이 포탈이고, 타면 스텟 창이 열린다. */
 export const CASTLE = {
   sprite: 'castle' as const,
   x: 18,
   y: 18,
   w: 11,
   d: 11,
-  gate: { x: 31, y: 24 },
+  door: { x: 29, y: 23 },
+  landing: { x: 31, y: 24 },
   name: '아이티공간',
+  accent: 0xff7ad9,
 };
 
-/** 평원 오른쪽 귀퉁이의 상점. 문 앞 칸이 포탈이고, 타면 상점 창이 열린다. */
+/** 아이티공간 오른쪽 위의 상점. 문 앞 칸이 포탈이고, 타면 상점 창이 열린다. */
 export const SHOP = {
-  sprite: 'tavern' as const,
-  x: 40,
-  y: 0,
-  w: 4,
-  d: 4,
-  door: { x: 44, y: 3 },
-  landing: { x: 45, y: 5 },
+  sprite: 'villa' as const,
+  x: 18,
+  y: 4,
+  w: 6,
+  d: 8,
+  door: { x: 18, y: 12 },
+  landing: { x: 19, y: 14 },
   name: '상점',
-  accent: 0xff7ad9,
+  accent: 0xb58cff,
 };
 
 export function isMapId(value: unknown): value is MapId {
@@ -176,8 +181,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office'와 'shop'은 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'shop';
+  /** 'office', 'shop', 'castle'은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'shop' | 'castle';
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
   landing: { x: number; y: number };
 }
@@ -192,12 +197,14 @@ export function portalsOf(id: MapId): Portal[] {
   if (id === 'plains') {
     portals.push({ ...OFFICE.door, to: 'office', landing: OFFICE.landing });
     portals.push({ ...SHOP.door, to: 'shop', landing: SHOP.landing });
+    portals.push({ ...CASTLE.door, to: 'castle', landing: CASTLE.landing });
   }
   return portals;
 }
 
 function portalInfo({ to }: Portal) {
   if (to === 'office') return OFFICE;
+  if (to === 'castle') return CASTLE;
   return to === 'shop' ? SHOP : MAPS[to];
 }
 
@@ -217,5 +224,5 @@ export function arrivalFor(to: MapId, from: MapId) {
 
 /** 쓰러진 뒤 일어나는 칸. 블록을 놓을 수 없는 칸이라 갇힐 일이 없다. */
 export function respawnTile(id: MapId) {
-  return id === DEFAULT_MAP ? CASTLE.gate : portalsOf(id)[0].landing;
+  return id === DEFAULT_MAP ? CASTLE.landing : portalsOf(id)[0].landing;
 }

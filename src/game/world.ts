@@ -20,7 +20,6 @@ export class World {
   constructor(
     readonly map: GameMap,
     readonly portals: Portal[],
-    private readonly respawn: Tile,
   ) {}
 
   private key(x: number, y: number) {
@@ -49,9 +48,8 @@ export class World {
     return this.portals.find((p) => p.x === x && p.y === y);
   }
 
-  /** 포탈, 그 앞 도착 칸, 쓰러진 뒤 일어나는 칸은 막으면 안 되므로 블록을 놓지 못한다. */
-  private isReserved(x: number, y: number) {
-    if (this.respawn.x === x && this.respawn.y === y) return true;
+  /** 포탈과 그 앞 도착 칸은 막으면 안 되므로 블록을 놓지 못한다. */
+  private isPortalArea(x: number, y: number) {
     return this.portals.some((p) => (p.x === x && p.y === y) || (p.landing.x === x && p.landing.y === y));
   }
 
@@ -82,7 +80,7 @@ export class World {
   canPlace(target: Tile, player: Tile) {
     if (!inReach(player, target)) return false;
     if (target.x === player.x && target.y === player.y) return false;
-    if (this.isReserved(target.x, target.y)) return false;
+    if (this.isPortalArea(target.x, target.y)) return false;
     return this.isOpenGround(target.x, target.y) && !this.blockAt(target.x, target.y);
   }
 

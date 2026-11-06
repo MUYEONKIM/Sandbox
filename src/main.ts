@@ -14,6 +14,7 @@ import { Hud } from './ui/hud';
 import { showLogin } from './ui/login';
 import { Minimap } from './ui/minimap';
 import { NameTags } from './ui/nametags';
+import { CastleWindow } from './ui/castle';
 import { OfficeWindow } from './ui/office';
 import { ShopWindow } from './ui/shop';
 
@@ -46,11 +47,14 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   const office = new OfficeWindow(root, economy, {
     onGo: (place) => scene.goToWork(place),
-    onSell: () => void scene.sellEverything(),
   });
 
   const shop = new ShopWindow(root, economy, {
     onBuyWeapon: (id) => scene.buyWeapon(id),
+    onSell: () => void scene.sellEverything(),
+  });
+
+  const castle = new CastleWindow(root, economy, {
     onBuyStat: (id) => scene.buyStat(id),
   });
 
@@ -61,13 +65,14 @@ function enterGame(profile: Profile, economyData: EconomyData) {
       hud.close();
       office.close();
       shop.close();
+      castle.close();
     },
     onChat: () => {
-      if (!hud.isOpen && !office.isOpen && !shop.isOpen) chat.open();
+      if (!hud.isOpen && !office.isOpen && !shop.isOpen && !castle.isOpen) chat.open();
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle);
 
   new Phaser.Game({
     type: Phaser.AUTO,
@@ -82,7 +87,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle } });
   }
 }
 

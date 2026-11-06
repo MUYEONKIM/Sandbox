@@ -13,20 +13,13 @@ const PLACE_ICONS: Record<WorkId, string> = {
 
 interface OfficeActions {
   onGo(place: WorkId): void;
-  onSell(): void;
 }
 
-/** 노동청 창: 일하러 갈 곳을 고르고, 캐 온 자원을 판다. */
+/** 노동청 창: 일하러 갈 곳을 고른다. */
 export class OfficeWindow {
   private readonly root: HTMLElement;
-  private readonly stashList: HTMLElement;
-  private readonly sellButton: HTMLButtonElement;
 
-  constructor(
-    parent: HTMLElement,
-    private readonly economy: Economy,
-    actions: OfficeActions,
-  ) {
+  constructor(parent: HTMLElement, economy: Economy, actions: OfficeActions) {
     this.root = element('office', parent);
     this.root.hidden = true;
 
@@ -47,19 +40,10 @@ export class OfficeWindow {
       button.addEventListener('click', () => actions.onGo(place.id));
     }
 
-    element('office-section', this.root).textContent = '가방 속 수확물';
-    this.stashList = element('office-stash', this.root);
-    this.sellButton = element('office-sell', this.root, 'button') as HTMLButtonElement;
-    this.sellButton.type = 'button';
-    this.sellButton.addEventListener('click', () => actions.onSell());
-
     const close = element('office-close', this.root, 'button') as HTMLButtonElement;
     close.type = 'button';
     close.textContent = '나가기 (Esc)';
     close.addEventListener('click', () => this.close());
-
-    economy.onChange(() => this.render());
-    this.render();
   }
 
   get isOpen() {
@@ -67,27 +51,10 @@ export class OfficeWindow {
   }
 
   open() {
-    this.render();
     this.root.hidden = false;
   }
 
   close() {
     this.root.hidden = true;
-  }
-
-  private render() {
-    this.stashList.replaceChildren();
-    const entries = this.economy.entries();
-    if (!entries.length) {
-      element('office-empty', this.stashList).textContent = '아직 아무것도 없습니다. 일을 하십시오.';
-    }
-    for (const { name, price, count } of entries) {
-      const row = element('office-stash-row', this.stashList);
-      element('office-stash-name', row, 'span').textContent = `${name} x${count}`;
-      element('office-stash-price', row, 'span').textContent = `${(price * count).toLocaleString()}G`;
-    }
-    const value = this.economy.stashValue;
-    this.sellButton.disabled = value === 0;
-    this.sellButton.textContent = value ? `전부 팔기 (+${value.toLocaleString()}G)` : '팔 것이 없습니다';
   }
 }
