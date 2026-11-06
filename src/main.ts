@@ -15,8 +15,13 @@ import { showLogin } from './ui/login';
 import { Minimap } from './ui/minimap';
 import { NameTags } from './ui/nametags';
 import { CastleWindow } from './ui/castle';
+import { FameWindow, RankPanel } from './ui/fame';
 import { OfficeWindow } from './ui/office';
 import { ShopWindow } from './ui/shop';
+
+/** 명예의 전당 창과 미니맵 밑 패널에 보여 줄 인원 */
+const FAME_SIZE = 50;
+const PANEL_SIZE = 10;
 
 function enterGame(profile: Profile, economyData: EconomyData) {
   const root = document.getElementById('hud')!;
@@ -42,6 +47,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   economy.onChange(showEconomy);
 
   const minimap = new Minimap(side);
+  new RankPanel(side, profile.nickname, () => session.fetchRanking(PANEL_SIZE));
   const chat = new ChatBox(root, (text) => void session.sendChat(text));
   const tags = new NameTags(root);
 
@@ -59,6 +65,8 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     onBuyStat: (id) => scene.buyStat(id),
   });
 
+  const fame = new FameWindow(root, profile.nickname, () => session.fetchRanking(FAME_SIZE));
+
   const keys = new Keys({
     onSlot: (index) => inventory.select(index),
     onInventory: () => hud.toggle(),
@@ -67,13 +75,14 @@ function enterGame(profile: Profile, economyData: EconomyData) {
       office.close();
       shop.close();
       castle.close();
+      fame.close();
     },
     onChat: () => {
-      if (!hud.isOpen && !office.isOpen && !shop.isOpen && !castle.isOpen) chat.open();
+      if (!hud.isOpen && !office.isOpen && !shop.isOpen && !castle.isOpen && !fame.isOpen) chat.open();
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame);
 
   new Phaser.Game({
     type: Phaser.AUTO,
@@ -88,7 +97,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame } });
   }
 }
 

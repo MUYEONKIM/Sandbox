@@ -35,6 +35,7 @@ import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import type { CastleWindow } from '../ui/castle';
+import type { FameWindow } from '../ui/fame';
 import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
 import { Avatar, TEAM_H, TEAM_W } from './avatar';
@@ -81,7 +82,7 @@ const SMOKE_FRAME_MS = 240;
 const NOTICE_MS = 2000;
 
 /** 아이티공간 간판을 다는 위치 (건물 그림 기준 픽셀). 정문 앞에서도 보이는 높이다. */
-const CASTLE_SIGN = { x: 262, y: 205 };
+const CASTLE_SIGN = { x: 176, y: 205 };
 /** 상점 간판을 다는 위치 (건물 그림 기준 픽셀) */
 const SHOP_SIGN = { x: 115, y: 40 };
 
@@ -197,6 +198,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly office: OfficeWindow,
     private readonly shop: ShopWindow,
     private readonly castle: CastleWindow,
+    private readonly fame: FameWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -468,7 +470,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private get canAct() {
     const windowOpen =
-      this.hud.isOpen || this.office.isOpen || this.shop.isOpen || this.castle.isOpen || this.chat.isOpen;
+      this.hud.isOpen ||
+      this.office.isOpen ||
+      this.shop.isOpen ||
+      this.castle.isOpen ||
+      this.fame.isOpen ||
+      this.chat.isOpen;
     return !windowOpen && !this.traveling && !this.down;
   }
 
@@ -502,6 +509,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (portal.to === 'office') this.office.open();
       else if (portal.to === 'shop') this.shop.open();
       else if (portal.to === 'castle') this.castle.open();
+      else if (portal.to === 'fame') void this.fame.open();
       else this.travel(portal.to);
       return;
     }

@@ -697,6 +697,72 @@ canvas {
   text-align: center;
 }
 
+.rank-panel {
+  align-self: stretch;
+  padding: 6px 8px 6px;
+  background: rgb(31 21 16 / 78%);
+  border: 2px solid var(--panel-edge);
+  font-size: 12px;
+}
+
+.rank-panel-title {
+  margin-bottom: 2px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.rank-panel-note {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: center;
+}
+
+.rank-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.rank-row.mine {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.rank-place {
+  flex: none;
+  min-width: 18px;
+  color: var(--gold);
+  font-weight: 700;
+  text-align: right;
+}
+
+.rank-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-level {
+  flex: none;
+}
+
+.office .rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  font-size: 14px;
+}
+
+.office .rank-row {
+  padding: 4px 10px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
 .minimap-canvas {
   display: block;
 }

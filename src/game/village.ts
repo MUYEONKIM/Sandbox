@@ -2,7 +2,7 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { CASTLE, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
+import { CASTLE, FAME, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
@@ -89,6 +89,8 @@ const FIXED_TREES: Tree[] = [
   { sprite: 'pinetree', x: 30, y: 20 },
   { sprite: 'pinetree', x: 30, y: 27 },
   { sprite: 'treehouse', x: 4, y: 20 },
+  // 광장의 명예의 전당 게시판
+  { sprite: FAME.sprite, x: FAME.x, y: FAME.y },
 ];
 
 /** 울타리처럼 줄지어 심은 덤불 */
@@ -139,7 +141,7 @@ export interface Scenery {
   decals: Map<number, number>;
   /** 칸을 차지하고 서 있는 타일 */
   props: TileProp[];
-  /** 칸을 차지하고 서 있는 나무 */
+  /** 칸을 차지하고 서 있는 나무와 게시판 */
   trees: Tree[];
 }
 

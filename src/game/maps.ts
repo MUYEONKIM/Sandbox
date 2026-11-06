@@ -181,6 +181,17 @@ export const SHOP = {
   accent: 0xb58cff,
 };
 
+/** 아이티공간 정문 앞 광장의 명예의 전당 게시판. 앞 칸이 포탈이고, 타면 레벨 순위 창이 열린다. */
+export const FAME = {
+  sprite: 'board' as const,
+  x: 32,
+  y: 21,
+  door: { x: 33, y: 22 },
+  landing: { x: 33, y: 23 },
+  name: '명예의 전당',
+  accent: 0xfff1b8,
+};
+
 export function isMapId(value: unknown): value is MapId {
   return typeof value === 'string' && Object.hasOwn(MAPS, value);
 }
@@ -188,8 +199,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office', 'shop', 'castle'은 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'shop' | 'castle';
+  /** 'office', 'shop', 'castle', 'fame'은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'shop' | 'castle' | 'fame';
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
   landing: { x: number; y: number };
 }
@@ -205,6 +216,7 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...OFFICE.door, to: 'office', landing: OFFICE.landing });
     portals.push({ ...SHOP.door, to: 'shop', landing: SHOP.landing });
     portals.push({ ...CASTLE.door, to: 'castle', landing: CASTLE.landing });
+    portals.push({ ...FAME.door, to: 'fame', landing: FAME.landing });
   }
   return portals;
 }
@@ -212,6 +224,7 @@ export function portalsOf(id: MapId): Portal[] {
 function portalInfo({ to }: Portal) {
   if (to === 'office') return OFFICE;
   if (to === 'castle') return CASTLE;
+  if (to === 'fame') return FAME;
   return to === 'shop' ? SHOP : MAPS[to];
 }
 

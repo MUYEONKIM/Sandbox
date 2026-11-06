@@ -47,6 +47,11 @@ export interface ChatMessage {
   text: string;
 }
 
+export interface RankEntry {
+  nickname: string;
+  level: bigint;
+}
+
 export interface PlacedBlock {
   x: number;
   y: number;
@@ -274,6 +279,16 @@ export class GameSession {
   async buyTool(tool: string): Promise<number | null> {
     const { data, error } = await supabase.rpc('buy_tool', { tool });
     return error ? null : (data as number);
+  }
+
+  /** 레벨 순위를 위에서 size명까지 읽어 온다. 실패하면 null이다. */
+  async fetchRanking(size: number): Promise<RankEntry[] | null> {
+    const { data, error } = await supabase.rpc('top_players', { how_many: size });
+    if (error) return null;
+    return (data as { nickname: string; level: string }[]).map(({ nickname, level }) => ({
+      nickname,
+      level: parseLevel(level) ?? 1n,
+    }));
   }
 
   /** 스텟을 1 올리고 새 골드와 스텟 값을 돌려준다. 실패하면 null이다. */
