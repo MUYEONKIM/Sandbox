@@ -1,7 +1,7 @@
 import { Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
-import { MAPS, OFFICE, type MapId } from './maps';
+import { MAPS, OFFICE, SHOP, type MapId } from './maps';
 import type { Tile } from './world';
 
 export const Terrain = { Grass: 0, Dirt: 1, Paving: 2, Farm: 3, Water: 4 } as const;
@@ -85,7 +85,7 @@ export function generateMap(id: MapId): GameMap {
   let spots: Tile[] = [];
 
   if (id === 'plains') {
-    buildings.push({ sprite: OFFICE.sprite, x: OFFICE.x, y: OFFICE.y, w: OFFICE.w, d: OFFICE.d });
+    for (const { sprite, x, y, w, d } of [OFFICE, SHOP]) buildings.push({ sprite, x, y, w, d });
   } else if (id === 'fishing') {
     spots = digPond(terrain);
   } else if (MAPS[id].work) {

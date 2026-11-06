@@ -1,6 +1,8 @@
 import type { AuthError, User } from '@supabase/supabase-js';
 import type { EconomyData } from '../game/economy';
 import type { WorkId } from '../game/maps';
+import { isStat } from '../game/stats';
+import { isWeapon } from '../items';
 import { supabase } from './supabase';
 
 export interface Profile {
@@ -14,6 +16,11 @@ export interface Profile {
   /** 숫자가 아주 커질 수 있어 문자열로 받는다. */
   level: string;
   inventory: unknown;
+  str: number;
+  def: number;
+  agi: number;
+  luk: number;
+  owned_weapons: string[];
 }
 
 const MESSAGES: Record<string, string> = {
@@ -58,17 +65,28 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
-/** 노동청에서 쓸 작업장, 자원 목록, 내 자원을 읽어 온다. */
-export async function loadEconomy(gold: number): Promise<EconomyData> {
-  const [workplaces, loot, stash] = await Promise.all([
+/** 노동청과 상점에서 쓸 작업장, 자원, 무기, 스텟 표와 내 자원을 읽어 온다. */
+export async function loadEconomy(profile: Profile): Promise<EconomyData> {
+  const [workplaces, loot, stash, weapons, stats] = await Promise.all([
     supabase.from('workplaces').select('id, name, blurb, gather_ms').order('sort'),
     supabase.from('loot').select('item, workplace, name, blurb, price, weight'),
     supabase.from('stash').select('item, count'),
+    supabase.from('weapons').select('id, blurb, price, damage, cooldown_ms').order('sort'),
+    supabase.from('stats').select('id, name, blurb, base_price, price_step').order('sort'),
   ]);
-  const error = workplaces.error ?? loot.error ?? stash.error;
+  const error = workplaces.error ?? loot.error ?? stash.error ?? weapons.error ?? stats.error;
   if (error) throw new Error(error.message);
+  const { gold, str, def, agi, luk, owned_weapons: owned } = profile;
   return {
     gold,
+    myStats: { str, def, agi, luk },
+    owned: owned.filter(isWeapon),
+    weapons: (weapons.data ?? []).flatMap(({ id, cooldown_ms: cooldownMs, ...rest }) =>
+      isWeapon(id) ? [{ ...rest, id, cooldownMs }] : [],
+    ),
+    stats: (stats.data ?? []).flatMap(({ id, base_price: basePrice, price_step: priceStep, ...rest }) =>
+      isStat(id) ? [{ ...rest, id, basePrice, priceStep }] : [],
+    ),
     loot: loot.data ?? [],
     stash: stash.data ?? [],
     workplaces: (workplaces.data ?? []).map(({ id, name, blurb, gather_ms: gatherMs }) => ({
@@ -83,7 +101,7 @@ export async function loadEconomy(gold: number): Promise<EconomyData> {
 export async function loadProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nickname, map, x, y, hp, gold, level::text, inventory')
+    .select('id, nickname, map, x, y, hp, gold, level::text, inventory, str, def, agi, luk, owned_weapons')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(error.message);

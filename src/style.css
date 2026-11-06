@@ -196,6 +196,7 @@ canvas {
 
 .toasts {
   position: absolute;
+  z-index: 6;
   left: 50%;
   bottom: 112px;
   display: flex;
@@ -350,8 +351,115 @@ canvas {
   border: 0;
 }
 
+.shop-wallet {
+  color: var(--gold);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.shop-weapons {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.shop-weapon {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 10px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.shop-weapon-icon {
+  width: 48px;
+  height: 48px;
+  image-rendering: pixelated;
+}
+
+.shop-weapon-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.shop-weapon-blurb {
+  flex: 1;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.shop-weapon-spec {
+  margin: 4px 0 6px;
+  color: var(--gold);
+  font-size: 12px;
+}
+
+.shop-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shop-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.shop-stat-badge {
+  flex: none;
+  width: 44px;
+  text-align: center;
+}
+
+.shop-stat-id {
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.shop-stat-value {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.shop-stat-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-stat-name {
+  font-weight: 700;
+}
+
+.shop-stat-blurb {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.shop-buy {
+  padding: 6px 10px;
+  color: #2a1d16;
+  background: var(--gold);
+  border: 2px solid var(--panel-edge);
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.shop-buy:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 @media (max-width: 620px) {
-  .office-places {
+  .office-places,
+  .shop-weapons {
     grid-template-columns: 1fr;
   }
 }
@@ -454,9 +562,15 @@ canvas {
 }
 
 .panel-title {
-  margin-bottom: 8px;
   font-size: 15px;
   font-weight: 700;
+}
+
+.panel-stats {
+  margin-bottom: 8px;
+  color: var(--gold);
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 
 .chat {
@@ -600,6 +714,49 @@ canvas {
 
 .portal-name {
   color: #5fe3ff;
+}
+
+.sign-name {
+  padding: 2px 12px;
+  color: var(--gold);
+  background: rgb(31 21 16 / 88%);
+  border: 2px solid var(--gold);
+  font-size: 16px;
+}
+
+.float-text {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  text-shadow:
+    1px 0 #000,
+    0 1px #000,
+    -1px 0 #000,
+    0 -1px #000;
+  white-space: nowrap;
+  animation: float-up 0.8s ease-out forwards;
+}
+
+.float-text.damage {
+  color: #ff8a7a;
+}
+
+.float-text.dodge {
+  color: #8fe9ff;
+}
+
+@keyframes float-up {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(-50%, -28px);
+  }
 }
 
 .account-name {

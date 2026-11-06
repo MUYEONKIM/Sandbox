@@ -65,6 +65,11 @@ export class World {
     return !block || !BLOCKS[block].solid;
   }
 
+  /** 총알과 칼을 막는 칸: 건물이나 자원 같은 고정 장애물과 설치된 블록이다. 물은 넘어간다. */
+  blocksShots(x: number, y: number) {
+    return this.map.solid[this.key(x, y)] === 1 || this.blockAt(x, y) !== undefined;
+  }
+
   /** from에서 (dx, dy)로 한 칸 갈 수 있는지 본다. 양옆이 모두 막힌 틈은 지나갈 수 없다. */
   canStep(from: Tile, dx: number, dy: number) {
     if (!this.isWalkable(from.x + dx, from.y + dy)) return false;

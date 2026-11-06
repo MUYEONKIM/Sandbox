@@ -3,6 +3,8 @@ import { BLOCKS, type BlockId } from '../blocks';
 import { MAP_SIZE, MAX_HP } from '../config';
 import type { Slot } from '../game/inventory';
 import { parseLevel } from '../game/level';
+import type { StatId } from '../game/stats';
+import { isWeapon, type WeaponId } from '../items';
 import type { Profile } from './auth';
 import { supabase } from './supabase';
 
@@ -11,6 +13,7 @@ export type Motion = 'walk' | 'run' | 'jump';
 /** 작업 한 번의 결과. 레벨은 아주 커질 수 있어 문자열로 온다. */
 export interface HarvestResult {
   item: string;
+  count: number;
   level: string;
   gained: string;
 }
@@ -26,9 +29,10 @@ export interface PlayerMove {
   motion: Motion;
 }
 
-/** 다른 플레이어가 쏜 총알. 화면에 보여 주기만 하고 피해 판정은 쏜 쪽이 한다. */
+/** 다른 플레이어의 공격. 화면에 보여 주기만 하고 피해 판정은 공격한 쪽이 한다. */
 export interface PlayerShot {
   id: string;
+  weapon: WeaponId;
   fromX: number;
   fromY: number;
   toX: number;
@@ -58,6 +62,8 @@ export interface SessionEvents {
   onShot(shot: PlayerShot): void;
   /** 서버가 알려 주는 체력 변화 */
   onHp(id: string, hp: number): void;
+  /** 서버가 판정한 회피 */
+  onDodge(id: string): void;
   /** 서버가 알려 주는 레벨 변화 */
   onLevel(id: string, level: bigint): void;
   /** 지금 같은 맵에 접속 중인 플레이어 id 목록 */
@@ -107,7 +113,8 @@ function parseShot(value: unknown): PlayerShot | null {
   const s = value as Partial<PlayerShot> | null;
   if (!s || typeof s.id !== 'string') return null;
   if (!isGridCoord(s.fromX) || !isGridCoord(s.fromY) || !isGridCoord(s.toX) || !isGridCoord(s.toY)) return null;
-  return { id: s.id, fromX: s.fromX, fromY: s.fromY, toX: s.toX, toY: s.toY };
+  const weapon = isWeapon(s.weapon) ? s.weapon : 'pistol';
+  return { id: s.id, weapon, fromX: s.fromX, fromY: s.fromY, toX: s.toX, toY: s.toY };
 }
 
 function parseChat(value: unknown): ChatMessage | null {
@@ -152,6 +159,9 @@ export class GameSession {
       })
       .on('broadcast', { event: 'hp' }, ({ payload }) => {
         if (typeof payload?.id === 'string' && isHp(payload.hp)) events.onHp(payload.id, payload.hp);
+      })
+      .on('broadcast', { event: 'dodge' }, ({ payload }) => {
+        if (typeof payload?.id === 'string') events.onDodge(payload.id);
       })
       .on('broadcast', { event: 'level' }, ({ payload }) => {
         const level = parseLevel(payload?.level);
@@ -232,9 +242,9 @@ export class GameSession {
     });
   }
 
-  sendShot(fromX: number, fromY: number, toX: number, toY: number) {
+  sendShot(weapon: WeaponId, fromX: number, fromY: number, toX: number, toY: number) {
     if (!this.joined || !this.channel) return;
-    const payload = { id: this.profile.id, fromX, fromY, toX, toY };
+    const payload = { id: this.profile.id, weapon, fromX, fromY, toX, toY };
     void this.channel.send({ type: 'broadcast', event: 'shot', payload });
   }
 
@@ -250,9 +260,21 @@ export class GameSession {
     return error ? null : (data as number);
   }
 
-  /** 내 총알이 맞았음을 서버에 알린다. 피해량과 체력은 서버가 계산한다. */
-  async hitPlayer(target: string) {
-    await supabase.rpc('hit_player', { target });
+  /** 무기를 사고 새 골드를 돌려준다. 실패하면 null이다. */
+  async buyWeapon(weapon: WeaponId): Promise<number | null> {
+    const { data, error } = await supabase.rpc('buy_weapon', { weapon });
+    return error ? null : (data as number);
+  }
+
+  /** 스텟을 1 올리고 새 골드와 스텟 값을 돌려준다. 실패하면 null이다. */
+  async buyStat(stat: StatId): Promise<{ gold: number; value: number } | null> {
+    const { data, error } = await supabase.rpc('buy_stat', { stat });
+    return error ? null : (data as { gold: number; value: number });
+  }
+
+  /** 내 공격이 맞았음을 서버에 알린다. 피해량과 체력은 서버가 계산한다. */
+  async hitPlayer(target: string, weapon: WeaponId) {
+    await supabase.rpc('hit_player', { target, weapon });
   }
 
   /** 쓰러진 뒤 체력을 되찾는다. 실패하면 false를 돌려준다. */

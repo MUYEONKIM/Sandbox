@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
-import { PISTOL_GRIP, PISTOL_SIZE } from '../art/weapons';
 import { MAX_HP } from '../config';
 import { depthOf, gridToWorld } from '../iso';
+import { WEAPONS, type WeaponId } from '../items';
 import type { Tile } from './world';
 
 /** 캐릭터 시트의 칸 크기와, 칸 안에서 발이 닿는 높이 */
@@ -22,11 +22,19 @@ function citizenOf(id: string) {
   return sum % CITIZEN_COUNT;
 }
 
-/** 총을 들었을 때 손의 높이와 몸에서 떨어진 거리 (아트 픽셀) */
+/** 무기를 들었을 때 손의 높이와 몸에서 떨어진 거리 (아트 픽셀) */
 const HAND_HEIGHT = 12;
 const HAND_REACH = 7;
 const HIT_FLASH_MS = 120;
 const DOWN_ALPHA = 0.4;
+
+/** 칼을 휘두르는 시간과 각도 (라디안) */
+const SWING_MS = 160;
+const SWING_ARC = 2.4;
+/** 칼자국의 반지름과 사라지는 시간. 바닥이 납작해 보이는 만큼 세로로 줄여 그린다. */
+const SLASH_RADIUS = 20;
+const SLASH_FADE_MS = 180;
+const SLASH_FLATTEN = 0.6;
 
 /** 점프의 가장 높은 지점 (아트 픽셀). 벽 블록 높이보다 높아야 넘어가 보인다. */
 const JUMP_HEIGHT = 24;
@@ -62,6 +70,7 @@ export class Avatar {
   private aimAngle: number | null = null;
   private lowerGunAt = Infinity;
   private airborne = false;
+  private swingT = 1;
   private knockX = 0;
   private knockY = 0;
   private knockT = 1;
@@ -77,10 +86,8 @@ export class Avatar {
     this.hp = hp;
     this.firstFrame = citizenOf(id) * CITIZEN_FRAMES;
     this.image = scene.add.image(0, 0, 'citizens', this.firstFrame).setOrigin(0.5, CITIZEN_FOOT_Y / CITIZEN_H);
-    this.gun = scene.add
-      .image(0, 0, 'pistol')
-      .setOrigin(PISTOL_GRIP.x / PISTOL_SIZE, PISTOL_GRIP.y / PISTOL_SIZE)
-      .setVisible(false);
+    this.gun = scene.add.image(0, 0, 'pistol').setVisible(false);
+    this.setWeapon('pistol');
     this.shadow = scene.add.image(0, 0, 'jump-shadow');
     this.setHp(hp);
     this.sync();
@@ -182,6 +189,35 @@ export class Avatar {
     };
   }
 
+  /** 손에 든 무기 그림을 바꾼다. */
+  setWeapon(id: WeaponId) {
+    const { size, grip } = WEAPONS[id].art;
+    this.gun.setTexture(id).setOrigin(grip.x / size, grip.y / size);
+  }
+
+  /** 칼을 화면 각도 angle 쪽으로 휘두르고 칼자국을 남긴다. */
+  swing(angle: number, holdMs?: number) {
+    this.aim(angle, holdMs);
+    this.swingT = 0;
+
+    const { x, y, depth } = this.image;
+    const center = Math.atan2(Math.sin(angle) / SLASH_FLATTEN, Math.cos(angle));
+    const slash = this.scene.add
+      .graphics()
+      .setPosition(x, y - HAND_HEIGHT)
+      .setScale(1, SLASH_FLATTEN)
+      .setDepth(depth + 1);
+    slash.lineStyle(3, 0xffffff, 0.9).beginPath();
+    slash.arc(0, 0, SLASH_RADIUS, center - SWING_ARC / 2, center + SWING_ARC / 2);
+    slash.strokePath();
+    this.scene.tweens.add({
+      targets: slash,
+      alpha: 0,
+      duration: SLASH_FADE_MS,
+      onComplete: () => slash.destroy(),
+    });
+  }
+
   /** 총을 화면 각도 angle로 겨눈다. holdMs를 주면 그 시간이 지나 내린다. */
   aim(angle: number, holdMs?: number) {
     this.aimAngle = angle;
@@ -210,6 +246,7 @@ export class Avatar {
     if (this.t < 1) this.t = Math.min(1, this.t + delta / this.ms);
     if (this.t >= 1) this.airborne = false;
     if (this.knockT < 1) this.knockT = Math.min(1, this.knockT + delta / KNOCK_MS);
+    if (this.swingT < 1) this.swingT = Math.min(1, this.swingT + delta / SWING_MS);
     if (this.scene.time.now >= this.lowerGunAt) this.lowerGun();
     this.sync();
   }
@@ -247,7 +284,7 @@ export class Avatar {
     const armed = this.aimAngle !== null && !this.isDown;
     this.gun.setVisible(armed);
     if (armed) {
-      const angle = this.aimAngle!;
+      const angle = this.aimAngle! + (this.swingT < 1 ? (this.swingT - 0.5) * SWING_ARC : 0);
       this.gun
         .setPosition(drawX + Math.cos(angle) * HAND_REACH, drawY - HAND_HEIGHT + Math.sin(angle) * HAND_REACH * 0.5)
         .setRotation(angle)

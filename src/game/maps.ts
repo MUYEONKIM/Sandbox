@@ -109,6 +109,19 @@ export const OFFICE = {
   accent: 0xffd84d,
 };
 
+/** 평원 한가운데의 아이티공간. 정문 앞 칸이 포탈이고, 타면 상점 창이 열린다. */
+export const SHOP = {
+  sprite: 'castle' as const,
+  x: 18,
+  y: 18,
+  w: 11,
+  d: 11,
+  door: { x: 29, y: 23 },
+  landing: { x: 31, y: 24 },
+  name: '아이티공간',
+  accent: 0xff7ad9,
+};
+
 export function isMapId(value: unknown): value is MapId {
   return typeof value === 'string' && Object.hasOwn(MAPS, value);
 }
@@ -116,8 +129,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office'는 맵을 옮기지 않고 노동청 창을 연다. */
-  to: MapId | 'office';
+  /** 'office'와 'shop'은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'shop';
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
   landing: { x: number; y: number };
 }
@@ -129,20 +142,33 @@ function portalAt(corner: Corner, to: MapId): Portal {
 
 export function portalsOf(id: MapId): Portal[] {
   const portals = (Object.entries(MAPS[id].links) as [Corner, MapId][]).map(([corner, to]) => portalAt(corner, to));
-  if (id === 'plains') portals.push({ ...OFFICE.door, to: 'office', landing: OFFICE.landing });
+  if (id === 'plains') {
+    portals.push({ ...OFFICE.door, to: 'office', landing: OFFICE.landing });
+    portals.push({ ...SHOP.door, to: 'shop', landing: SHOP.landing });
+  }
   return portals;
 }
 
+function portalInfo({ to }: Portal) {
+  if (to === 'office') return OFFICE;
+  return to === 'shop' ? SHOP : MAPS[to];
+}
+
 export function portalName(portal: Portal) {
-  return portal.to === 'office' ? OFFICE.name : MAPS[portal.to].name;
+  return portalInfo(portal).name;
 }
 
 export function portalColor(portal: Portal) {
-  return portal.to === 'office' ? OFFICE.accent : MAPS[portal.to].accent;
+  return portalInfo(portal).accent;
 }
 
 /** from에서 to로 넘어갔을 때 서는 칸: 돌아오는 포탈 앞이고, 작업장에서 돌아오면 노동청 앞이다. */
 export function arrivalFor(to: MapId, from: MapId) {
   const back = portalsOf(to).find((p) => p.to === from);
   return back ? back.landing : OFFICE.landing;
+}
+
+/** 쓰러진 뒤 일어나는 칸. 블록을 놓을 수 없는 포탈 앞이라 갇힐 일이 없다. */
+export function respawnTile(id: MapId) {
+  return id === DEFAULT_MAP ? SHOP.landing : portalsOf(id)[0].landing;
 }

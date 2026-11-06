@@ -3,6 +3,8 @@ import { element } from './dom';
 
 const BUBBLE_MS = 4000;
 
+export type TagKind = 'player' | 'portal' | 'sign';
+
 interface Tag {
   root: HTMLElement;
   bubble: HTMLElement;
@@ -12,22 +14,23 @@ interface Tag {
   timer: number;
 }
 
-/** 캐릭터 머리 위에 뜨는 닉네임과 말풍선 */
+/** 캐릭터 머리 위에 뜨는 닉네임과 말풍선, 포탈과 건물의 이름표 */
 export class NameTags {
   private readonly tags = new Map<string, Tag>();
 
   constructor(private readonly parent: HTMLElement) {}
 
-  add(id: string, nickname: string, portal = false) {
+  add(id: string, nickname: string, kind: TagKind = 'player') {
     if (this.tags.has(id)) return;
+    const isPlayer = kind === 'player';
     const root = element('player-tag', this.parent);
     const bubble = element('bubble', root);
     bubble.hidden = true;
-    const name = element(portal ? 'player-name portal-name' : 'player-name', root);
-    const level = portal ? null : element('player-level', name, 'span');
+    const name = element(isPlayer ? 'player-name' : `player-name ${kind}-name`, root);
+    const level = isPlayer ? element('player-level', name, 'span') : null;
     name.append(nickname);
-    const hp = portal ? null : element('player-hp-fill', element('player-hp', root));
-    const progress = portal ? null : element('player-work-fill', element('player-work', root));
+    const hp = isPlayer ? element('player-hp-fill', element('player-hp', root)) : null;
+    const progress = isPlayer ? element('player-work-fill', element('player-work', root)) : null;
     if (progress) progress.parentElement!.hidden = true;
     this.tags.set(id, { root, bubble, level, hp, progress, timer: 0 });
   }
@@ -67,6 +70,15 @@ export class NameTags {
     tag.timer = window.setTimeout(() => {
       tag.bubble.hidden = true;
     }, BUBBLE_MS);
+  }
+
+  /** 머리 위로 글자가 떠올랐다가 사라진다. */
+  float(id: string, text: string, kind: 'damage' | 'dodge') {
+    const tag = this.tags.get(id);
+    if (!tag) return;
+    const label = element(`float-text ${kind}`, tag.root);
+    label.textContent = text;
+    label.addEventListener('animationend', () => label.remove());
   }
 
   remove(id: string) {

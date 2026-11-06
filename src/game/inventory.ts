@@ -1,5 +1,5 @@
 import { BLOCK_IDS } from '../blocks';
-import { isItem, isWeapon, WEAPON_IDS, type ItemId } from '../items';
+import { isItem, isWeapon, type ItemId, type WeaponId } from '../items';
 
 export const HOTBAR_SIZE = 9;
 export const BAG_SIZE = 27;
@@ -42,9 +42,12 @@ function starterSlots(): Slot[] {
   return slots;
 }
 
-/** 무기가 없는 플레이어(기존 계정 포함)에게 기본 무기를 빈칸에 넣어 준다. */
-function giveStarterWeapons(slots: Slot[]) {
-  for (const id of WEAPON_IDS) {
+/** 저장된 인벤토리는 위조할 수 있으므로 서버가 아는 보유 무기에 맞춘다. */
+function matchWeapons(slots: Slot[], owned: readonly WeaponId[]) {
+  slots.forEach((slot, i) => {
+    if (slot && isWeapon(slot.id) && !owned.includes(slot.id)) slots[i] = null;
+  });
+  for (const id of owned) {
     if (slots.some((slot) => slot?.id === id)) continue;
     const empty = slots.indexOf(null);
     if (empty >= 0) slots[empty] = { id, count: 1 };
@@ -57,9 +60,9 @@ export class Inventory {
   selected = 0;
   private readonly listeners: (() => void)[] = [];
 
-  constructor(saved: unknown) {
+  constructor(saved: unknown, owned: readonly WeaponId[]) {
     this.slots = isSlotList(saved) ? saved : starterSlots();
-    giveStarterWeapons(this.slots);
+    matchWeapons(this.slots, owned);
   }
 
   onChange(fn: () => void) {

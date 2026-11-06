@@ -1,0 +1,21 @@
+export const STAT_IDS = ['str', 'def', 'agi', 'luk'] as const;
+
+export type StatId = (typeof STAT_IDS)[number];
+
+export function isStat(id: unknown): id is StatId {
+  return STAT_IDS.includes(id as StatId);
+}
+
+/** 상점에 보여 줄 스텟 효과. 실제 계산은 서버의 hit_player와 harvest가 하므로 공식을 바꾸면 함께 바꾼다. */
+export function statEffect(id: StatId, value: number) {
+  switch (id) {
+    case 'str':
+      return `주는 피해 +${value * 10}%`;
+    case 'def':
+      return `받는 피해 -${Math.round((value / (value + 10)) * 100)}%`;
+    case 'agi':
+      return `확률 ${Math.round(Math.min(0.6, value / (value + 25)) * 100)}%`;
+    case 'luk':
+      return `평균 +${value * 10}%`;
+  }
+}

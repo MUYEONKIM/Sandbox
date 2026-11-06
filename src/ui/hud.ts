@@ -19,6 +19,7 @@ const TOAST_LIMIT = 4;
 /** 화면 위 UI: 단축키 칸, 인벤토리 창, 조작 안내 */
 export class Hud {
   private readonly panel: HTMLElement;
+  private readonly panelStats: HTMLElement;
   private readonly pickedName: HTMLElement;
   private readonly pickedIcon: HTMLImageElement;
   private readonly levelText: HTMLElement;
@@ -55,15 +56,16 @@ export class Hud {
 
     const help = element('help', root);
     help.innerHTML =
-      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>달리기</b> Shift 누르기 &nbsp; <b>점프</b> Space &nbsp; <b>작업</b> F<br><b>설치 / 사격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
+      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>달리기</b> Shift 누르기 &nbsp; <b>점프</b> Space &nbsp; <b>작업</b> F<br><b>설치 / 공격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
 
     this.panel = element('panel', root);
     this.panel.hidden = true;
     element('panel-title', this.panel).textContent = '인벤토리';
+    this.panelStats = element('panel-stats', this.panel);
     const bag = element('slots bag', this.panel);
 
     this.downNotice = element('down-notice', root);
-    this.downNotice.textContent = '쓰러졌습니다. 잠시 후 맵 중앙에서 다시 시작합니다.';
+    this.downNotice.textContent = '쓰러졌습니다. 잠시 후 포탈 앞에서 다시 시작합니다.';
     this.downNotice.hidden = true;
 
     const bottom = element('bottom', root);
@@ -123,6 +125,10 @@ export class Hud {
 
   setGold(gold: number) {
     this.gold.textContent = `${gold.toLocaleString()}G`;
+  }
+
+  setStats(text: string) {
+    this.panelStats.textContent = text;
   }
 
   /** 화면 아래쪽에 잠깐 뜨는 알림 */

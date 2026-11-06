@@ -4,6 +4,7 @@ const NAMES = [
   'Smoke0000',
   'Smoke0001',
   'Smoke0002',
+  'castle',
   'crops',
   'firtree',
   'fish',

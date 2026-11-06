@@ -1,4 +1,6 @@
+import type { WeaponId } from '../items';
 import type { WorkId } from './maps';
+import type { StatId } from './stats';
 
 export interface LootItem {
   item: string;
@@ -16,20 +18,47 @@ export interface Workplace {
   gatherMs: number;
 }
 
+export interface ShopWeapon {
+  id: WeaponId;
+  blurb: string;
+  price: number;
+  damage: number;
+  cooldownMs: number;
+}
+
+export interface ShopStat {
+  id: StatId;
+  name: string;
+  blurb: string;
+  basePrice: number;
+  priceStep: number;
+}
+
 export interface EconomyData {
   gold: number;
   loot: LootItem[];
   workplaces: Workplace[];
   stash: { item: string; count: number }[];
+  weapons: ShopWeapon[];
+  stats: ShopStat[];
+  myStats: Record<StatId, number>;
+  owned: WeaponId[];
 }
 
 /** 희귀 자원을 알림에서 돋보이게 하는 가격 기준 */
 const RARE_PRICE = 40;
 
-/** 내 골드와 가진 자원. 값은 모두 서버가 정하고 여기서는 화면에 보여 줄 사본만 들고 있다. */
+/** DB에 없는 무기를 쏠 때 쓰는 발사 간격 */
+const DEFAULT_COOLDOWN_MS = 250;
+
+/** 내 골드, 자원, 무기, 스텟. 값은 모두 서버가 정하고 여기서는 화면에 보여 줄 사본만 들고 있다. */
 export class Economy {
   gold: number;
   readonly workplaces: Workplace[];
+  readonly stats: ShopStat[];
+  private readonly weapons: ShopWeapon[];
+  private readonly myStats: Record<StatId, number>;
+  private readonly owned: Set<WeaponId>;
   private readonly loot = new Map<string, LootItem>();
   private readonly stash = new Map<string, number>();
   private readonly listeners: (() => void)[] = [];
@@ -37,6 +66,10 @@ export class Economy {
   constructor(data: EconomyData) {
     this.gold = data.gold;
     this.workplaces = data.workplaces;
+    this.stats = data.stats;
+    this.weapons = data.weapons;
+    this.myStats = { ...data.myStats };
+    this.owned = new Set(data.owned);
     for (const item of data.loot) this.loot.set(item.item, item);
     for (const { item, count } of data.stash) this.stash.set(item, count);
   }
@@ -69,8 +102,8 @@ export class Economy {
     return item.price >= RARE_PRICE;
   }
 
-  add(item: string) {
-    this.stash.set(item, (this.stash.get(item) ?? 0) + 1);
+  add(item: string, count = 1) {
+    this.stash.set(item, (this.stash.get(item) ?? 0) + count);
     this.changed();
   }
 
@@ -91,6 +124,40 @@ export class Economy {
   setSold(gold: number) {
     this.gold = gold;
     this.stash.clear();
+    this.changed();
+  }
+
+  /** 상점에서 파는 무기. 기본 지급품은 뺀다. */
+  get forSale() {
+    return this.weapons.filter(({ price }) => price > 0);
+  }
+
+  cooldownOf(id: WeaponId) {
+    return this.weapons.find((weapon) => weapon.id === id)?.cooldownMs ?? DEFAULT_COOLDOWN_MS;
+  }
+
+  owns(id: WeaponId) {
+    return this.owned.has(id);
+  }
+
+  stat(id: StatId) {
+    return this.myStats[id];
+  }
+
+  /** 스텟은 살수록 비싸진다. 서버의 buy_stat과 같은 계산이다. */
+  statPrice({ id, basePrice, priceStep }: ShopStat) {
+    return basePrice + priceStep * this.myStats[id];
+  }
+
+  setWeaponBought(id: WeaponId, gold: number) {
+    this.gold = gold;
+    this.owned.add(id);
+    this.changed();
+  }
+
+  setStatBought(id: StatId, value: number, gold: number) {
+    this.gold = gold;
+    this.myStats[id] = value;
     this.changed();
   }
 }

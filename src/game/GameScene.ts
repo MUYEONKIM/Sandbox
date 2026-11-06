@@ -4,7 +4,7 @@ import { paintGround, WORLD_H, WORLD_W } from '../art/ground';
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
 import { WALL_ORIGIN_X, WALL_ORIGIN_Y, WALL_VARIANTS, wallVariant } from '../art/walls';
-import { paintBullet, paintPistol } from '../art/weapons';
+import { paintBullet } from '../art/weapons';
 import { BLOCK_IDS, paintBlock, type BlockId } from '../blocks';
 import {
   BLOCK_HEIGHT,
@@ -20,7 +20,7 @@ import {
   ZOOM,
 } from '../config';
 import { depthOf, gridToWorld, tileCenter, worldToGrid } from '../iso';
-import { isWeapon, WEAPONS, type WeaponId } from '../items';
+import { isWeapon, WEAPON_IDS, WEAPONS, type WeaponId } from '../items';
 import type {
   ChatMessage,
   GameSession,
@@ -35,6 +35,7 @@ import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import type { OfficeWindow } from '../ui/office';
+import type { ShopWindow } from '../ui/shop';
 import { Avatar, CITIZEN_H, CITIZEN_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
 import type { Economy } from './economy';
@@ -47,13 +48,18 @@ import {
   DEFAULT_MAP,
   isMapId,
   MAPS,
+  OFFICE,
   portalColor,
   portalName,
   portalsOf,
+  respawnTile,
+  SHOP,
   type MapId,
   type Portal,
   type WorkId,
 } from './maps';
+import { meleeTarget } from './melee';
+import type { StatId } from './stats';
 import { inReach, World, type Tile } from './world';
 
 const DEPTH_GROUND = 0;
@@ -68,6 +74,9 @@ const PORTAL_FRAME_MS = 100;
 const CHIMNEY = { x: 56, y: 14 };
 const SMOKE_FRAMES = ['Smoke0000', 'Smoke0001', 'Smoke0002'] as const;
 const SMOKE_FRAME_MS = 240;
+
+/** 아이티공간 간판을 다는 위치 (건물 그림 기준 픽셀). 정문 앞에서도 보이는 높이다. */
+const SHOP_SIGN = { x: 262, y: 205 };
 
 /** 작물 밭은 칸 하나가 아니라 4칸 너비로 그려진다. 그림에서 밭 가운데 위치 */
 const CROPS_CENTER = { x: 64, y: 58 };
@@ -87,12 +96,19 @@ const TURN_WINDOW = 0.5;
 
 /** 총을 쏜 다른 플레이어의 총이 보이는 시간 */
 const REMOTE_AIM_MS = 700;
+/** 연사 무기는 이 수만큼 쏠 때 한 번만 알린다. 받는 쪽이 그만큼 나눠 그려서 통신량을 줄인다. */
+const BURST = 3;
 const RESPAWN_MS = 3000;
 const RESPAWN_RETRY_MS = 1000;
 
 interface PortalSprite {
   portal: Portal;
   image: Phaser.GameObjects.Image;
+  tag: string;
+}
+
+/** 건물에 붙은 이름표 */
+interface Sign extends Tile {
   tag: string;
 }
 
@@ -139,6 +155,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private range!: Phaser.GameObjects.Graphics;
   private readonly blockImages = new Map<string, Phaser.GameObjects.Image>();
   private portalSprites: PortalSprite[] = [];
+  private signs: Sign[] = [];
   /** 건물과 자원처럼 맵을 옮길 때 지워야 하는 그림 */
   private mapImages: Phaser.GameObjects.Image[] = [];
   private chimneySmoke: Phaser.GameObjects.Image | null = null;
@@ -148,8 +165,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private portalFrame = 0;
   private traveling = false;
   private down = false;
-  private armed = false;
+  /** 지금 들고 있는 무기. 없으면 null */
+  private armedWith: WeaponId | null = null;
   private nextShotAt = 0;
+  private shotsFired = 0;
   private nextMinimapAt = 0;
 
   /** 마우스가 가리키는 설치된 블록 */
@@ -167,6 +186,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly session: GameSession,
     private readonly economy: Economy,
     private readonly office: OfficeWindow,
+    private readonly shop: ShopWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -178,14 +198,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
     this.showMap(this.mapId);
 
-    const { id, nickname, x, y, hp } = this.session.profile;
-    this.me = new Avatar(this, id, { x, y }, hp);
+    const { id, nickname, hp } = this.session.profile;
+    this.me = new Avatar(this, id, this.startTile(), hp);
     this.tags.add(id, nickname);
     this.tags.setHp(id, hp);
     this.showLevel(id, this.level);
 
     this.bullets = new Bullets(this, {
-      isSolid: (tx, ty) => this.world.blockAt(tx, ty) !== undefined,
+      isSolid: (tx, ty) => this.world.blocksShots(tx, ty),
       targets: () => this.bulletTargets(),
       onImpact: (id, dx, dy) => this.playHit(id, dx, dy),
     });
@@ -215,11 +235,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.me.isDown) this.goDown();
   }
 
+  /** 저장된 자리에 건물이 들어섰다면 맵 입구에서 시작한다. */
+  private startTile(): Tile {
+    const { x, y } = this.session.profile;
+    return this.world.isWalkable(x, y) ? { x, y } : respawnTile(this.mapId);
+  }
+
   private createTextures() {
     for (const id of BLOCK_IDS) {
       for (let v = 0; v < WALL_VARIANTS; v++) this.textures.addCanvas(`block-${id}-${v}`, paintBlock(id, v));
     }
-    this.textures.addCanvas('pistol', paintPistol());
+    for (const id of WEAPON_IDS) this.textures.addCanvas(id, WEAPONS[id].art.paint());
     this.textures.addCanvas('bullet', paintBullet());
     this.textures.addCanvas('smoke', paintSmoke());
     this.textures.addCanvas('jump-shadow', paintJumpShadow());
@@ -311,9 +337,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const image = sprite(name);
     const texture = this.textures.get(name);
     const stripW = TILE_W / 2;
-    const left = gridToWorld(x, y + d).x;
-    const bottom = gridToWorld(x + w, y + d).y;
-    const top = bottom - groundPoint(name).y;
+    /** 그림 안에서 건물 바닥의 왼쪽 끝 위치. 그림이 바닥보다 넓으면 가운데를 맞춘다. */
+    const baseLeft = (image.width - (w + d) * stripW) / 2;
+    const left = gridToWorld(x, y + d).x - baseLeft;
+    const top = gridToWorld(x + w, y + d).y - groundPoint(name).y;
 
     const frontmost = (column: number) => {
       const c = Math.max(-d, Math.min(w - 1, column));
@@ -326,11 +353,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return best;
     };
 
-    for (let sx = 0; sx < image.width; sx += stripW) {
+    for (let edge = (baseLeft % stripW) - stripW; edge < image.width; edge += stripW) {
+      const sx = Math.max(edge, 0);
+      const width = Math.min(edge + stripW, image.width) - sx;
+      if (width <= 0) continue;
       const stripName = `strip-${sx}`;
-      const width = Math.min(stripW, image.width - sx);
       if (!texture.has(stripName)) texture.add(stripName, 0, sx, 0, width, image.height);
-      const column = Math.floor(sx / stripW) - d;
+      const column = Math.round((edge - baseLeft) / stripW) - d;
       const depth = depthOf(x + frontmost(column), y);
       this.mapImages.push(this.add.image(left + sx, top, name, stripName).setOrigin(0, 0).setDepth(depth));
     }
@@ -356,7 +385,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.chimneySmoke = null;
     for (const building of this.world.map.buildings) {
       const { left, top } = this.showBuilding(building);
-      if (id === 'plains') this.showChimneySmoke(left, top);
+      if (building.sprite === OFFICE.sprite) this.showChimneySmoke(left, top);
+      if (building.sprite === SHOP.sprite) this.addSign(SHOP.name, left + SHOP_SIGN.x, top + SHOP_SIGN.y);
     }
     this.showSpots(id);
 
@@ -367,9 +397,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         .setOrigin(0.5, PORTAL_ORIGIN_Y)
         .setDepth(depthOf(portal.x, portal.y));
       const tag = `portal-${portal.to}`;
-      this.tags.add(tag, `→ ${portalName(portal)}`, true);
+      this.tags.add(tag, `→ ${portalName(portal)}`, 'portal');
       return { portal, image, tag };
     });
+  }
+
+  private addSign(name: string, x: number, y: number) {
+    const tag = `sign-${name}`;
+    this.tags.add(tag, name, 'sign');
+    this.signs.push({ tag, x, y });
   }
 
   private clearMap() {
@@ -385,6 +421,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.tags.remove(tag);
     }
     this.portalSprites = [];
+    for (const { tag } of this.signs) this.tags.remove(tag);
+    this.signs = [];
     for (const image of this.mapImages) image.destroy();
     this.mapImages = [];
     this.bullets.clear();
@@ -398,6 +436,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.bullets.update(delta);
     this.updateWork();
     this.updateAim();
+    this.updateAutoFire();
     this.animatePortals(time);
     this.updateHover();
     this.placeNameTags();
@@ -405,7 +444,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private get canAct() {
-    return !this.hud.isOpen && !this.office.isOpen && !this.chat.isOpen && !this.traveling && !this.down;
+    const windowOpen = this.hud.isOpen || this.office.isOpen || this.shop.isOpen || this.chat.isOpen;
+    return !windowOpen && !this.traveling && !this.down;
   }
 
   private advancePlayer(delta: number) {
@@ -422,10 +462,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
 
-    // 막 도착했을 때만 탄다. 노동청 창을 닫은 뒤 그 자리에서 다시 열리지 않게 한다.
+    // 막 도착했을 때만 탄다. 창을 닫은 뒤 그 자리에서 다시 열리지 않게 한다.
     const portal = wasMoving ? this.world.portalAt(this.me.tile.x, this.me.tile.y) : undefined;
     if (portal) {
       if (portal.to === 'office') this.office.open();
+      else if (portal.to === 'shop') this.shop.open();
       else this.travel(portal.to);
       return;
     }
@@ -513,6 +554,32 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.hud.toast(`+${(gold - before).toLocaleString()}G`, '수고하셨습니다. 내일도 나오세요.');
   }
 
+  /** 상점에서 무기를 산다. 가격과 골드는 서버가 확인한다. */
+  async buyWeapon(id: WeaponId) {
+    if (!this.inventory.canAdd(id)) {
+      this.hud.toast('가방이 꽉 찼습니다', '칸을 비우고 다시 오세요');
+      return;
+    }
+    const gold = await this.session.buyWeapon(id);
+    if (gold === null) {
+      this.hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
+      return;
+    }
+    this.economy.setWeaponBought(id, gold);
+    this.inventory.add(id);
+    this.hud.toast(`${WEAPONS[id].name} 구매 완료`, '가방이나 단축키 칸을 확인하세요');
+  }
+
+  /** 상점에서 스텟을 1 올린다. */
+  async buyStat(id: StatId) {
+    const bought = await this.session.buyStat(id);
+    if (!bought) {
+      this.hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
+      return;
+    }
+    this.economy.setStatBought(id, bought.value, bought.gold);
+  }
+
   /** F로 작업을 시작하거나 멈춘다. 움직이면 멈춘다. */
   private toggleWork() {
     if (this.workStartedAt !== null) {
@@ -556,10 +623,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const result = await this.session.harvest();
     const info = result ? this.economy.lootItem(result.item) : undefined;
     if (!result || !info) return;
-    this.economy.add(result.item);
+    this.economy.add(result.item, result.count);
     this.gainLevel(BigInt(result.level));
     const gained = formatLevel(BigInt(result.gained));
-    this.hud.toast(`${info.name} 획득 (${info.price}G) · Lv +${gained}`, info.blurb, this.economy.isRare(info));
+    const name = result.count > 1 ? `${info.name} ×${result.count}` : info.name;
+    this.hud.toast(`${name} 획득 (${info.price}G) · Lv +${gained}`, info.blurb, this.economy.isRare(info));
   }
 
   /** 내 레벨이 올랐다. 작업 결과와 서버 알림이 둘 다 오므로 더 높을 때만 바꾼다. */
@@ -612,6 +680,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     placeAvatar(this.session.profile.id, this.me);
     for (const [id, avatar] of this.others) placeAvatar(id, avatar);
     for (const { image, tag } of this.portalSprites) place(tag, image.x, image.y - PORTAL_TAG_HEIGHT);
+    for (const { tag, x, y } of this.signs) place(tag, x, y);
   }
 
   private updateMinimap(time: number) {
@@ -635,30 +704,37 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return stack && isWeapon(stack.id) ? stack.id : null;
   }
 
-  /** 무기를 들고 있으면 총을 마우스 쪽으로 겨누고 커서를 조준점으로 바꾼다. */
+  /** 무기를 들고 있으면 마우스 쪽으로 겨누고 커서를 조준점으로 바꾼다. */
   private updateAim() {
-    const armed = this.selectedWeapon !== null && !this.down;
-    if (armed !== this.armed) {
-      this.armed = armed;
-      this.input.setDefaultCursor(armed ? 'crosshair' : 'default');
-      if (!armed) this.me.lowerGun();
+    const weapon = this.down ? null : this.selectedWeapon;
+    if (weapon !== this.armedWith) {
+      this.armedWith = weapon;
+      this.input.setDefaultCursor(weapon ? 'crosshair' : 'default');
+      if (weapon) this.me.setWeapon(weapon);
+      else this.me.lowerGun();
     }
-    if (!armed) return;
+    if (!weapon) return;
     const w = this.pointerWorld();
     const { x, y } = this.me.sprite;
     this.me.aim(Math.atan2(w.y - (y - BULLET_HEIGHT), w.x - x));
   }
 
+  /** 연사 무기는 누르고 있는 동안 계속 쏜다. */
+  private updateAutoFire() {
+    const weapon = this.selectedWeapon;
+    if (!weapon || !WEAPONS[weapon].auto || !this.canAct) return;
+    if (this.input.activePointer.leftButtonDown()) this.attack(weapon);
+  }
+
   private useSelectedItem() {
     const weapon = this.selectedWeapon;
-    if (weapon) this.shoot(weapon);
+    if (weapon) this.attack(weapon);
     else this.placeBlock();
   }
 
-  private shoot(weapon: WeaponId) {
-    const { cooldownMs, range } = WEAPONS[weapon];
+  private attack(weapon: WeaponId) {
     if (this.time.now < this.nextShotAt) return;
-    this.nextShotAt = this.time.now + cooldownMs;
+    this.nextShotAt = this.time.now + this.economy.cooldownOf(weapon);
 
     const { x, y } = this.me.position();
     const fromX = x + 0.5;
@@ -671,13 +747,46 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (dx === 0 && dy === 0) return;
 
     this.me.face(Math.sign(dx), Math.sign(dy));
-    this.bullets.fire(this.session.profile.id, fromX, fromY, aim.gx, aim.gy, range, (target) => {
-      void this.session.hitPlayer(target);
-    });
-    this.session.sendShot(fromX, fromY, aim.gx, aim.gy);
+    const myId = this.session.profile.id;
+    const { melee, auto, range } = WEAPONS[weapon];
+
+    if (melee) {
+      const target = this.slash(myId, this.me, weapon, { x: fromX, y: fromY }, { x: aim.gx, y: aim.gy });
+      if (target) void this.session.hitPlayer(target, weapon);
+    } else {
+      const shot = this.scatter(weapon, fromX, fromY, aim.gx, aim.gy);
+      this.bullets.fire(myId, fromX, fromY, shot.x, shot.y, range, (target) => {
+        void this.session.hitPlayer(target, weapon);
+      });
+    }
+
+    if (!auto || this.shotsFired % BURST === 0) this.session.sendShot(weapon, fromX, fromY, aim.gx, aim.gy);
+    this.shotsFired++;
   }
 
-  /** 총알이 날아온 방향으로 맞은 사람을 밀어낸다. 체력은 서버가 따로 처리한다. */
+  /** 앞쪽을 베고 맞은 사람의 id를 돌려준다. 다른 플레이어의 공격도 같은 방법으로 보여 준다. */
+  private slash(ownerId: string, avatar: Avatar, weapon: WeaponId, from: Tile, to: Tile, holdMs?: number) {
+    const start = gridToWorld(from.x, from.y);
+    const end = gridToWorld(to.x, to.y);
+    avatar.swing(Math.atan2(end.y - start.y, end.x - start.x), holdMs);
+
+    const targets = this.bulletTargets().filter(({ id }) => id !== ownerId);
+    const isSolid = (x: number, y: number) => this.world.blocksShots(x, y);
+    const target = meleeTarget(from, to, WEAPONS[weapon].range, targets, isSolid);
+    if (!target) return null;
+    this.playHit(target.id, target.x - from.x, target.y - from.y);
+    return target.id;
+  }
+
+  /** 조준한 방향을 무기의 흩어짐만큼 틀어 준다. */
+  private scatter(weapon: WeaponId, fromX: number, fromY: number, toX: number, toY: number) {
+    const { spread = 0 } = WEAPONS[weapon];
+    const angle = Math.atan2(toY - fromY, toX - fromX) + (Math.random() - 0.5) * spread;
+    const length = Math.hypot(toX - fromX, toY - fromY);
+    return { x: fromX + Math.cos(angle) * length, y: fromY + Math.sin(angle) * length };
+  }
+
+  /** 공격이 날아온 방향으로 맞은 사람을 밀어낸다. 체력은 서버가 따로 처리한다. */
   private playHit(id: string, dx: number, dy: number) {
     const avatar = id === this.session.profile.id ? this.me : this.others.get(id);
     if (!avatar) return;
@@ -699,7 +808,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return targets;
   }
 
-  /** 체력이 0이 되면 잠시 뒤 맵 중앙에서 다시 시작한다. */
+  /** 체력이 0이 되면 잠시 뒤 포탈 앞에서 다시 시작한다. */
   private goDown() {
     if (this.down) return;
     this.down = true;
@@ -713,8 +822,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.time.delayedCall(RESPAWN_RETRY_MS, () => void this.respawn());
       return;
     }
-    const center = Math.floor(MAP_SIZE / 2);
-    const tile = { x: center, y: center };
+    const tile = respawnTile(this.mapId);
     this.me.teleport(tile);
     this.setMyHp(MAX_HP);
     this.down = false;
@@ -932,22 +1040,44 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     else avatar.stepTo({ x, y }, ms);
   }
 
-  onShot({ id, fromX, fromY, toX, toY }: PlayerShot) {
+  onShot({ id, weapon, fromX, fromY, toX, toY }: PlayerShot) {
     const avatar = this.others.get(id);
     if (!avatar) return;
+    avatar.setWeapon(weapon);
+    const { melee, auto, range } = WEAPONS[weapon];
+    if (melee) {
+      this.slash(id, avatar, weapon, { x: fromX, y: fromY }, { x: toX, y: toY }, REMOTE_AIM_MS);
+      return;
+    }
+
     const from = gridToWorld(fromX, fromY);
     const to = gridToWorld(toX, toY);
     avatar.aim(Math.atan2(to.y - from.y, to.x - from.x), REMOTE_AIM_MS);
-    this.bullets.fire(id, fromX, fromY, toX, toY, WEAPONS.pistol.range);
+
+    const cooldown = this.economy.cooldownOf(weapon);
+    for (let i = 0; i < (auto ? BURST : 1); i++) {
+      this.time.delayedCall(i * cooldown, () => {
+        if (this.others.get(id) !== avatar) return;
+        const shot = this.scatter(weapon, fromX, fromY, toX, toY);
+        this.bullets.fire(id, fromX, fromY, shot.x, shot.y, range);
+      });
+    }
   }
 
   onHp(id: string, hp: number) {
-    if (id === this.session.profile.id) {
+    const mine = id === this.session.profile.id;
+    const before = mine ? this.me.hp : this.others.get(id)?.hp;
+    if (before !== undefined && hp < before) this.tags.float(id, `-${before - hp}`, 'damage');
+    if (mine) {
       this.setMyHp(hp);
       return;
     }
     this.others.get(id)?.setHp(hp);
     this.tags.setHp(id, hp);
+  }
+
+  onDodge(id: string) {
+    if (id === this.session.profile.id || this.others.has(id)) this.tags.float(id, '회피!', 'dodge');
   }
 
   onLevel(id: string, level: bigint) {
