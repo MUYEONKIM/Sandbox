@@ -38,9 +38,7 @@ const KNOCK_MS = 280;
 /** 밀려나는 데 쓰는 시간의 비율. 나머지는 천천히 돌아온다. */
 const KNOCK_OUT = 0.2;
 
-/** 대시 연기: 출발할 때 한 번 피어오르고, 달리는 동안 조금씩 남는다. */
-const SMOKE_BURST = 3;
-const SMOKE_INTERVAL_MS = 40;
+/** 달릴 때 발밑에서 피어오르는 연기 */
 const SMOKE_LIFE_MS = 380;
 const SMOKE_ALPHA = 0.75;
 /** 연기가 흩어지는 좌우 폭과 떠오르는 높이 (아트 픽셀) */
@@ -63,12 +61,10 @@ export class Avatar {
   private leftFoot = true;
   private aimAngle: number | null = null;
   private lowerGunAt = Infinity;
-  private smoking = false;
   private airborne = false;
   private knockX = 0;
   private knockY = 0;
   private knockT = 1;
-  private nextSmokeAt = 0;
   hp: number;
 
   constructor(
@@ -126,7 +122,6 @@ export class Avatar {
     this.t = ms > 0 ? 0 : 1;
     this.ms = ms;
     this.leftFoot = !this.leftFoot;
-    this.smoking = false;
     this.airborne = false;
   }
 
@@ -143,23 +138,10 @@ export class Avatar {
     this.knockT = 0;
   }
 
-  /** stepTo처럼 움직이되 발밑에 하얀 연기를 흩날린다. */
-  dashTo(to: Tile, ms: number) {
-    for (let i = 0; i < SMOKE_BURST; i++) this.puff();
-    this.stepTo(to, ms);
-    this.smoking = true;
-    this.nextSmokeAt = this.scene.time.now + SMOKE_INTERVAL_MS;
-  }
-
-  private leaveSmoke() {
-    if (!this.moving) {
-      this.smoking = false;
-      return;
-    }
-    const now = this.scene.time.now;
-    if (now < this.nextSmokeAt) return;
-    this.nextSmokeAt = now + SMOKE_INTERVAL_MS;
+  /** stepTo처럼 움직이되 발밑에 하얀 연기를 남긴다. */
+  runTo(to: Tile, ms: number) {
     this.puff();
+    this.stepTo(to, ms);
   }
 
   /** 연기 한 덩이를 발밑에 놓고, 흩어지며 떠올라 사라지게 한다. */
@@ -230,7 +212,6 @@ export class Avatar {
     if (this.knockT < 1) this.knockT = Math.min(1, this.knockT + delta / KNOCK_MS);
     if (this.scene.time.now >= this.lowerGunAt) this.lowerGun();
     this.sync();
-    if (this.smoking) this.leaveSmoke();
   }
 
   /** 빠르게 밀려났다가 천천히 돌아오는 정도 (0~1) */

@@ -11,6 +11,8 @@ export interface Profile {
   y: number;
   hp: number;
   gold: number;
+  /** 숫자가 아주 커질 수 있어 문자열로 받는다. */
+  level: string;
   inventory: unknown;
 }
 
@@ -81,7 +83,7 @@ export async function loadEconomy(gold: number): Promise<EconomyData> {
 export async function loadProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nickname, map, x, y, hp, gold, inventory')
+    .select('id, nickname, map, x, y, hp, gold, level::text, inventory')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(error.message);

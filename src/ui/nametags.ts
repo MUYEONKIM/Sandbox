@@ -6,6 +6,7 @@ const BUBBLE_MS = 4000;
 interface Tag {
   root: HTMLElement;
   bubble: HTMLElement;
+  level: HTMLElement | null;
   hp: HTMLElement | null;
   progress: HTMLElement | null;
   timer: number;
@@ -22,11 +23,18 @@ export class NameTags {
     const root = element('player-tag', this.parent);
     const bubble = element('bubble', root);
     bubble.hidden = true;
-    element(portal ? 'player-name portal-name' : 'player-name', root).textContent = nickname;
+    const name = element(portal ? 'player-name portal-name' : 'player-name', root);
+    const level = portal ? null : element('player-level', name, 'span');
+    name.append(nickname);
     const hp = portal ? null : element('player-hp-fill', element('player-hp', root));
     const progress = portal ? null : element('player-work-fill', element('player-work', root));
     if (progress) progress.parentElement!.hidden = true;
-    this.tags.set(id, { root, bubble, hp, progress, timer: 0 });
+    this.tags.set(id, { root, bubble, level, hp, progress, timer: 0 });
+  }
+
+  setLevel(id: string, text: string) {
+    const label = this.tags.get(id)?.level;
+    if (label) label.textContent = text;
   }
 
   setHp(id: string, hp: number) {

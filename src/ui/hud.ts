@@ -1,6 +1,7 @@
 import { BLOCK_IDS } from '../blocks';
 import { MAX_HP } from '../config';
 import { BAG_SIZE, HOTBAR_SIZE, type Inventory } from '../game/inventory';
+import { formatLevel } from '../game/level';
 import { itemName, paintItem, WEAPON_IDS, type ItemId } from '../items';
 import { element } from './dom';
 
@@ -18,7 +19,9 @@ const TOAST_LIMIT = 4;
 /** 화면 위 UI: 단축키 칸, 인벤토리 창, 조작 안내 */
 export class Hud {
   private readonly panel: HTMLElement;
-  private readonly label: HTMLElement;
+  private readonly pickedName: HTMLElement;
+  private readonly pickedIcon: HTMLImageElement;
+  private readonly levelText: HTMLElement;
   private readonly dragIcon: HTMLImageElement;
   private readonly slots: HTMLElement[] = [];
   private readonly icons = paintIcons();
@@ -52,7 +55,7 @@ export class Hud {
 
     const help = element('help', root);
     help.innerHTML =
-      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>대시</b> Shift &nbsp; <b>점프</b> Space &nbsp; <b>작업</b> F<br><b>설치 / 사격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
+      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>달리기</b> Shift 누르기 &nbsp; <b>점프</b> Space &nbsp; <b>작업</b> F<br><b>설치 / 사격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
 
     this.panel = element('panel', root);
     this.panel.hidden = true;
@@ -64,10 +67,18 @@ export class Hud {
     this.downNotice.hidden = true;
 
     const bottom = element('bottom', root);
-    this.label = element('selected-name', bottom);
-    const hp = element('hp', bottom);
+
+    const status = element('status', bottom);
+    this.levelText = element('status-level', status);
+    const hp = element('hp', status);
     this.hpFill = element('hp-fill', hp);
     this.hpText = element('hp-text', hp);
+
+    const picked = element('picked', bottom);
+    this.pickedIcon = element('picked-icon', picked, 'img') as HTMLImageElement;
+    this.pickedIcon.alt = '';
+    this.pickedName = element('picked-name', picked);
+
     const hotbar = element('slots hotbar', bottom);
 
     for (let i = 0; i < HOTBAR_SIZE + BAG_SIZE; i++) {
@@ -96,6 +107,14 @@ export class Hud {
   setHp(hp: number) {
     this.hpFill.style.width = `${(hp / MAX_HP) * 100}%`;
     this.hpText.textContent = `HP ${hp} / ${MAX_HP}`;
+  }
+
+  setLevel(level: bigint, gained = false) {
+    this.levelText.textContent = `Lv. ${formatLevel(level)}`;
+    if (!gained) return;
+    // 같은 클래스를 다시 붙여도 애니메이션이 처음부터 돌도록 한 프레임 뗀다.
+    this.levelText.classList.remove('gained');
+    requestAnimationFrame(() => this.levelText.classList.add('gained'));
   }
 
   showDown(down: boolean) {
@@ -189,6 +208,8 @@ export class Hud {
       slot.classList.toggle('selected', i === this.inventory.selected);
     });
     const selected = this.inventory.selectedStack;
-    this.label.textContent = selected ? itemName(selected.id) : '';
+    this.pickedName.textContent = selected ? itemName(selected.id) : '빈손';
+    this.pickedIcon.hidden = !selected;
+    if (selected) this.pickedIcon.src = this.icons[selected.id];
   }
 }

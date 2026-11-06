@@ -31,6 +31,10 @@ function toDir(sx: number, sy: number): Dir | null {
   return { dx: Math.sign(sx + sy), dy: Math.sign(sy - sx) };
 }
 
+function isShift(e: KeyboardEvent) {
+  return e.key === 'Shift' || e.code.startsWith('Shift');
+}
+
 interface KeyActions {
   onSlot(index: number): void;
   onInventory(): void;
@@ -43,14 +47,23 @@ export class Keys {
   private readonly held = new Set<string>();
   /** 프레임 사이에 눌렀다 뗀 키도 한 칸은 움직이도록 남겨 둔다. */
   private readonly tapped = new Set<string>();
-  private dashPressed = false;
+  private shiftHeld = false;
   private jumpPressed = false;
   private workPressed = false;
 
   constructor(private readonly actions: KeyActions) {
-    window.addEventListener('keydown', (e) => this.down(e));
-    window.addEventListener('keyup', (e) => this.held.delete(e.code));
-    window.addEventListener('blur', () => this.held.clear());
+    window.addEventListener('keydown', (e) => {
+      if (isShift(e)) this.shiftHeld = true;
+      this.down(e);
+    });
+    window.addEventListener('keyup', (e) => {
+      if (isShift(e)) this.shiftHeld = false;
+      this.held.delete(e.code);
+    });
+    window.addEventListener('blur', () => {
+      this.held.clear();
+      this.shiftHeld = false;
+    });
   }
 
   private down(e: KeyboardEvent) {
@@ -69,8 +82,6 @@ export class Keys {
     const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
     if (digit) {
       this.actions.onSlot(Number(digit[1]) - 1);
-    } else if (e.key === 'Shift' || e.code.startsWith('Shift')) {
-      this.dashPressed = true;
     } else if (e.code === 'Space' || e.key === ' ') {
       e.preventDefault();
       this.jumpPressed = true;
@@ -103,11 +114,9 @@ export class Keys {
     return dir;
   }
 
-  /** Shift를 눌렀으면 true를 돌려주고 입력을 지운다. */
-  takeDash() {
-    const pressed = this.dashPressed;
-    this.dashPressed = false;
-    return pressed;
+  /** Shift를 누르고 있으면 달린다. */
+  get running() {
+    return this.shiftHeld;
   }
 
   /** F를 눌렀으면 true를 돌려주고 입력을 지운다. */

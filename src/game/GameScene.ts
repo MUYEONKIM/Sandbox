@@ -8,14 +8,12 @@ import { paintBullet, paintPistol } from '../art/weapons';
 import { BLOCK_IDS, paintBlock, type BlockId } from '../blocks';
 import {
   BLOCK_HEIGHT,
-  DASH_COOLDOWN_MS,
-  DASH_STEP_MS,
-  DASH_TILES,
   JUMP_MS,
   JUMP_TILES,
   MAP_SIZE,
   MAX_HP,
   PLACE_RANGE,
+  RUN_SPEED,
   STEP_MS,
   TILE_H,
   TILE_W,
@@ -42,6 +40,7 @@ import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
 import type { Economy } from './economy';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
+import { formatLevel } from './level';
 import { generateMap, type Building } from './map';
 import {
   arrivalFor,
@@ -131,7 +130,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private walk: Walk | null = null;
   /** 방향키 없이 Shift를 누르면 이 방향으로 대시한다. 처음에는 화면 아래를 본다. */
   private lastDir: Dir = { dx: 1, dy: 1 };
-  private nextDashAt = 0;
+  private level: bigint;
   private readonly others = new Map<string, Avatar>();
   private bullets!: Bullets;
   private ground!: Phaser.GameObjects.Image;
@@ -171,6 +170,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
+    this.level = BigInt(session.profile.level);
   }
 
   create() {
@@ -182,6 +182,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.me = new Avatar(this, id, { x, y }, hp);
     this.tags.add(id, nickname);
     this.tags.setHp(id, hp);
+    this.showLevel(id, this.level);
 
     this.bullets = new Bullets(this, {
       isSolid: (tx, ty) => this.world.blockAt(tx, ty) !== undefined,
@@ -414,12 +415,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     if (this.keys.takeWork() && this.canAct) this.toggleWork();
 
-    const dashPressed = this.keys.takeDash();
-    const jumpPressed = this.keys.takeJump();
-    if (this.canAct && !this.me.jumping) {
-      if (jumpPressed) this.jump();
-      else if (dashPressed) this.dash();
-    }
+    if (this.keys.takeJump() && this.canAct && !this.me.jumping) this.jump();
 
     if (this.me.moving) {
       this.steer();
@@ -453,36 +449,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.me.face(dir.dx, dir.dy);
       return;
     }
-    this.moveTo({ x: from.x + step.dx, y: from.y + step.dy }, STEP_MS * Math.hypot(step.dx, step.dy));
+    const running = this.keys.running;
+    const ms = (STEP_MS * Math.hypot(step.dx, step.dy)) / (running ? RUN_SPEED : 1);
+    this.moveTo({ x: from.x + step.dx, y: from.y + step.dy }, ms, running ? 'run' : 'walk');
     this.me.face(step.dx, step.dy);
     this.walk = { from, dir };
   }
 
-  /** 걸음을 막 뗀 참이면 출발한 칸을 기준으로 삼아, 어디서 써도 대시와 점프 거리가 같게 한다. */
+  /** 걸음을 막 뗀 참이면 출발한 칸을 기준으로 삼아, 어디서 써도 점프 거리가 같게 한다. */
   private get actionStart() {
     const justLeft = this.walk && this.me.moving && this.me.progress < TURN_WINDOW;
     return justLeft ? this.walk!.from : this.me.tile;
-  }
-
-  /** 누르고 있는 방향으로 DASH_TILES칸 빠르게 나아간다. 벽이나 포탈을 만나면 거기서 멈춘다. */
-  private dash() {
-    if (this.time.now < this.nextDashAt) return;
-    // 방향 입력을 여기서 비워야 대시가 끝난 뒤 한 칸 더 걷지 않는다.
-    const dir = this.keys.takeDirection() ?? this.lastDir;
-    const { dx, dy } = dir;
-    let tile = this.actionStart;
-    let moved = 0;
-    while (moved < DASH_TILES && this.world.canStep(tile, dx, dy)) {
-      tile = { x: tile.x + dx, y: tile.y + dy };
-      moved++;
-      if (this.world.portalAt(tile.x, tile.y)) break;
-    }
-    if (moved === 0) return;
-    this.nextDashAt = this.time.now + DASH_COOLDOWN_MS;
-    this.moveTo(tile, DASH_STEP_MS * moved * Math.hypot(dx, dy), 'dash');
-    this.me.face(dx, dy);
-    this.lastDir = dir;
-    this.walk = null;
   }
 
   /** 방향을 누르고 Space를 누르면 벽 하나를 넘을 수 있다. 벽 앞에서는 방향 없이 눌러도 넘는다. */
@@ -511,7 +488,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private moveTo(to: Tile, ms: number, motion: Motion = 'walk') {
     this.stopWork();
     if (motion === 'jump') this.me.jumpTo(to, ms);
-    else if (motion === 'dash') this.me.dashTo(to, ms);
+    else if (motion === 'run') this.me.runTo(to, ms);
     else this.me.stepTo(to, ms);
     this.session.sendMove(to.x, to.y, ms, motion);
     this.session.saveLater(to);
@@ -576,11 +553,25 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private async collectResource() {
-    const item = await this.session.harvest();
-    const info = item ? this.economy.lootItem(item) : undefined;
-    if (!item || !info) return;
-    this.economy.add(item);
-    this.hud.toast(`${info.name} 획득 (${info.price}G)`, info.blurb, this.economy.isRare(info));
+    const result = await this.session.harvest();
+    const info = result ? this.economy.lootItem(result.item) : undefined;
+    if (!result || !info) return;
+    this.economy.add(result.item);
+    this.gainLevel(BigInt(result.level));
+    const gained = formatLevel(BigInt(result.gained));
+    this.hud.toast(`${info.name} 획득 (${info.price}G) · Lv +${gained}`, info.blurb, this.economy.isRare(info));
+  }
+
+  /** 내 레벨이 올랐다. 작업 결과와 서버 알림이 둘 다 오므로 더 높을 때만 바꾼다. */
+  private gainLevel(level: bigint) {
+    if (level <= this.level) return;
+    this.level = level;
+    this.hud.setLevel(level, true);
+    this.showLevel(this.session.profile.id, level);
+  }
+
+  private showLevel(id: string, level: bigint) {
+    this.tags.setLevel(id, `Lv.${formatLevel(level, true)}`);
   }
 
   /** 포탈을 타면 화면을 어둡게 한 사이에 맵을 바꾼다. */
@@ -915,24 +906,29 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.me.hp;
   }
 
-  onMove({ id, nickname, x, y, ms, hp, motion }: PlayerMove) {
+  currentLevel() {
+    return this.level;
+  }
+
+  onMove({ id, nickname, x, y, ms, hp, level, motion }: PlayerMove) {
     let avatar = this.others.get(id);
     if (!avatar) {
       avatar = new Avatar(this, id, { x, y }, hp);
       this.others.set(id, avatar);
       this.tags.add(id, nickname);
       this.tags.setHp(id, hp);
+      this.showLevel(id, level);
       return;
     }
     const { tile } = avatar;
-    const reachable = inReach(tile, { x, y }, Math.max(DASH_TILES, JUMP_TILES) + 1);
+    const reachable = inReach(tile, { x, y }, JUMP_TILES + 1);
     if (motion === 'jump' && reachable) {
       avatar.jumpTo({ x, y }, ms);
       return;
     }
     if (tile.x === x && tile.y === y) return;
     if (!reachable) avatar.teleport({ x, y });
-    else if (motion === 'dash') avatar.dashTo({ x, y }, ms);
+    else if (motion === 'run') avatar.runTo({ x, y }, ms);
     else avatar.stepTo({ x, y }, ms);
   }
 
@@ -952,6 +948,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     this.others.get(id)?.setHp(hp);
     this.tags.setHp(id, hp);
+  }
+
+  onLevel(id: string, level: bigint) {
+    if (id === this.session.profile.id) this.gainLevel(level);
+    else if (this.others.has(id)) this.showLevel(id, level);
   }
 
   onRoster(ids: Set<string>) {

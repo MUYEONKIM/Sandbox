@@ -2,10 +2,18 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { BLOCKS, type BlockId } from '../blocks';
 import { MAP_SIZE, MAX_HP } from '../config';
 import type { Slot } from '../game/inventory';
+import { parseLevel } from '../game/level';
 import type { Profile } from './auth';
 import { supabase } from './supabase';
 
-export type Motion = 'walk' | 'dash' | 'jump';
+export type Motion = 'walk' | 'run' | 'jump';
+
+/** 작업 한 번의 결과. 레벨은 아주 커질 수 있어 문자열로 온다. */
+export interface HarvestResult {
+  item: string;
+  level: string;
+  gained: string;
+}
 
 export interface PlayerMove {
   id: string;
@@ -14,6 +22,7 @@ export interface PlayerMove {
   y: number;
   ms: number;
   hp: number;
+  level: bigint;
   motion: Motion;
 }
 
@@ -43,10 +52,14 @@ export interface SessionEvents {
   currentTile(): { x: number; y: number };
   /** 내 현재 체력. 새로 들어온 플레이어에게 알릴 때 쓴다. */
   currentHp(): number;
+  /** 내 현재 레벨 */
+  currentLevel(): bigint;
   onMove(move: PlayerMove): void;
   onShot(shot: PlayerShot): void;
   /** 서버가 알려 주는 체력 변화 */
   onHp(id: string, hp: number): void;
+  /** 서버가 알려 주는 레벨 변화 */
+  onLevel(id: string, level: bigint): void;
   /** 지금 같은 맵에 접속 중인 플레이어 id 목록 */
   onRoster(ids: Set<string>): void;
   onChat(message: ChatMessage): void;
@@ -75,7 +88,7 @@ const isBlockId = (v: unknown): v is BlockId => typeof v === 'string' && Object.
 
 /** 다른 플레이어가 보낸 값은 믿을 수 없으므로 형식을 확인한다. */
 function parseMove(value: unknown): PlayerMove | null {
-  const m = value as Partial<PlayerMove> | null;
+  const m = value as (Partial<Omit<PlayerMove, 'level'>> & { level?: unknown }) | null;
   if (!m || typeof m.id !== 'string' || typeof m.nickname !== 'string') return null;
   if (!isTileCoord(m.x) || !isTileCoord(m.y) || typeof m.ms !== 'number') return null;
   return {
@@ -85,7 +98,8 @@ function parseMove(value: unknown): PlayerMove | null {
     y: m.y,
     ms: Math.min(Math.max(m.ms, 0), MAX_STEP_MS),
     hp: isHp(m.hp) ? m.hp : MAX_HP,
-    motion: m.motion === 'dash' || m.motion === 'jump' ? m.motion : 'walk',
+    level: parseLevel(m.level) ?? 1n,
+    motion: m.motion === 'run' || m.motion === 'jump' ? m.motion : 'walk',
   };
 }
 
@@ -138,6 +152,10 @@ export class GameSession {
       })
       .on('broadcast', { event: 'hp' }, ({ payload }) => {
         if (typeof payload?.id === 'string' && isHp(payload.hp)) events.onHp(payload.id, payload.hp);
+      })
+      .on('broadcast', { event: 'level' }, ({ payload }) => {
+        const level = parseLevel(payload?.level);
+        if (typeof payload?.id === 'string' && level) events.onLevel(payload.id, level);
       })
       .subscribe();
   }
@@ -206,7 +224,12 @@ export class GameSession {
     if (!this.joined || !this.channel) return;
     const { id, nickname } = this.profile;
     const hp = this.events.currentHp();
-    void this.channel.send({ type: 'broadcast', event: 'move', payload: { id, nickname, x, y, ms, hp, motion } });
+    const level = this.events.currentLevel().toString();
+    void this.channel.send({
+      type: 'broadcast',
+      event: 'move',
+      payload: { id, nickname, x, y, ms, hp, level, motion },
+    });
   }
 
   sendShot(fromX: number, fromY: number, toX: number, toY: number) {
@@ -216,9 +239,9 @@ export class GameSession {
   }
 
   /** 자원 하나를 캔다. 작업 간격을 어기거나 작업장이 아니면 null을 돌려준다. */
-  async harvest(): Promise<string | null> {
+  async harvest(): Promise<HarvestResult | null> {
     const { data, error } = await supabase.rpc('harvest');
-    return error ? null : (data as string);
+    return error ? null : (data as HarvestResult);
   }
 
   /** 가진 자원을 모두 팔고 새 골드를 돌려준다. */
