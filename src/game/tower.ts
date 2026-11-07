@@ -17,10 +17,6 @@ const STAIRS: Area = [6, 20, 39, 22];
 /** 엘리베이터 안 */
 const CABIN: Area = [21, 21, 24, 24];
 
-/** 새로 가입한 플레이어가 태어나는 층과 칸. 서버의 profiles 기본값과 같다. */
-export const BIRTH_MAP: TowerId = 'tower7';
-export const BIRTH_TILE = { x: 23, y: 23 };
-
 export const COUNTER_INFO = { name: "ITS'room 카운터", accent: 0xff7ad9 };
 export const PANEL_INFO = { name: '층 버튼', accent: 0xffd84d };
 export const CABIN_DOOR_INFO = { name: '내리기', accent: 0xbfe6ff };
