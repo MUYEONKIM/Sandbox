@@ -1,6 +1,6 @@
 import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
-import { CABIN_DOOR_INFO, COUNTER_INFO, FLOORS, isTower, PANEL_INFO, UPPER, type TowerId } from './tower';
+import { COUNTER_INFO, FLOORS, isTower, PANEL_INFO, UPPER, type TowerId } from './tower';
 
 const END = MAP_SIZE - 1;
 
@@ -274,11 +274,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /**
-   * 'office', 'shop', 'counter', 'fame', 'panel'은 맵을 옮기지 않고 창을 연다.
-   * 'cabinDoor'는 엘리베이터에 탔던 층으로 내린다.
-   */
-  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'panel' | 'cabinDoor';
+  /** 'office', 'shop', 'counter', 'fame', 'panel'은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'panel';
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
@@ -306,7 +303,6 @@ function portalInfo({ to }: Portal) {
   if (to === 'office') return OFFICE;
   if (to === 'counter') return COUNTER_INFO;
   if (to === 'panel') return PANEL_INFO;
-  if (to === 'cabinDoor') return CABIN_DOOR_INFO;
   if (to === 'fame') return FAME;
   return to === 'shop' ? SHOP : MAPS[to];
 }

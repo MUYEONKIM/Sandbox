@@ -198,7 +198,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private shotsFired = 0;
   private nextMinimapAt = 0;
 
-  /** 엘리베이터에 탄 층. 엘리베이터에서 내리면 이 층으로 나간다. 새로고침하면 1층이다. */
+  /** 엘리베이터에 탄 층. 버튼판의 내리기를 누르면 이 층으로 나간다. 새로고침하면 1층이다. */
   private elevatorFloor: TowerId = 'tower1';
 
   /** 휴대폰에서 누른 곳까지 남은 칸. 비어 있으면 걷지 않는다. */
@@ -599,8 +599,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'shop') this.shop.open();
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
-      else if (portal.to === 'panel') this.elevator.open(FLOORS[this.elevatorFloor].number);
-      else if (portal.to === 'cabinDoor') this.travel(this.elevatorFloor);
+      else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor);
       else this.travel(portal.to);
       return;
     }

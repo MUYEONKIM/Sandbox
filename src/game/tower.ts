@@ -19,7 +19,6 @@ const CABIN: Area = [21, 21, 24, 24];
 
 export const COUNTER_INFO = { name: "ITS'room 카운터", accent: 0xff7ad9 };
 export const PANEL_INFO = { name: '층 버튼', accent: 0xffd84d };
-export const CABIN_DOOR_INFO = { name: '내리기', accent: 0xbfe6ff };
 
 /** 엘리베이터 버튼. 위에서부터 7층이고, 2, 3, 5, 6층은 임대를 줘서 내리지 못한다. */
 export const ELEVATOR_STOPS: { floor: number; to: TowerId | null }[] = [
@@ -189,10 +188,8 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'cabin',
     area: CABIN,
     doorways: [panel],
-    portals: [
-      { x: CABIN[2], y: CABIN[1] + 2, to: 'cabinDoor', landing: { x: CABIN[2] - 2, y: CABIN[1] + 2 } },
-      wallPortal(CABIN, panel, 'panel'),
-    ],
+    // 포탈은 층 버튼판 하나다. 층을 고르는 것도, 탔던 층에서 내리는 것도 버튼판 창에서 한다.
+    portals: [wallPortal(CABIN, panel, 'panel')],
   },
 };
 
