@@ -1,4 +1,4 @@
-import { PORTAL_MARGIN, portalsOf, type Area } from './maps';
+import { APARTMENT, APARTMENT_SITES, FIRST_DONG, PORTAL_MARGIN, portalsOf, type Area } from './maps';
 import type { Building } from './map';
 import {
   eachTile,
@@ -19,20 +19,6 @@ const SEED = 4177;
 const TREE_COUNT = 12;
 const FLOWER_COUNT = 40;
 const WEED_COUNT = 24;
-
-/** 행복 아파트 건물 한 동의 크기. 긴 면이 앞(+y)을 본다. */
-const APARTMENT = { sprite: 'apartment' as const, w: 10, d: 3 };
-const FIRST_DONG = 101;
-
-/** 동이 서는 자리. 이 순서대로 101동부터 번호가 붙으므로 새 동은 뒤에 더한다. */
-const SITES = [
-  { x: 9, y: 9 },
-  { x: 27, y: 9 },
-  { x: 9, y: 21 },
-  { x: 27, y: 21 },
-  { x: 9, y: 33 },
-  { x: 27, y: 33 },
-];
 
 /** 단지 안의 길: 포탈 앞, 서쪽 길, 동마다 앞을 지나는 길, 가운데 길, 동쪽 길 */
 const ROADS: Area[] = [
@@ -64,16 +50,14 @@ export function layoutResidence(): Residence {
     });
   }
 
-  const buildings = SITES.map(({ x, y }, index): Building => {
+  const buildings = APARTMENT_SITES.map(({ x, y }, index): Building => {
     const { sprite, w, d } = APARTMENT;
     eachTile([x, y, x + w - 1, y + d - 1], mark);
-    // 건물 앞의 덤불. 가운데 현관 앞은 비운다.
-    for (const row of [[x, y + d, x + 3, y + d], [x + 6, y + d, x + w - 1, y + d]] as const) {
-      eachTile(row, (hx, hy) => {
-        props.push({ x: hx, y: hy, tile: pickTile(HEDGES, hx, hy) });
-        mark(hx, hy);
-      });
-    }
+    // 현관 오른쪽의 덤불. 왼쪽까지 심으면 위쪽 방향키를 누른 채 오다가 현관 앞에 갇힌다.
+    eachTile([x + 6, y + d, x + w - 1, y + d], (hx, hy) => {
+      props.push({ x: hx, y: hy, tile: pickTile(HEDGES, hx, hy) });
+      mark(hx, hy);
+    });
     return { sprite, x, y, w, d, label: `행복 아파트 ${FIRST_DONG + index}동` };
   });
 

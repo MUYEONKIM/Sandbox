@@ -46,6 +46,7 @@ export function paintGround(map: GameMap): HTMLCanvasElement {
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
       const index = x + y * MAP_SIZE;
+      if (map.terrain[index] === Terrain.Void) continue;
       const water = map.terrain[index] === Terrain.Water;
       const corner = gridToWorld(x, y);
       const left = corner.x - TILE_CELL / 2;

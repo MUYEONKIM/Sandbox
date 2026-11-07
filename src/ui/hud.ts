@@ -30,6 +30,7 @@ export class Hud {
   private readonly hpFill: HTMLElement;
   private readonly hpText: HTMLElement;
   private readonly downNotice: HTMLElement;
+  private readonly guide: HTMLElement;
   private readonly gold: HTMLElement;
   private readonly toastBox: HTMLElement;
   private dragFrom: number | null = null;
@@ -67,6 +68,11 @@ export class Hud {
     this.downNotice = element('down-notice', root);
     this.downNotice.textContent = '쓰러졌습니다. 잠시 후 포탈 앞에서 다시 시작합니다.';
     this.downNotice.hidden = true;
+
+    this.guide = element('guide', root);
+    element('guide-title', this.guide).textContent = '행복 아파트에서 태어났습니다';
+    element('guide-text', this.guide).textContent = '상단 방향키(화살표)를 누르며 시작마을로 오세요';
+    this.guide.hidden = true;
 
     const bottom = element('bottom', root);
 
@@ -117,6 +123,11 @@ export class Hud {
     // 같은 클래스를 다시 붙여도 애니메이션이 처음부터 돌도록 한 프레임 뗀다.
     this.levelText.classList.remove('gained');
     requestAnimationFrame(() => this.levelText.classList.add('gained'));
+  }
+
+  /** 갓 태어난 플레이어에게 시작마을로 가는 법을 알려 준다. */
+  showGuide(visible: boolean) {
+    this.guide.hidden = !visible;
   }
 
   showDown(down: boolean) {

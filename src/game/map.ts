@@ -1,12 +1,13 @@
 import { Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
-import { CASTLE, MAPS, OFFICE, SHOP, type Area, type MapId } from './maps';
+import { CASTLE, MAPS, OFFICE, ROOM, SHOP, type Area, type MapId } from './maps';
 import { layoutResidence } from './residence';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
-export const Terrain = { Ground: 0, Water: 1 } as const;
+/** Void는 아무것도 없는 칸이다. 방처럼 맵의 일부만 쓸 때 나머지를 채운다. */
+export const Terrain = { Ground: 0, Water: 1, Void: 2 } as const;
 
 /** 맵에 놓인 건물. (x, y)는 차지하는 칸의 위쪽 모서리다. */
 export interface Building extends Tile {
@@ -97,6 +98,11 @@ export function generateMap(id: MapId): GameMap {
     scenery = village;
     buildings.push(...village.buildings);
     for (const { x, y } of village.water) terrain[x + y * MAP_SIZE] = Terrain.Water;
+  } else if (id === 'room') {
+    terrain.fill(Terrain.Void);
+    for (let y = ROOM.y; y < ROOM.y + ROOM.size; y++) {
+      for (let x = ROOM.x; x < ROOM.x + ROOM.size; x++) terrain[x + y * MAP_SIZE] = Terrain.Ground;
+    }
   } else if (id === 'residence') {
     const residence = layoutResidence();
     scenery = residence;

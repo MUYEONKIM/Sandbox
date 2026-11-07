@@ -16,6 +16,7 @@ const NAMES = [
   'inn',
   'oaktree',
   'pinetree',
+  'room',
   'tailor',
   'tavern',
   'team',

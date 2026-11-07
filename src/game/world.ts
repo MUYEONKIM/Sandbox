@@ -56,7 +56,7 @@ export class World {
   private isOpenGround(x: number, y: number) {
     if (!this.inBounds(x, y)) return false;
     const i = this.key(x, y);
-    return this.map.terrain[i] !== Terrain.Water && !this.map.solid[i];
+    return this.map.terrain[i] === Terrain.Ground && !this.map.solid[i];
   }
 
   isWalkable(x: number, y: number) {

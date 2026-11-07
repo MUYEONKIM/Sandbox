@@ -26,7 +26,7 @@ export type Area = readonly [number, number, number, number];
 export const isInside = ([x0, y0, x1, y1]: Area, x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
 
 export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
-export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | 'residence' | WorkId;
+export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | 'residence' | 'room' | WorkId;
 
 /** tiles.png의 타일 번호. 왼쪽 위부터 오른쪽으로 센다. 번호를 여러 번 넣으면 더 자주 나온다. */
 const GRASS = [22, 23, 24];
@@ -96,6 +96,15 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x6e3a24,
     accent: 0xff6a3d,
     links: { left: 'desert' },
+  },
+  room: {
+    name: '내 방',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0xb98a58,
+    accent: 0xffe39a,
+    links: {},
+    safe: true,
   },
   residence: {
     name: '주거단지',
@@ -203,6 +212,42 @@ export const FAME = {
   accent: 0xfff1b8,
 };
 
+/** 행복 아파트 한 동의 크기. 긴 면이 앞(+y)을 본다. */
+export const APARTMENT = { sprite: 'apartment' as const, w: 10, d: 3 };
+export const FIRST_DONG = 101;
+
+/** 동이 서는 자리. 이 순서대로 101동부터 번호가 붙으므로 새 동은 뒤에 더한다. */
+export const APARTMENT_SITES = [
+  { x: 9, y: 9 },
+  { x: 27, y: 9 },
+  { x: 9, y: 21 },
+  { x: 27, y: 21 },
+  { x: 9, y: 33 },
+  { x: 27, y: 33 },
+];
+
+/** 개인 방. 맵 가운데의 8×8칸만 쓰고, 문은 태어나는 칸에서 위쪽으로 곧장 가면 닿는다. */
+export const ROOM = {
+  sprite: 'room' as const,
+  x: 19,
+  y: 19,
+  size: 8,
+  door: { x: 20, y: 19 },
+  spawn: { x: 23, y: 22 },
+};
+
+/** 내 방의 주소 */
+export interface Home {
+  dong: number;
+  ho: number;
+}
+
+/** 내 동의 공동 현관 앞 포탈. 동이 모자라면 있는 동을 돌려 쓴다. */
+function entranceOf({ dong }: Home) {
+  const { x, y } = APARTMENT_SITES[(dong - FIRST_DONG) % APARTMENT_SITES.length];
+  return { x: x + 5, y: y + APARTMENT.d, landing: { x: x + 5, y: y + APARTMENT.d + 2 } };
+}
+
 export function isMapId(value: unknown): value is MapId {
   return typeof value === 'string' && Object.hasOwn(MAPS, value);
 }
@@ -221,7 +266,7 @@ function portalAt(corner: Corner, to: MapId): Portal {
   return { x, y, to, landing: { x: x + inX * LANDING_ALONG, y: y + inY * LANDING_ACROSS } };
 }
 
-export function portalsOf(id: MapId): Portal[] {
+export function portalsOf(id: MapId, home?: Home | null): Portal[] {
   const portals = (Object.entries(MAPS[id].links) as [Corner, MapId][]).map(([corner, to]) => portalAt(corner, to));
   if (id === 'plains') {
     portals.push({ ...OFFICE.door, to: 'office', landing: OFFICE.landing });
@@ -229,6 +274,8 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...CASTLE.door, to: 'castle', landing: CASTLE.landing });
     portals.push({ ...FAME.door, to: 'fame', landing: FAME.landing });
   }
+  if (id === 'room') portals.push({ ...ROOM.door, to: 'residence', landing: ROOM.spawn });
+  if (id === 'residence' && home) portals.push({ ...entranceOf(home), to: 'room' });
   return portals;
 }
 
@@ -248,8 +295,8 @@ export function portalColor(portal: Portal) {
 }
 
 /** from에서 to로 넘어갔을 때 서는 칸: 돌아오는 포탈 앞이고, 작업장에서 돌아오면 노동청 앞이다. */
-export function arrivalFor(to: MapId, from: MapId) {
-  const back = portalsOf(to).find((p) => p.to === from);
+export function arrivalFor(to: MapId, from: MapId, home?: Home | null) {
+  const back = portalsOf(to, home).find((p) => p.to === from);
   return back ? back.landing : OFFICE.landing;
 }
 

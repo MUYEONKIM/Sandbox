@@ -57,6 +57,7 @@ import {
   portalName,
   portalsOf,
   respawnTile,
+  ROOM,
   SHOP,
   type MapId,
   type Portal,
@@ -88,6 +89,11 @@ const CASTLE_SIGN = { x: 176, y: 205 };
 const SHOP_SIGN = { x: 115, y: 40 };
 /** 아파트 이름을 띄우는 위치 (건물 그림 기준 픽셀). 지붕 위 가운데다. */
 const APARTMENT_SIGN = { x: 104, y: 44 };
+/** 방 그림의 벽 높이 (아트 픽셀) */
+const ROOM_WALL_H = 76;
+const DEPTH_ROOM = 1;
+const WORLD_BACKGROUND = '#2c6f93';
+const ROOM_BACKGROUND = '#14141c';
 
 /** 작물 밭은 칸 하나가 아니라 4칸 너비로 그려진다. 그림에서 밭 가운데 위치 */
 const CROPS_CENTER = { x: 64, y: 58 };
@@ -411,9 +417,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private showMap(id: MapId) {
     this.mapId = id;
     const info = MAPS[id];
-    this.world = new World(generateMap(id), portalsOf(id));
+    const { home } = this.session.profile;
+    this.world = new World(generateMap(id), portalsOf(id, home));
     this.ground.setTexture(this.groundTexture(id));
-    this.minimap.setMap(info.name, info.color);
+    this.minimap.setMap(id === 'room' && home ? `${home.dong}동 ${home.ho}호` : info.name, info.color);
+    this.cameras.main.setBackgroundColor(id === 'room' ? ROOM_BACKGROUND : WORLD_BACKGROUND);
+    this.updateGuide(id);
+    if (id === 'room') this.showRoom();
     this.chimneySmoke = null;
     for (const building of this.world.map.buildings) {
       const { left, top } = this.showBuilding(building);
@@ -436,6 +446,23 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.tags.add(tag, `→ ${portalName(portal)}`, 'portal');
       return { portal, image, tag };
     });
+  }
+
+  /** 방 그림은 바닥과 뒤쪽 벽을 한 장에 담았고, 벽 아래의 맨 위 가운데가 방의 뒤쪽 모서리다. */
+  private showRoom() {
+    this.spriteTexture(ROOM.sprite);
+    const image = sprite(ROOM.sprite);
+    const corner = gridToWorld(ROOM.x, ROOM.y);
+    const left = corner.x - image.width / 2;
+    const top = corner.y - ROOM_WALL_H;
+    this.mapImages.push(this.add.image(left, top, ROOM.sprite).setOrigin(0, 0).setDepth(DEPTH_ROOM));
+  }
+
+  /** 시작마을에 처음 닿기 전까지 가는 법을 띄워 둔다. */
+  private updateGuide(id: MapId) {
+    const key = `its-sandbox:arrived:${this.session.profile.id}`;
+    if (id === DEFAULT_MAP) localStorage.setItem(key, '1');
+    this.hud.showGuide((id === 'room' || id === 'residence') && !localStorage.getItem(key));
   }
 
   private addSign(name: string, x: number, y: number) {
@@ -725,7 +752,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.stopWork();
     const cam = this.cameras.main;
     cam.once('camerafadeoutcomplete', () => {
-      const tile = arrivalFor(to, this.mapId);
+      const tile = arrivalFor(to, this.mapId, this.session.profile.home);
       this.clearMap();
       this.showMap(to);
       this.me.teleport(tile);
