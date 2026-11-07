@@ -16,11 +16,15 @@ export function inReach(from: Tile, to: Tile, range = PLACE_RANGE) {
 /** 맵 위 상태(지형, 고정 장애물, 설치된 블록)와 그에 대한 규칙 */
 export class World {
   private readonly blocks = new Map<number, BlockId>();
+  /** 맵에 박힌 장식 벽 */
+  private readonly walls = new Map<number, BlockId>();
 
   constructor(
     readonly map: GameMap,
     readonly portals: Portal[],
-  ) {}
+  ) {
+    for (const { x, y, id } of map.walls) this.walls.set(this.key(x, y), id);
+  }
 
   private key(x: number, y: number) {
     return x + y * MAP_SIZE;
@@ -32,6 +36,12 @@ export class World {
 
   blockAt(x: number, y: number) {
     return this.blocks.get(this.key(x, y));
+  }
+
+  /** 설치된 블록이나 장식 벽. 벽 그림을 이웃과 이을 때 쓴다. */
+  wallAt(x: number, y: number) {
+    if (!this.inBounds(x, y)) return undefined;
+    return this.blocks.get(this.key(x, y)) ?? this.walls.get(this.key(x, y));
   }
 
   /** 설치된 블록이 있는 칸 목록 */

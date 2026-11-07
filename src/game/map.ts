@@ -1,7 +1,8 @@
 import { Rng } from '../art/pixels';
+import type { BlockId } from '../blocks';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
-import { CASTLE, MAPS, OFFICE, SHOP, type Area, type MapId } from './maps';
+import { CASTLE, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
 import { COUNTER, FLOORS, isTower, LOBBY_FURNITURE } from './tower';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
@@ -14,6 +15,11 @@ export interface Building extends Tile {
   sprite: SpriteName;
   w: number;
   d: number;
+}
+
+/** 맵에 박혀 있는 장식 벽. 블록 그림을 쓰지만 회수할 수 없다. */
+export interface FixedWall extends Tile {
+  id: BlockId;
 }
 
 export interface GameMap extends Scenery {
@@ -33,6 +39,8 @@ export interface GameMap extends Scenery {
   bounds: Area;
   /** 난간이 서 있는 칸 */
   railings: Tile[];
+  /** 장식 벽 */
+  walls: FixedWall[];
 }
 
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
@@ -44,6 +52,33 @@ const WORK_BUILDINGS: Partial<Record<MapId, SpriteName>> = {
   logging: 'thatched',
   gathering: 'fruit',
   fishing: 'fish',
+};
+
+/**
+ * 작업장 장식 벽: 도착하는 귀퉁이 근처에 한두 줄만 둔다. [블록, x0, y0, x1, y1] (끝 칸 포함)
+ * 자원, 물, 건물, 포탈 근처와 겹치는 칸은 건너뛴다.
+ */
+const WORK_WALLS: Record<WorkId, [BlockId, number, number, number, number][]> = {
+  // 채석장: 돌벽으로 두른 돌 쌓아 두는 곳
+  quarry: [
+    ['stone', 32, 41, 35, 41],
+    ['stone', 32, 37, 32, 40],
+  ],
+  // 벌목장: 나무 울타리
+  logging: [
+    ['wood', 31, 43, 35, 43],
+    ['wood', 31, 39, 31, 42],
+  ],
+  // 채집장: 밭 가장자리 덤불
+  gathering: [
+    ['hedge', 32, 35, 36, 35],
+    ['hedge', 32, 36, 32, 38],
+  ],
+  // 낚시터: 물가 나무 울타리
+  fishing: [
+    ['wood', 34, 36, 37, 36],
+    ['wood', 37, 32, 37, 35],
+  ],
 };
 
 /** 작업장 자원은 이 간격의 격자에 흩어 놓는다. */
@@ -129,6 +164,29 @@ export function generateMap(id: MapId): GameMap {
   const { floor, floorTop, buildZones = [] } = MAPS[id];
   const railings = isTower(id) ? FLOORS[id].railings : [];
   for (const { x, y } of railings) solid[x + y * MAP_SIZE] = 1;
+  const walls = MAPS[id].work ? workWalls(id as WorkId, terrain, solid) : [];
   const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, MAP_SIZE - 1, MAP_SIZE - 1];
-  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings };
+  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls };
+}
+
+/** 장식 벽을 놓을 수 있는 칸에만 세우고 그 칸을 막는다. */
+function workWalls(id: WorkId, terrain: Uint8Array, solid: Uint8Array): FixedWall[] {
+  const nearPortal = (x: number, y: number) =>
+    portalsOf(id).some(
+      (p) =>
+        (Math.abs(p.x - x) <= PORTAL_MARGIN && Math.abs(p.y - y) <= PORTAL_MARGIN) ||
+        (p.landing.x === x && p.landing.y === y),
+    );
+  const walls: FixedWall[] = [];
+  for (const [block, x0, y0, x1, y1] of WORK_WALLS[id]) {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = x + y * MAP_SIZE;
+        if (terrain[i] !== Terrain.Ground || solid[i] || nearPortal(x, y)) continue;
+        walls.push({ x, y, id: block });
+        solid[i] = 1;
+      }
+    }
+  }
+  return walls;
 }

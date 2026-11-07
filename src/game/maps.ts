@@ -18,6 +18,9 @@ type Corner = keyof typeof CORNERS;
 const LANDING_ALONG = 3;
 const LANDING_ACROSS = 1;
 
+/** 맵 전체. 작업장은 어디에나 블록을 놓을 수 있다. */
+const WHOLE_MAP: Area = [0, 0, END, END];
+
 /** 포탈 주변은 이만큼 비워 둔다. */
 export const PORTAL_MARGIN = 2;
 
@@ -178,6 +181,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xc9c4bc,
     links: { bottom: 'plains' },
     work: true,
+    buildZones: [WHOLE_MAP],
   },
   logging: {
     name: '벌목장',
@@ -187,6 +191,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0x4fdc86,
     links: { bottom: 'plains' },
     work: true,
+    buildZones: [WHOLE_MAP],
   },
   gathering: {
     name: '채집장',
@@ -196,6 +201,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xf2a65a,
     links: { bottom: 'plains' },
     work: true,
+    buildZones: [WHOLE_MAP],
   },
   fishing: {
     name: '낚시터',
@@ -205,6 +211,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0x5fc8ff,
     links: { bottom: 'plains' },
     work: true,
+    buildZones: [WHOLE_MAP],
   },
 };
 
