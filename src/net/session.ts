@@ -182,9 +182,7 @@ export class GameSession {
   /** 지금 맵의 채널에 들어간다. 위치와 접속자는 같은 맵끼리만 주고받는다. */
   private joinMap() {
     const { events, mapId } = this;
-    // 방은 사람마다 따로라서 채널도 따로 쓴다.
-    const topic = mapId === 'room' ? `room:${this.profile.id}` : mapId;
-    const channel = supabase.channel(`world:${topic}`, {
+    const channel = supabase.channel(`world:${mapId}`, {
       config: { private: true, presence: { key: this.profile.id } },
     });
     this.channel = channel;

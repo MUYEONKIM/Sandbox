@@ -1,6 +1,6 @@
 import type { AuthError, User } from '@supabase/supabase-js';
 import type { EconomyData } from '../game/economy';
-import type { Home, WorkId } from '../game/maps';
+import { DEFAULT_MAP, isMapId, type WorkId } from '../game/maps';
 import { isStat } from '../game/stats';
 import { isWeapon } from '../items';
 import { supabase } from './supabase';
@@ -24,8 +24,6 @@ export interface Profile {
   owned_tools: string[];
   /** 회원가입 때 고른 캐릭터. 옛 계정은 null이다. */
   skin: number | null;
-  /** 행복 아파트의 내 방 */
-  home: Home | null;
 }
 
 const MESSAGES: Record<string, string> = {
@@ -114,6 +112,6 @@ export async function loadProfile(id: string): Promise<Profile | null> {
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  const { data: home } = await supabase.from('rooms').select('dong, ho').eq('owner', id).maybeSingle();
-  return { ...data, home };
+  // 없어진 맵(행복 아파트 등)에 저장된 플레이어는 시작마을에서 시작한다.
+  return isMapId(data.map) ? data : { ...data, map: DEFAULT_MAP };
 }

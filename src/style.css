@@ -1035,3 +1035,48 @@ canvas {
     height: 28px;
   }
 }
+
+.elevator {
+  width: min(320px, calc(100% - 32px));
+}
+
+.elevator-panel {
+  display: grid;
+  grid-template-columns: repeat(2, 56px);
+  justify-content: center;
+  gap: 10px 16px;
+  padding: 14px 0;
+  background: #2f343b;
+  border: 2px solid var(--panel-edge);
+}
+
+.elevator-button {
+  width: 56px;
+  height: 56px;
+  color: #e9edf1;
+  background: radial-gradient(circle at 40% 35%, #8a929c, #5b626c);
+  border: 3px solid #1d2229;
+  border-radius: 50%;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.elevator-button:hover:not(:disabled) {
+  border-color: var(--gold);
+}
+
+.elevator-button.here {
+  color: #2a1d16;
+  background: radial-gradient(circle at 40% 35%, #ffe9a0, #ffb84d);
+  cursor: default;
+}
+
+.elevator-message {
+  min-height: 22px;
+  margin-top: 8px;
+  color: #ff8a7a;
+  font-weight: 700;
+  text-align: center;
+}

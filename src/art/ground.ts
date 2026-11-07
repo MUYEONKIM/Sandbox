@@ -51,7 +51,9 @@ export function paintGround(map: GameMap): HTMLCanvasElement {
       const corner = gridToWorld(x, y);
       const left = corner.x - TILE_CELL / 2;
       const top = corner.y - map.floorTop;
-      draw(map.floorTiles.get(index) ?? pick(water ? WATER_TILES : map.floor, x, y), left, top);
+      // 건물 안처럼 바닥 타일이 없는 맵은 바닥을 따로 그린다.
+      const tile = map.floorTiles.get(index) ?? pick(water ? WATER_TILES : map.floor, x, y);
+      if (tile !== undefined) draw(tile, left, top);
       const decal = map.decals.get(index);
       if (decal !== undefined) draw(decal, left, top - DECOR_LIFT);
     }

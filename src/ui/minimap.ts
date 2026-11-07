@@ -1,4 +1,5 @@
 import { MAP_SIZE } from '../config';
+import type { Area } from '../game/maps';
 import type { Tile } from '../game/world';
 import { element } from './dom';
 
@@ -21,18 +22,14 @@ export interface MinimapState {
   portals: Tile[];
 }
 
-function toScreen({ x, y }: Tile) {
-  return {
-    x: PADDING + MAP_SIZE * STEP_X + (x - y) * STEP_X,
-    y: PADDING + (x + y + 1) * STEP_Y,
-  };
-}
 
 /** 우측 상단 미니맵: 나는 노란색, 다른 유저는 빨간색, 포탈은 하늘색으로 표시한다. */
 export class Minimap {
   private readonly title: HTMLElement;
   private readonly ctx: CanvasRenderingContext2D;
   private ground = '#5bab43';
+  /** 바닥이 있는 범위. 건물 안처럼 좁은 맵은 이 범위를 미니맵 가득 키워 그린다. */
+  private bounds: Area = [0, 0, MAP_SIZE - 1, MAP_SIZE - 1];
 
   constructor(parent: HTMLElement) {
     const box = element('minimap', parent);
@@ -54,13 +51,25 @@ export class Minimap {
     }
   }
 
-  setMap(name: string, ground: number) {
+  setMap(name: string, ground: number, bounds: Area) {
     this.title.textContent = name;
     this.ground = `#${ground.toString(16).padStart(6, '0')}`;
+    this.bounds = bounds;
+  }
+
+  private toScreen({ x, y }: Tile) {
+    const [x0, y0, x1] = this.bounds;
+    const zoom = MAP_SIZE / (x1 - x0 + 1);
+    const gx = (x - x0) * zoom;
+    const gy = (y - y0) * zoom;
+    return {
+      x: PADDING + MAP_SIZE * STEP_X + (gx - gy) * STEP_X,
+      y: PADDING + (gx + gy + zoom) * STEP_Y,
+    };
   }
 
   private dot(tile: Tile, color: string, size: number) {
-    const { x, y } = toScreen(tile);
+    const { x, y } = this.toScreen(tile);
     const half = Math.floor(size / 2);
     this.ctx.fillStyle = '#1f1510';
     this.ctx.fillRect(x - half - 1, y - half - 1, size + 2, size + 2);
@@ -92,7 +101,7 @@ export class Minimap {
 
     ctx.fillStyle = COLOR_BLOCK;
     for (const block of blocks) {
-      const { x, y } = toScreen(block);
+      const { x, y } = this.toScreen(block);
       ctx.fillRect(x - 1, y, 2, 1);
     }
     for (const portal of portals) this.dot(portal, COLOR_PORTAL, 4);

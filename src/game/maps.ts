@@ -1,5 +1,6 @@
 import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
+import { COUNTER_INFO, ELEVATOR_INFO, FLOOR, FLOORS, isTower, type TowerId } from './tower';
 
 const END = MAP_SIZE - 1;
 
@@ -26,7 +27,7 @@ export type Area = readonly [number, number, number, number];
 export const isInside = ([x0, y0, x1, y1]: Area, x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
 
 export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
-export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | 'residence' | 'room' | WorkId;
+export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | TowerId | WorkId;
 
 /** tiles.png의 타일 번호. 왼쪽 위부터 오른쪽으로 센다. 번호를 여러 번 넣으면 더 자주 나온다. */
 const GRASS = [22, 23, 24];
@@ -70,7 +71,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0xa5d04f,
     accent: 0x9df08f,
-    links: { right: 'desert', bottom: 'residence', left: 'forest' },
+    links: { right: 'desert', left: 'forest' },
     safe: true,
   },
   snow: {
@@ -97,22 +98,51 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xff6a3d,
     links: { left: 'desert' },
   },
-  room: {
-    name: '내 방',
+  // 아이티공간 건물 안. 1층 카페는 비무장지대이고, 나머지는 블록과 무기를 마음대로 쓰는 자유 공간이다.
+  tower1: {
+    name: '아이티공간 1층',
     floor: [],
     floorTop: BLOCK_TOP,
-    color: 0xb98a58,
-    accent: 0xffe39a,
+    color: 0xd9d4ca,
+    accent: 0xff7ad9,
     links: {},
     safe: true,
   },
-  residence: {
-    name: '주거단지',
-    floor: GRASS,
+  tower4: {
+    name: '아이티공간 4층',
+    floor: [],
     floorTop: BLOCK_TOP,
-    color: 0x8fcf6a,
-    accent: 0xffb3c8,
-    links: { top: 'plains' },
+    color: 0x6b7280,
+    accent: 0xbfe6ff,
+    links: {},
+    buildZones: [FLOOR],
+  },
+  tower7: {
+    name: '아이티공간 7층',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x6b7280,
+    accent: 0xbfe6ff,
+    links: {},
+    buildZones: [FLOOR],
+  },
+  tower8: {
+    name: '아이티공간 8층',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x6b7280,
+    accent: 0x7fe3a0,
+    links: {},
+    buildZones: [FLOOR],
+  },
+  rooftop: {
+    name: '아이티공간 옥상',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x9a9a96,
+    accent: 0x8fd0ff,
+    links: {},
+    buildZones: [FLOOR],
   },
   forest: {
     name: '숲',
@@ -175,7 +205,7 @@ export const OFFICE = {
   accent: 0xffd84d,
 };
 
-/** 평원 한가운데의 아이티공간. 정문 앞 칸이 포탈이고, 타면 스텟 창이 열린다. */
+/** 평원 한가운데의 아이티공간. 정문 앞 칸이 포탈이고, 타면 건물 1층으로 들어간다. */
 export const CASTLE = {
   sprite: 'castle' as const,
   x: 18,
@@ -212,42 +242,6 @@ export const FAME = {
   accent: 0xfff1b8,
 };
 
-/** 행복 아파트 한 동의 크기. 긴 면이 앞(+y)을 본다. */
-export const APARTMENT = { sprite: 'apartment' as const, w: 10, d: 3 };
-export const FIRST_DONG = 101;
-
-/** 동이 서는 자리. 이 순서대로 101동부터 번호가 붙으므로 새 동은 뒤에 더한다. */
-export const APARTMENT_SITES = [
-  { x: 9, y: 9 },
-  { x: 27, y: 9 },
-  { x: 9, y: 21 },
-  { x: 27, y: 21 },
-  { x: 9, y: 33 },
-  { x: 27, y: 33 },
-];
-
-/** 개인 방. 맵 가운데의 8×8칸만 쓰고, 문은 태어나는 칸에서 위쪽으로 곧장 가면 닿는다. */
-export const ROOM = {
-  sprite: 'room' as const,
-  x: 19,
-  y: 19,
-  size: 8,
-  door: { x: 20, y: 19 },
-  spawn: { x: 23, y: 22 },
-};
-
-/** 내 방의 주소 */
-export interface Home {
-  dong: number;
-  ho: number;
-}
-
-/** 내 동의 공동 현관 앞 포탈. 동이 모자라면 있는 동을 돌려 쓴다. */
-function entranceOf({ dong }: Home) {
-  const { x, y } = APARTMENT_SITES[(dong - FIRST_DONG) % APARTMENT_SITES.length];
-  return { x: x + 5, y: y + APARTMENT.d, landing: { x: x + 5, y: y + APARTMENT.d + 2 } };
-}
-
 export function isMapId(value: unknown): value is MapId {
   return typeof value === 'string' && Object.hasOwn(MAPS, value);
 }
@@ -255,8 +249,10 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office', 'shop', 'castle', 'fame'은 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'shop' | 'castle' | 'fame';
+  /** 'office', 'shop', 'counter', 'fame', 'elevator'는 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'elevator';
+  /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
+  label?: string;
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
   landing: { x: number; y: number };
 }
@@ -266,37 +262,41 @@ function portalAt(corner: Corner, to: MapId): Portal {
   return { x, y, to, landing: { x: x + inX * LANDING_ALONG, y: y + inY * LANDING_ACROSS } };
 }
 
-export function portalsOf(id: MapId, home?: Home | null): Portal[] {
+export function portalsOf(id: MapId): Portal[] {
+  if (isTower(id)) return FLOORS[id].portals;
   const portals = (Object.entries(MAPS[id].links) as [Corner, MapId][]).map(([corner, to]) => portalAt(corner, to));
   if (id === 'plains') {
     portals.push({ ...OFFICE.door, to: 'office', landing: OFFICE.landing });
     portals.push({ ...SHOP.door, to: 'shop', landing: SHOP.landing });
-    portals.push({ ...CASTLE.door, to: 'castle', landing: CASTLE.landing });
+    portals.push({ ...CASTLE.door, to: 'tower1', label: CASTLE.name, landing: CASTLE.landing });
     portals.push({ ...FAME.door, to: 'fame', landing: FAME.landing });
   }
-  if (id === 'room') portals.push({ ...ROOM.door, to: 'residence', landing: ROOM.spawn });
-  if (id === 'residence' && home) portals.push({ ...entranceOf(home), to: 'room' });
   return portals;
 }
 
 function portalInfo({ to }: Portal) {
   if (to === 'office') return OFFICE;
-  if (to === 'castle') return CASTLE;
+  if (to === 'counter') return COUNTER_INFO;
+  if (to === 'elevator') return ELEVATOR_INFO;
   if (to === 'fame') return FAME;
   return to === 'shop' ? SHOP : MAPS[to];
 }
 
 export function portalName(portal: Portal) {
-  return portalInfo(portal).name;
+  return portal.label ?? portalInfo(portal).name;
 }
 
 export function portalColor(portal: Portal) {
   return portalInfo(portal).accent;
 }
 
-/** from에서 to로 넘어갔을 때 서는 칸: 돌아오는 포탈 앞이고, 작업장에서 돌아오면 노동청 앞이다. */
-export function arrivalFor(to: MapId, from: MapId, home?: Home | null) {
-  const back = portalsOf(to, home).find((p) => p.to === from);
+/**
+ * from에서 to로 넘어갔을 때 서는 칸: 돌아오는 포탈 앞이다.
+ * 엘리베이터로 오면 엘리베이터 앞이고, 작업장에서 돌아오면 노동청 앞이다.
+ */
+export function arrivalFor(to: MapId, from: MapId) {
+  const portals = portalsOf(to);
+  const back = portals.find((p) => p.to === from) ?? portals.find((p) => p.to === 'elevator');
   return back ? back.landing : OFFICE.landing;
 }
 

@@ -1,12 +1,12 @@
 import { Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
-import { CASTLE, MAPS, OFFICE, ROOM, SHOP, type Area, type MapId } from './maps';
-import { layoutResidence } from './residence';
+import { CASTLE, MAPS, OFFICE, SHOP, type Area, type MapId } from './maps';
+import { COUNTER, FLOOR, isTower, LOBBY_FURNITURE } from './tower';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
-/** Void는 아무것도 없는 칸이다. 방처럼 맵의 일부만 쓸 때 나머지를 채운다. */
+/** Void는 아무것도 없는 칸이다. 건물 안처럼 맵의 일부만 쓸 때 나머지를 채운다. */
 export const Terrain = { Ground: 0, Water: 1, Void: 2 } as const;
 
 /** 맵에 놓인 건물. (x, y)는 차지하는 칸의 위쪽 모서리다. */
@@ -14,8 +14,6 @@ export interface Building extends Tile {
   sprite: SpriteName;
   w: number;
   d: number;
-  /** 건물 위에 띄울 이름 */
-  label?: string;
 }
 
 export interface GameMap extends Scenery {
@@ -31,6 +29,8 @@ export interface GameMap extends Scenery {
   buildings: Building[];
   /** 블록을 놓을 수 있는 구역 */
   buildZones: Area[];
+  /** 바닥이 있는 범위. 미니맵이 이 범위를 그린다. */
+  bounds: Area;
 }
 
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
@@ -98,15 +98,16 @@ export function generateMap(id: MapId): GameMap {
     scenery = village;
     buildings.push(...village.buildings);
     for (const { x, y } of village.water) terrain[x + y * MAP_SIZE] = Terrain.Water;
-  } else if (id === 'room') {
+  } else if (isTower(id)) {
     terrain.fill(Terrain.Void);
-    for (let y = ROOM.y; y < ROOM.y + ROOM.size; y++) {
-      for (let x = ROOM.x; x < ROOM.x + ROOM.size; x++) terrain[x + y * MAP_SIZE] = Terrain.Ground;
+    const [x0, y0, x1, y1] = FLOOR;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) terrain[x + y * MAP_SIZE] = Terrain.Ground;
     }
-  } else if (id === 'residence') {
-    const residence = layoutResidence();
-    scenery = residence;
-    buildings.push(...residence.buildings);
+    if (id === 'tower1') {
+      buildings.push({ ...COUNTER });
+      scenery.trees.push(...LOBBY_FURNITURE);
+    }
   } else if (id === 'fishing') {
     spots = digPond(terrain);
   } else if (MAPS[id].work) {
@@ -124,5 +125,6 @@ export function generateMap(id: MapId): GameMap {
   for (const { x, y } of [...scenery.props, ...scenery.trees]) solid[x + y * MAP_SIZE] = 1;
 
   const { floor, floorTop, buildZones = [] } = MAPS[id];
-  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones };
+  const bounds: Area = isTower(id) ? FLOOR : [0, 0, MAP_SIZE - 1, MAP_SIZE - 1];
+  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds };
 }

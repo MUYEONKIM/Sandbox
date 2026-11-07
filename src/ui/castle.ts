@@ -7,7 +7,7 @@ interface CastleActions {
   onBuyStat(id: StatId): Promise<void>;
 }
 
-/** 아이티공간 창: 골드로 스텟을 올린다. 실제 결제는 서버가 한다. */
+/** 아이티공간 1층 카페 ITS'room의 카운터: 골드로 스텟을 올린다. 실제 결제는 서버가 한다. */
 export class CastleWindow extends PurchaseWindow {
   private readonly statList: HTMLElement;
 
@@ -16,7 +16,7 @@ export class CastleWindow extends PurchaseWindow {
     economy: Economy,
     private readonly actions: CastleActions,
   ) {
-    super(parent, economy, '아이티공간', '돈으로 사람을 고쳐 드립니다. 부작용은 본인 책임입니다.');
+    super(parent, economy, "ITS'room 카운터", '돈으로 사람을 고쳐 드립니다. 부작용은 본인 책임입니다.');
 
     element('office-section', this.root).textContent = '능력치';
     this.statList = element('shop-stats', this.root);

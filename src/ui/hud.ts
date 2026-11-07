@@ -70,8 +70,8 @@ export class Hud {
     this.downNotice.hidden = true;
 
     this.guide = element('guide', root);
-    element('guide-title', this.guide).textContent = '행복 아파트에서 태어났습니다';
-    element('guide-text', this.guide).textContent = '상단 방향키(화살표)를 누르며 시작마을로 오세요';
+    element('guide-title', this.guide).textContent = '아이티공간 7층에서 태어났습니다';
+    element('guide-text', this.guide).textContent = '엘리베이터를 타고 1층으로 내려가 시작마을로 오세요';
     this.guide.hidden = true;
 
     const bottom = element('bottom', root);

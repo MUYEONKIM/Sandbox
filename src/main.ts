@@ -15,6 +15,7 @@ import { showLogin } from './ui/login';
 import { Minimap } from './ui/minimap';
 import { NameTags } from './ui/nametags';
 import { CastleWindow } from './ui/castle';
+import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
 import { OfficeWindow } from './ui/office';
 import { ShopWindow } from './ui/shop';
@@ -67,6 +68,10 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   const fame = new FameWindow(root, profile.nickname, () => session.fetchRanking(FAME_SIZE));
 
+  const elevator = new ElevatorWindow(root, {
+    onGo: (to) => scene.rideElevator(to),
+  });
+
   const keys = new Keys({
     onSlot: (index) => inventory.select(index),
     onInventory: () => hud.toggle(),
@@ -76,13 +81,14 @@ function enterGame(profile: Profile, economyData: EconomyData) {
       shop.close();
       castle.close();
       fame.close();
+      elevator.close();
     },
     onChat: () => {
-      if (!hud.isOpen && !office.isOpen && !shop.isOpen && !castle.isOpen && !fame.isOpen) chat.open();
+      if (!hud.isOpen && !office.isOpen && !shop.isOpen && !castle.isOpen && !fame.isOpen && !elevator.isOpen) chat.open();
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator);
 
   new Phaser.Game({
     type: Phaser.AUTO,
@@ -97,7 +103,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, elevator } });
   }
 }
 

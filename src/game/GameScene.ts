@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { paintJumpShadow, paintSmoke } from '../art/effects';
 import { DECOR_LIFT, paintGround, TILE_CELL, WORLD_H, WORLD_W } from '../art/ground';
+import { interiorOrigin, paintInterior } from '../art/interior';
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
 import { WALL_ORIGIN_X, WALL_ORIGIN_Y, WALL_VARIANTS, wallVariant } from '../art/walls';
@@ -35,6 +36,7 @@ import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import type { CastleWindow } from '../ui/castle';
+import type { ElevatorWindow } from '../ui/elevator';
 import type { FameWindow } from '../ui/fame';
 import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
@@ -57,13 +59,13 @@ import {
   portalName,
   portalsOf,
   respawnTile,
-  ROOM,
   SHOP,
   type MapId,
   type Portal,
   type WorkId,
 } from './maps';
 import { meleeTarget } from './melee';
+import { CAFE_SIGN, FLOOR, FLOORS, isTower, type TowerId } from './tower';
 import type { StatId } from './stats';
 import { WorkFx } from './workFx';
 import { inReach, World, type Tile } from './world';
@@ -87,13 +89,11 @@ const NOTICE_MS = 2000;
 const CASTLE_SIGN = { x: 176, y: 205 };
 /** 상점 간판을 다는 위치 (건물 그림 기준 픽셀) */
 const SHOP_SIGN = { x: 115, y: 40 };
-/** 아파트 이름을 띄우는 위치 (건물 그림 기준 픽셀). 지붕 위 가운데다. */
-const APARTMENT_SIGN = { x: 104, y: 44 };
-/** 방 그림의 벽 높이 (아트 픽셀) */
-const ROOM_WALL_H = 76;
-const DEPTH_ROOM = 1;
+/** 층 그림은 바닥보다 위, 블록 설치 범위 표시보다 아래에 그린다. */
+const DEPTH_INTERIOR = 0.5;
 const WORLD_BACKGROUND = '#2c6f93';
-const ROOM_BACKGROUND = '#14141c';
+const INDOOR_BACKGROUND = '#14141c';
+const ROOF_BACKGROUND = '#8fcfee';
 
 /** 작물 밭은 칸 하나가 아니라 4칸 너비로 그려진다. 그림에서 밭 가운데 위치 */
 const CROPS_CENTER = { x: 64, y: 58 };
@@ -211,6 +211,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly shop: ShopWindow,
     private readonly castle: CastleWindow,
     private readonly fame: FameWindow,
+    private readonly elevator: ElevatorWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -417,20 +418,20 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private showMap(id: MapId) {
     this.mapId = id;
     const info = MAPS[id];
-    const { home } = this.session.profile;
-    this.world = new World(generateMap(id), portalsOf(id, home));
+    this.world = new World(generateMap(id), portalsOf(id));
     this.ground.setTexture(this.groundTexture(id));
-    this.minimap.setMap(id === 'room' && home ? `${home.dong}동 ${home.ho}호` : info.name, info.color);
-    this.cameras.main.setBackgroundColor(id === 'room' ? ROOM_BACKGROUND : WORLD_BACKGROUND);
+    this.minimap.setMap(info.name, info.color, this.world.map.bounds);
+    this.cameras.main.setBackgroundColor(
+      id === 'rooftop' ? ROOF_BACKGROUND : isTower(id) ? INDOOR_BACKGROUND : WORLD_BACKGROUND,
+    );
     this.updateGuide(id);
-    if (id === 'room') this.showRoom();
+    if (isTower(id)) this.showInterior(id);
     this.chimneySmoke = null;
     for (const building of this.world.map.buildings) {
       const { left, top } = this.showBuilding(building);
       if (building.sprite === OFFICE.sprite) this.showChimneySmoke(left, top);
       if (building.sprite === CASTLE.sprite) this.addSign(CASTLE.name, left + CASTLE_SIGN.x, top + CASTLE_SIGN.y);
       if (building.sprite === SHOP.sprite) this.addSign(SHOP.name, left + SHOP_SIGN.x, top + SHOP_SIGN.y);
-      if (building.label) this.addSign(building.label, left + APARTMENT_SIGN.x, top + APARTMENT_SIGN.y);
     }
     this.showSpots(id);
     for (const { sprite, x, y } of this.world.map.trees) this.addSprite(sprite, x, y);
@@ -448,21 +449,23 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     });
   }
 
-  /** 방 그림은 바닥과 뒤쪽 벽을 한 장에 담았고, 벽 아래의 맨 위 가운데가 방의 뒤쪽 모서리다. */
-  private showRoom() {
-    this.spriteTexture(ROOM.sprite);
-    const image = sprite(ROOM.sprite);
-    const corner = gridToWorld(ROOM.x, ROOM.y);
-    const left = corner.x - image.width / 2;
-    const top = corner.y - ROOM_WALL_H;
-    this.mapImages.push(this.add.image(left, top, ROOM.sprite).setOrigin(0, 0).setDepth(DEPTH_ROOM));
+  /** 아이티공간 층 그림: 바닥과 뒤쪽 벽을 한 장에 담았다. 층마다 처음 들어갈 때 한 번만 그린다. */
+  private showInterior(id: TowerId) {
+    const key = `interior-${id}`;
+    if (!this.textures.exists(key)) this.textures.addCanvas(key, paintInterior(id));
+    const { left, top } = interiorOrigin(gridToWorld(FLOOR[0], FLOOR[1]));
+    this.mapImages.push(this.add.image(left, top, key).setOrigin(0, 0).setDepth(DEPTH_INTERIOR));
+    if (id === 'tower1') {
+      const sign = gridToWorld(CAFE_SIGN.x + 0.5, CAFE_SIGN.y);
+      this.addSign("ITS'room", sign.x, sign.y - CAFE_SIGN.lift);
+    }
   }
 
-  /** 시작마을에 처음 닿기 전까지 가는 법을 띄워 둔다. */
+  /** 아이티공간에서 태어난 플레이어에게 시작마을에 처음 닿기 전까지 가는 법을 띄워 둔다. */
   private updateGuide(id: MapId) {
     const key = `its-sandbox:arrived:${this.session.profile.id}`;
     if (id === DEFAULT_MAP) localStorage.setItem(key, '1');
-    this.hud.showGuide((id === 'room' || id === 'residence') && !localStorage.getItem(key));
+    this.hud.showGuide(isTower(id) && !localStorage.getItem(key));
   }
 
   private addSign(name: string, x: number, y: number) {
@@ -518,6 +521,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.shop.isOpen ||
       this.castle.isOpen ||
       this.fame.isOpen ||
+      this.elevator.isOpen ||
       this.chat.isOpen;
     return !windowOpen && !this.traveling && !this.down;
   }
@@ -525,6 +529,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 시작마을처럼 공격이 막힌 맵인지 */
   private get isSafeMap() {
     return MAPS[this.mapId].safe === true;
+  }
+
+  private get safeName() {
+    return this.mapId === DEFAULT_MAP ? '시작마을' : MAPS[this.mapId].name;
   }
 
   /** 이 맵에 블록 설치 구역이 있는지 */
@@ -551,8 +559,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (portal) {
       if (portal.to === 'office') this.office.open();
       else if (portal.to === 'shop') this.shop.open();
-      else if (portal.to === 'castle') this.castle.open();
+      else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
+      else if (portal.to === 'elevator') this.elevator.open(isTower(this.mapId) ? FLOORS[this.mapId].number : null);
       else this.travel(portal.to);
       return;
     }
@@ -622,6 +631,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.drawRange();
   }
 
+  /** 엘리베이터에서 층을 골랐을 때 */
+  rideElevator(to: TowerId) {
+    this.elevator.close();
+    if (to !== this.mapId) this.travel(to);
+  }
+
   /** 노동청 창에서 작업장을 골랐을 때 */
   goToWork(place: WorkId) {
     this.office.close();
@@ -667,7 +682,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.hud.toast(`${name} 구매 완료`, '가지고 있으면 자동으로 적용됩니다');
   }
 
-  /** 아이티공간에서 스텟을 1 올린다. */
+  /** ITS'room 카운터에서 스텟을 1 올린다. */
   async buyStat(id: StatId) {
     const bought = await this.session.buyStat(id);
     if (!bought) {
@@ -752,7 +767,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.stopWork();
     const cam = this.cameras.main;
     cam.once('camerafadeoutcomplete', () => {
-      const tile = arrivalFor(to, this.mapId, this.session.profile.home);
+      const tile = arrivalFor(to, this.mapId);
       this.clearMap();
       this.showMap(to);
       this.me.teleport(tile);
@@ -832,7 +847,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private useSelectedItem() {
     const weapon = this.selectedWeapon;
-    if (weapon && this.isSafeMap) this.notice('시작마을은 비무장지대입니다', '이곳에서는 무기를 쓸 수 없습니다.');
+    if (weapon && this.isSafeMap) this.notice(`${this.safeName}은 비무장지대입니다`, '이곳에서는 무기를 쓸 수 없습니다.');
     else if (weapon) this.attack(weapon);
     else if (this.canBuildHere) this.placeBlock();
     else if (this.inventory.selectedStack) this.notice('블록을 놓을 수 없습니다', '정해진 구역에만 놓을 수 있습니다.');
