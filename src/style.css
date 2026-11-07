@@ -1071,7 +1071,6 @@ canvas {
 .elevator-button.here {
   color: #2a1d16;
   background: radial-gradient(circle at 40% 35%, #ffe9a0, #ffb84d);
-  cursor: default;
 }
 
 .elevator-message {

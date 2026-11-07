@@ -1,5 +1,5 @@
 import type { Area } from '../game/maps';
-import { CAFE, FLOORS, STAIR_FLIGHTS, type Doorway, type FloorPlan, type TowerId } from '../game/tower';
+import { CAFE, FLOORS, type Doorway, type FloorPlan, type TowerId } from '../game/tower';
 import { frac, hash2, Pixels, ramp, shade, type Color } from './pixels';
 import type { Art } from './props';
 
@@ -76,12 +76,15 @@ class Painter {
     }
   }
 
+  /** 글씨를 쓴다. 왼쪽 벽은 u가 커질수록 화면 왼쪽으로 가므로 글자 순서를 뒤집어야 바로 읽힌다. */
   text(wall: Wall, text: string, u0: number, v0: number, scale: number, c: Color) {
+    const columns = text.length * 4 - 1;
     [...text].forEach((ch, i) => {
       GLYPHS[ch].forEach((row, ry) => {
         [...row].forEach((bit, rx) => {
           if (bit !== '1') return;
-          const u = u0 + (i * 4 + rx) * scale;
+          const column = i * 4 + rx;
+          const u = u0 + (wall === 'left' ? columns - 1 - column : column) * scale;
           const v = v0 + (4 - ry) * scale;
           this.wallRect(wall, u, u + scale, v, v + scale, () => c);
         });
@@ -101,6 +104,22 @@ class Painter {
 
 type FloorShader = (gx: number, gy: number, sx: number, sy: number) => Color;
 
+/** 계단 한 칸은 두 단이다. 단의 앞 모서리(+x 쪽)에 띠와 그림자를 넣고, 뒤쪽(-x)으로 갈수록 밝게 해서 오르막으로 보이게 한다. */
+function stepColor(gx: number, sx: number, sy: number, w: number, tread: Color, edge: Color, riser: Color): Color {
+  const s = frac(gx * 2);
+  if (s > 0.78) return riser;
+  if (s > 0.7) return edge;
+  const lift = 1 + (1 - gx / w) * 0.15;
+  return shade((sx + sy) % 3 === 0 ? shade(tread, 0.88) : tread, lift);
+}
+
+/** 계단 칸인지 본다. */
+function onFlight(painter: Painter, plan: FloorPlan, gx: number, gy: number) {
+  const x = painter.x0 + Math.floor(gx);
+  const y = painter.y0 + Math.floor(gy);
+  return plan.flights.some(([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1);
+}
+
 function lobbyFloor(painter: Painter): FloorShader {
   const [cx0, cy0, cx1, cy1] = CAFE;
   const { x0, y0 } = painter;
@@ -118,8 +137,9 @@ function lobbyFloor(painter: Painter): FloorShader {
   };
 }
 
-function officeFloor(): FloorShader {
+function officeFloor(painter: Painter, plan: FloorPlan): FloorShader {
   return (gx, gy, sx, sy) => {
+    if (onFlight(painter, plan, gx, gy)) return stepColor(gx, sx, sy, painter.w, 0xb7bcc4, 0x2f3338, 0x4f5560);
     if (frac(gx / 2) < 0.025 || frac(gy / 2) < 0.025) return 0x4f5560;
     const base = (Math.floor(gx / 2) + Math.floor(gy / 2)) & 1 ? 0x5f6672 : 0x666e7b;
     return hash2(sx, sy) < 0.18 ? shade(base, 0.92) : base;
@@ -144,21 +164,22 @@ function roofFloor(painter: Painter): FloorShader {
 }
 
 /** 바깥 계단: 층참은 미끄럼 방지 철판, 계단은 한 칸에 두 단이고 뒤쪽(왼쪽 위)으로 갈수록 높다. */
-function stairsFloor(painter: Painter): FloorShader {
-  const { x0, w } = painter;
-  return (gx, _gy, sx, sy) => {
-    const x = x0 + Math.floor(gx);
-    const onFlight = STAIR_FLIGHTS.some(([a, b]) => x >= a && x <= b);
-    if (!onFlight) return (sx + 2 * sy) % 6 === 0 ? 0xa3a9b0 : 0x8a9098;
-    const s = frac(gx * 2);
-    if (s > 0.78) return 0x3e4248;
-    if (s > 0.7) return 0xf2c14e;
-    const lift = 1 + (1 - gx / w) * 0.15;
-    return shade((sx + sy) % 3 === 0 ? 0x6b7179 : 0x7d838c, lift);
+function stairsFloor(painter: Painter, plan: FloorPlan): FloorShader {
+  return (gx, gy, sx, sy) => {
+    if (!onFlight(painter, plan, gx, gy)) return (sx + 2 * sy) % 6 === 0 ? 0xa3a9b0 : 0x8a9098;
+    return stepColor(gx, sx, sy, painter.w, 0x7d838c, 0xf2c14e, 0x3e4248);
   };
 }
 
-const FLOOR_SHADERS = { lobby: lobbyFloor, office: officeFloor, roof: roofFloor, stairs: stairsFloor };
+/** 엘리베이터 바닥: 작은 검은 타일 */
+function cabinFloor(): FloorShader {
+  return (gx, gy) => {
+    if (frac(gx * 2) < 0.06 || frac(gy * 2) < 0.06) return 0x2b2f36;
+    return (Math.floor(gx * 2) + Math.floor(gy * 2)) & 1 ? 0x3a3f46 : 0x454b53;
+  };
+}
+
+const FLOOR_SHADERS = { lobby: lobbyFloor, office: officeFloor, roof: roofFloor, stairs: stairsFloor, cabin: cabinFloor };
 
 /** 건물 바깥 유리벽. 바깥 계단 뒤에 보인다. */
 function paintFacade(painter: Painter, plan: FloorPlan) {
@@ -177,11 +198,32 @@ function paintFacade(painter: Painter, plan: FloorPlan) {
   painter.text('right', 'RF', 40, 44, 3, 0xf4f4f0);
 }
 
+/** 엘리베이터 안 벽: 철판, 나무 손잡이, 왼쪽 벽의 거울 */
+function paintCabin(painter: Painter) {
+  for (const wall of ['left', 'right'] as Wall[]) {
+    painter.wallRect(wall, 0, painter.length(wall), 0, WALL_H, (u, v) => {
+      if (v < 4) return 0x2b2f36;
+      if (v >= WALL_H - 4) return 0xf6f3e0;
+      if (v >= 26 && v < 30) return v === 26 ? 0xd0a472 : 0xa97c4c;
+      if (wall === 'left' && u >= 10 && u < 54 && v >= 34 && v < 70) {
+        if (u === 10 || u === 53 || v === 34 || v === 69) return 0x8a929c;
+        return (u + v) % 19 < 2 ? 0xf2f8fb : ramp([0xa8c4d4, 0xc4dae6, 0xdcebf3], (v - 34) / 36, u, v);
+      }
+      if (u % 16 === 0) return 0x7d858f;
+      return STEEL[Math.floor(((u % 16) / 16) * STEEL.length)];
+    });
+  }
+}
+
 /** 가장 먼저 그리는 벽면: 사무실 벽, 1층 로비 벽, 옥상 난간 */
 function paintWalls(painter: Painter, plan: FloorPlan) {
   const { style } = plan;
   if (style === 'stairs') {
     paintFacade(painter, plan);
+    return;
+  }
+  if (style === 'cabin') {
+    paintCabin(painter);
     return;
   }
   if (style === 'roof') {
@@ -251,6 +293,11 @@ function paintWalls(painter: Painter, plan: FloorPlan) {
     }
   }
 
+  // 사무실 안 계단 위 벽에 가는 층을 쓴다.
+  for (const { at, text } of plan.signs) {
+    painter.text('left', text, (at - painter.y0) * U + 4, 44, 3, 0x2fa05a);
+  }
+
   // 층 번호
   if (plan.number !== null) {
     const elevator = plan.doorways.find((d) => d.kind === 'elevator');
@@ -275,18 +322,16 @@ function paintDoor(painter: Painter, door: Doorway, floorNumber: number | null) 
     painter.wallRect(wall, uc + 23, uc + 26, 32, 34, () => 0xf4f4f0);
     return;
   }
-  if (door.kind === 'stairs') {
-    painter.wallRect(wall, uc - 12, uc + 12, 0, 52, () => FRAME);
-    painter.wallRect(wall, uc - 10, uc + 10, 0, 49, (u, v) => {
-      if (u >= uc - 5 && u < uc + 5 && v >= 32 && v < 42) return 0xa8d4ea;
-      if (u >= uc + 5 && u < uc + 8 && v >= 22 && v < 25) return 0xe0e0e0;
-      return 0x8d939b;
+  if (door.kind === 'panel') {
+    // 층 버튼판: 위에서부터 7층, 맨 위에는 층 표시창
+    painter.wallRect(wall, uc - 7, uc + 7, 22, 56, (u, v) => {
+      if (u === uc - 7 || u === uc + 6 || v === 22 || v === 55) return 0x5b626c;
+      const row = Math.floor((53 - v) / 4.4);
+      const inButton = Math.abs(u - uc) <= 1 && (53 - v) % 4.4 < 2.2 && row < 7;
+      return inButton ? (row === 0 ? 0xffd84d : 0xf4f4f0) : 0x2b2f36;
     });
-    // 계단 그림 표지판
-    painter.wallRect(wall, uc - 8, uc + 8, 55, 64, (u, v) => {
-      const step = Math.floor((u - uc + 6) / 3);
-      return u > uc - 6 && u < uc + 6 && v - 56 < step + 1 && v > 56 ? 0xf4f4f0 : SIGN_GREEN;
-    });
+    painter.wallRect(wall, uc - 9, uc + 9, 60, 69, () => 0x1d2229);
+    painter.wallRect(wall, uc - 3, uc + 3, 62, 67, (u, v) => (Math.abs(u - uc) <= 66 - v - 62 ? 0xff9a3c : null));
     return;
   }
   if (door.kind === 'outside') {
@@ -329,6 +374,7 @@ const EDGE_COLORS = {
   office: [0x4f5560, 0x40454e],
   roof: [0x7d7d78, 0x6a6a66],
   stairs: [0x3e4248, 0x2f3338],
+  cabin: [0x5b626c, 0x4a505a],
 };
 
 /** 층 하나를 그린다. 같은 층은 처음 들어갈 때 한 번만 그리면 된다. */
@@ -336,7 +382,7 @@ export function paintInterior(id: TowerId): HTMLCanvasElement {
   const plan = FLOORS[id];
   const painter = new Painter(plan.area);
   const { p, w, d, cx } = painter;
-  const shader = FLOOR_SHADERS[plan.style](painter);
+  const shader = FLOOR_SHADERS[plan.style](painter, plan);
 
   // 바닥 앞쪽 두께. 앞 모서리를 기준으로 왼쪽은 앞-왼쪽 변, 오른쪽은 앞-오른쪽 변이다.
   const corner = cx + (w - d) * 16;

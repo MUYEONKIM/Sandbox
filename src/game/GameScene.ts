@@ -65,6 +65,7 @@ import {
   type WorkId,
 } from './maps';
 import { meleeTarget } from './melee';
+import { findPath } from './path';
 import { CAFE_SIGN, FLOORS, isTower, type TowerId } from './tower';
 import type { StatId } from './stats';
 import { WorkFx } from './workFx';
@@ -116,6 +117,8 @@ const REMOTE_AIM_MS = 700;
 /** 연사 무기는 이 수만큼 쏠 때 한 번만 알린다. 받는 쪽이 그만큼 나눠 그려서 통신량을 줄인다. */
 const BURST = 3;
 const RESPAWN_MS = 3000;
+/** 휴대폰에서 다른 플레이어를 눌렀다고 보는 거리 (칸) */
+const TAP_TARGET_TILES = 1.5;
 const RESPAWN_RETRY_MS = 1000;
 
 interface PortalSprite {
@@ -193,6 +196,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private shotsFired = 0;
   private nextMinimapAt = 0;
 
+  /** 엘리베이터에 탄 층. 엘리베이터에서 내리면 이 층으로 나간다. 새로고침하면 1층이다. */
+  private elevatorFloor: TowerId = 'tower1';
+
+  /** 휴대폰에서 누른 곳까지 남은 칸. 비어 있으면 걷지 않는다. */
+  private route: Tile[] = [];
+  private routeGoal: Tile | null = null;
+  private routeMarker!: Phaser.GameObjects.Graphics;
+  /** 휴대폰에서 다른 플레이어를 눌러 공격을 시작했으면 손을 뗄 때까지 연사한다. */
+  private touchFiring = false;
+
   /** 마우스가 가리키는 설치된 블록 */
   private hoveredBlock: Tile | null = null;
   /** 마우스가 가리키는 빈 바닥 칸 */
@@ -237,6 +250,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     this.range = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.marker = this.add.graphics().setDepth(DEPTH_OVERLAY);
+    this.routeMarker = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.ghost = this.add
       .image(0, 0, `block-${BLOCK_IDS[0]}-0`)
       .setOrigin(WALL_ORIGIN_X, WALL_ORIGIN_Y)
@@ -250,9 +264,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (!this.canAct && !this.chat.isOpen) return;
+      if (pointer.wasTouch) {
+        this.tap();
+        return;
+      }
       this.updateHover();
       if (pointer.rightButtonDown()) void this.collectBlock();
       else if (pointer.leftButtonDown()) this.useSelectedItem();
+    });
+    this.input.on('pointerup', () => {
+      this.touchFiring = false;
     });
 
     this.drawRange();
@@ -563,12 +584,91 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'shop') this.shop.open();
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
-      else if (portal.to === 'elevator') this.elevator.open(isTower(this.mapId) ? FLOORS[this.mapId].number : null);
+      else if (portal.to === 'panel') this.elevator.open(FLOORS[this.elevatorFloor].number);
+      else if (portal.to === 'cabinDoor') this.travel(this.elevatorFloor);
       else this.travel(portal.to);
       return;
     }
     const dir = this.keys.takeDirection();
-    if (dir && this.canAct) this.beginStep(this.me.tile, dir);
+    if (dir && this.canAct) {
+      this.clearRoute();
+      this.beginStep(this.me.tile, dir);
+    } else if (this.route.length && this.canAct) {
+      this.followRoute();
+    }
+  }
+
+  /**
+   * 휴대폰에서 화면을 누르면 그 칸까지 걸어간다.
+   * 무기를 들고 다른 플레이어를 누르면 걷지 않고 그쪽으로 공격한다.
+   */
+  private tap() {
+    const w = this.pointerWorld();
+    const weapon = this.selectedWeapon;
+    if (weapon && !this.isSafeMap && this.workStartedAt === null && this.tappedPlayer(w.x, w.y)) {
+      this.clearRoute();
+      this.touchFiring = true;
+      this.attack(weapon);
+      return;
+    }
+    const g = worldToGrid(w.x, w.y);
+    this.walkTo({ x: Math.floor(g.gx), y: Math.floor(g.gy) });
+  }
+
+  /** 누른 곳 가까이에 쓰러지지 않은 다른 플레이어가 있는지 본다. 몸통을 눌러도 되도록 총알 높이만큼 내려서 잰다. */
+  private tappedPlayer(wx: number, wy: number) {
+    const { gx, gy } = worldToGrid(wx, wy + BULLET_HEIGHT);
+    for (const avatar of this.others.values()) {
+      if (avatar.isDown) continue;
+      const { x, y } = avatar.position();
+      if (Math.hypot(x + 0.5 - gx, y + 0.5 - gy) <= TAP_TARGET_TILES) return true;
+    }
+    return false;
+  }
+
+  private walkTo(goal: Tile) {
+    const path = findPath(this.world, this.me.tile, goal);
+    this.route = path;
+    this.routeGoal = path.length ? path[path.length - 1] : null;
+    this.drawRouteMarker();
+  }
+
+  /** 정한 길로 한 칸 걷는다. 그사이 블록이나 다른 사람이 길을 막았으면 다시 찾는다. */
+  private followRoute() {
+    const from = this.me.tile;
+    const next = this.route[0];
+    const dx = next.x - from.x;
+    const dy = next.y - from.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== 1 || !this.world.canStep(from, dx, dy)) {
+      const goal = this.routeGoal;
+      this.clearRoute();
+      if (goal && (goal.x !== from.x || goal.y !== from.y)) this.walkTo(goal);
+      return;
+    }
+    this.route.shift();
+    this.lastDir = { dx, dy };
+    this.moveTo(next, STEP_MS * Math.hypot(dx, dy), 'walk');
+    this.me.face(dx, dy);
+    this.walk = { from, dir: { dx, dy } };
+    if (!this.route.length) this.clearRoute();
+  }
+
+  private clearRoute() {
+    this.route = [];
+    this.routeGoal = null;
+    this.routeMarker?.clear();
+  }
+
+  /** 걸어갈 곳을 노란 마름모로 표시한다. */
+  private drawRouteMarker() {
+    this.routeMarker.clear();
+    if (!this.routeGoal) return;
+    const { x, y } = this.routeGoal;
+    const pts = [gridToWorld(x, y), gridToWorld(x + 1, y), gridToWorld(x + 1, y + 1), gridToWorld(x, y + 1)];
+    this.routeMarker.lineStyle(1, 0xffe14d, 0.95).beginPath();
+    this.routeMarker.moveTo(pts[0].x, pts[0].y);
+    for (const p of pts.slice(1)) this.routeMarker.lineTo(p.x, p.y);
+    this.routeMarker.closePath().strokePath();
   }
 
   /** 칸 이동을 막 시작했다면 새로 누른 방향으로 바로 튼다. 다음 칸까지 기다리지 않아도 된다. */
@@ -576,6 +676,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!this.walk || this.me.progress > TURN_WINDOW || !this.canAct) return;
     const dir = this.keys.takeDirection();
     if (!dir || (dir.dx === this.walk.dir.dx && dir.dy === this.walk.dir.dy)) return;
+    this.clearRoute();
     this.beginStep(this.walk.from, dir);
   }
 
@@ -602,6 +703,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 방향을 누르고 Space를 누르면 벽 하나를 넘을 수 있다. 벽 앞에서는 방향 없이 눌러도 넘는다. */
   private jump() {
+    this.clearRoute();
     const from = this.actionStart;
     const ahead = { x: from.x + this.lastDir.dx, y: from.y + this.lastDir.dy };
     const facingWall = this.world.inBounds(ahead.x, ahead.y) && !this.world.isWalkable(ahead.x, ahead.y);
@@ -633,10 +735,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.drawRange();
   }
 
-  /** 엘리베이터에서 층을 골랐을 때 */
+  /** 엘리베이터 안에서 층을 골랐을 때: 그 층에서 문이 열린다. */
   rideElevator(to: TowerId) {
     this.elevator.close();
-    if (to !== this.mapId) this.travel(to);
+    this.elevatorFloor = to;
+    this.travel(to);
   }
 
   /** 노동청 창에서 작업장을 골랐을 때 */
@@ -765,6 +868,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 포탈을 타면 화면을 어둡게 한 사이에 맵을 바꾼다. */
   private travel(to: MapId) {
+    this.clearRoute();
+    if (to === 'elevator' && isTower(this.mapId)) this.elevatorFloor = this.mapId;
     this.traveling = true;
     this.stopWork();
     const cam = this.cameras.main;
@@ -773,6 +878,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.clearMap();
       this.showMap(to);
       this.me.teleport(tile);
+      this.keys.releaseDirections();
       this.drawRange();
       void this.session.changeMap(to, tile.x, tile.y);
       cam.fadeIn(FADE_MS);
@@ -844,6 +950,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private updateAutoFire() {
     const weapon = this.selectedWeapon;
     if (!weapon || !WEAPONS[weapon].auto || !this.canAct || this.isSafeMap) return;
+    // 휴대폰은 걸으려고 누른 손가락으로 쏘지 않도록 플레이어를 눌렀을 때만 연사한다.
+    if (this.input.activePointer.wasTouch && !this.touchFiring) return;
     if (this.input.activePointer.leftButtonDown()) this.attack(weapon);
   }
 
@@ -943,6 +1051,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.down) return;
     this.down = true;
     this.stopWork();
+    this.clearRoute();
     this.hud.showDown(true);
     this.time.delayedCall(RESPAWN_MS, () => void this.respawn());
   }
@@ -979,7 +1088,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private updateHover() {
-    if (this.hud.isOpen) {
+    // 휴대폰에는 마우스 커서가 없으므로 설치 미리보기를 띄우지 않는다.
+    if (this.hud.isOpen || this.input.activePointer.wasTouch) {
       this.hoveredBlock = this.hoveredGround = null;
       this.ghost.setVisible(false);
       this.marker.clear();

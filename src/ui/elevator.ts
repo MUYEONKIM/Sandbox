@@ -16,7 +16,7 @@ export class ElevatorWindow {
     this.root.hidden = true;
 
     element('office-title', this.root).textContent = '엘리베이터';
-    element('office-subtitle', this.root).textContent = '7층까지 운행합니다. 8층은 7층 계단실로 올라가세요.';
+    element('office-subtitle', this.root).textContent = '7층까지 운행합니다. 8층은 7층 사무실 안 계단으로 올라가세요.';
 
     const panel = element('elevator-panel', this.root);
     for (const { floor, to } of ELEVATOR_STOPS) {
@@ -33,7 +33,7 @@ export class ElevatorWindow {
 
     const close = element('office-close', this.root, 'button') as HTMLButtonElement;
     close.type = 'button';
-    close.textContent = '내리지 않기 (Esc)';
+    close.textContent = '닫기 (Esc)';
     close.addEventListener('click', () => this.close());
   }
 
@@ -41,10 +41,9 @@ export class ElevatorWindow {
     return !this.root.hidden;
   }
 
-  /** 지금 있는 층의 버튼은 불이 켜진 채 눌리지 않는다. */
+  /** 엘리베이터가 서 있는 층의 버튼은 불이 켜져 있다. 누르면 그 층에서 문이 열린다. */
   open(current: number | null) {
     for (const { floor, button } of this.buttons) {
-      button.disabled = floor === current;
       button.classList.toggle('here', floor === current);
     }
     this.say('');

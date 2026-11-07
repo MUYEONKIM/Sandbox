@@ -1,6 +1,6 @@
 import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
-import { COUNTER_INFO, ELEVATOR_INFO, FLOORS, isTower, UPPER, type TowerId } from './tower';
+import { CABIN_DOOR_INFO, COUNTER_INFO, FLOORS, isTower, PANEL_INFO, UPPER, type TowerId } from './tower';
 
 const END = MAP_SIZE - 1;
 
@@ -135,6 +135,15 @@ export const MAPS: Record<MapId, MapInfo> = {
     links: {},
     buildZones: [UPPER],
   },
+  // 엘리베이터 안. 층 버튼을 눌러 1, 4, 7층으로 간다.
+  elevator: {
+    name: '엘리베이터',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x8a929c,
+    accent: 0xbfe6ff,
+    links: {},
+  },
   // 8층과 옥상 사이의 바깥 계단. 블록은 놓을 수 없다.
   stairs: {
     name: '바깥 계단',
@@ -258,8 +267,11 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office', 'shop', 'counter', 'fame', 'elevator'는 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'elevator';
+  /**
+   * 'office', 'shop', 'counter', 'fame', 'panel'은 맵을 옮기지 않고 창을 연다.
+   * 'cabinDoor'는 엘리베이터에 탔던 층으로 내린다.
+   */
+  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'panel' | 'cabinDoor';
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
@@ -286,7 +298,8 @@ export function portalsOf(id: MapId): Portal[] {
 function portalInfo({ to }: Portal) {
   if (to === 'office') return OFFICE;
   if (to === 'counter') return COUNTER_INFO;
-  if (to === 'elevator') return ELEVATOR_INFO;
+  if (to === 'panel') return PANEL_INFO;
+  if (to === 'cabinDoor') return CABIN_DOOR_INFO;
   if (to === 'fame') return FAME;
   return to === 'shop' ? SHOP : MAPS[to];
 }
@@ -305,7 +318,10 @@ export function portalColor(portal: Portal) {
  */
 export function arrivalFor(to: MapId, from: MapId) {
   const portals = portalsOf(to);
-  const back = portals.find((p) => p.to === from) ?? portals.find((p) => p.to === 'elevator');
+  const back =
+    portals.find((p) => p.to === from) ??
+    portals.find((p) => p.to === 'elevator') ??
+    (isTower(to) ? portals[0] : undefined);
   return back ? back.landing : OFFICE.landing;
 }
 

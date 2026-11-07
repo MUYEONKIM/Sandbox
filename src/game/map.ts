@@ -2,7 +2,7 @@ import { Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, MAPS, OFFICE, SHOP, type Area, type MapId } from './maps';
-import { COUNTER, FLOORS, isTower, LOBBY_FURNITURE, RAILINGS } from './tower';
+import { COUNTER, FLOORS, isTower, LOBBY_FURNITURE } from './tower';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -127,7 +127,7 @@ export function generateMap(id: MapId): GameMap {
   for (const { x, y } of [...scenery.props, ...scenery.trees]) solid[x + y * MAP_SIZE] = 1;
 
   const { floor, floorTop, buildZones = [] } = MAPS[id];
-  const railings = id === 'stairs' ? RAILINGS : [];
+  const railings = isTower(id) ? FLOORS[id].railings : [];
   for (const { x, y } of railings) solid[x + y * MAP_SIZE] = 1;
   const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, MAP_SIZE - 1, MAP_SIZE - 1];
   return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings };

@@ -107,6 +107,12 @@ export class Keys {
     return toDir(Math.sign(sx), Math.sign(sy));
   }
 
+  /** 누르고 있던 방향키를 잊는다. 다시 눌러야 움직인다. 포탈을 타고 도착한 뒤 곧장 되돌아가지 않게 한다. */
+  releaseDirections() {
+    this.held.clear();
+    this.tapped.clear();
+  }
+
   /** 지금 움직일 방향을 돌려준다. */
   takeDirection(): Dir | null {
     const dir = this.currentDir();
