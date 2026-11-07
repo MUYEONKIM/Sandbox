@@ -1,6 +1,6 @@
 import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
-import { COUNTER_INFO, ELEVATOR_INFO, FLOOR, FLOORS, isTower, type TowerId } from './tower';
+import { COUNTER_INFO, ELEVATOR_INFO, FLOORS, isTower, UPPER, type TowerId } from './tower';
 
 const END = MAP_SIZE - 1;
 
@@ -115,7 +115,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x6b7280,
     accent: 0xbfe6ff,
     links: {},
-    buildZones: [FLOOR],
+    buildZones: [UPPER],
   },
   tower7: {
     name: '아이티공간 7층',
@@ -124,7 +124,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x6b7280,
     accent: 0xbfe6ff,
     links: {},
-    buildZones: [FLOOR],
+    buildZones: [UPPER],
   },
   tower8: {
     name: '아이티공간 8층',
@@ -133,7 +133,16 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x6b7280,
     accent: 0x7fe3a0,
     links: {},
-    buildZones: [FLOOR],
+    buildZones: [UPPER],
+  },
+  // 8층과 옥상 사이의 바깥 계단. 블록은 놓을 수 없다.
+  stairs: {
+    name: '바깥 계단',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x8a9098,
+    accent: 0x7fe3a0,
+    links: {},
   },
   rooftop: {
     name: '아이티공간 옥상',
@@ -142,7 +151,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x9a9a96,
     accent: 0x8fd0ff,
     links: {},
-    buildZones: [FLOOR],
+    buildZones: [UPPER],
   },
   forest: {
     name: '숲',

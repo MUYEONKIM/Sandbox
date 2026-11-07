@@ -1040,19 +1040,20 @@ canvas {
   width: min(320px, calc(100% - 32px));
 }
 
+/* 실제 엘리베이터처럼 버튼을 한 줄로 세운다. 7층이 맨 위다. */
 .elevator-panel {
   display: grid;
-  grid-template-columns: repeat(2, 56px);
+  grid-template-columns: 48px;
   justify-content: center;
-  gap: 10px 16px;
+  gap: 8px;
   padding: 14px 0;
   background: #2f343b;
   border: 2px solid var(--panel-edge);
 }
 
 .elevator-button {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   color: #e9edf1;
   background: radial-gradient(circle at 40% 35%, #8a929c, #5b626c);
   border: 3px solid #1d2229;

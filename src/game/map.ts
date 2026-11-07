@@ -2,7 +2,7 @@ import { Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, MAPS, OFFICE, SHOP, type Area, type MapId } from './maps';
-import { COUNTER, FLOOR, isTower, LOBBY_FURNITURE } from './tower';
+import { COUNTER, FLOORS, isTower, LOBBY_FURNITURE, RAILINGS } from './tower';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -31,6 +31,8 @@ export interface GameMap extends Scenery {
   buildZones: Area[];
   /** 바닥이 있는 범위. 미니맵이 이 범위를 그린다. */
   bounds: Area;
+  /** 난간이 서 있는 칸 */
+  railings: Tile[];
 }
 
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
@@ -100,7 +102,7 @@ export function generateMap(id: MapId): GameMap {
     for (const { x, y } of village.water) terrain[x + y * MAP_SIZE] = Terrain.Water;
   } else if (isTower(id)) {
     terrain.fill(Terrain.Void);
-    const [x0, y0, x1, y1] = FLOOR;
+    const [x0, y0, x1, y1] = FLOORS[id].area;
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) terrain[x + y * MAP_SIZE] = Terrain.Ground;
     }
@@ -125,6 +127,8 @@ export function generateMap(id: MapId): GameMap {
   for (const { x, y } of [...scenery.props, ...scenery.trees]) solid[x + y * MAP_SIZE] = 1;
 
   const { floor, floorTop, buildZones = [] } = MAPS[id];
-  const bounds: Area = isTower(id) ? FLOOR : [0, 0, MAP_SIZE - 1, MAP_SIZE - 1];
-  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds };
+  const railings = id === 'stairs' ? RAILINGS : [];
+  for (const { x, y } of railings) solid[x + y * MAP_SIZE] = 1;
+  const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, MAP_SIZE - 1, MAP_SIZE - 1];
+  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings };
 }

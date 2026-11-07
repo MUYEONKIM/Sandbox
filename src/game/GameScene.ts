@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { paintJumpShadow, paintSmoke } from '../art/effects';
 import { DECOR_LIFT, paintGround, TILE_CELL, WORLD_H, WORLD_W } from '../art/ground';
-import { interiorOrigin, paintInterior } from '../art/interior';
+import { interiorOrigin, paintInterior, paintRailing } from '../art/interior';
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
 import { WALL_ORIGIN_X, WALL_ORIGIN_Y, WALL_VARIANTS, wallVariant } from '../art/walls';
@@ -65,7 +65,7 @@ import {
   type WorkId,
 } from './maps';
 import { meleeTarget } from './melee';
-import { CAFE_SIGN, FLOOR, FLOORS, isTower, type TowerId } from './tower';
+import { CAFE_SIGN, FLOORS, isTower, type TowerId } from './tower';
 import type { StatId } from './stats';
 import { WorkFx } from './workFx';
 import { inReach, World, type Tile } from './world';
@@ -422,7 +422,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.ground.setTexture(this.groundTexture(id));
     this.minimap.setMap(info.name, info.color, this.world.map.bounds);
     this.cameras.main.setBackgroundColor(
-      id === 'rooftop' ? ROOF_BACKGROUND : isTower(id) ? INDOOR_BACKGROUND : WORLD_BACKGROUND,
+      id === 'rooftop' || id === 'stairs' ? ROOF_BACKGROUND : isTower(id) ? INDOOR_BACKGROUND : WORLD_BACKGROUND,
     );
     this.updateGuide(id);
     if (isTower(id)) this.showInterior(id);
@@ -453,8 +453,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private showInterior(id: TowerId) {
     const key = `interior-${id}`;
     if (!this.textures.exists(key)) this.textures.addCanvas(key, paintInterior(id));
-    const { left, top } = interiorOrigin(gridToWorld(FLOOR[0], FLOOR[1]));
+    const [x0, y0] = FLOORS[id].area;
+    const { left, top } = interiorOrigin(id, gridToWorld(x0, y0));
     this.mapImages.push(this.add.image(left, top, key).setOrigin(0, 0).setDepth(DEPTH_INTERIOR));
+    for (const { x, y } of this.world.map.railings) this.addMapArt('railing', paintRailing, x, y);
     if (id === 'tower1') {
       const sign = gridToWorld(CAFE_SIGN.x + 0.5, CAFE_SIGN.y);
       this.addSign("ITS'room", sign.x, sign.y - CAFE_SIGN.lift);

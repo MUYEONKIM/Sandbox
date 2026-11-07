@@ -57,15 +57,21 @@ export class Minimap {
     this.bounds = bounds;
   }
 
+  /** 격자 위의 점을 미니맵 좌표로 옮긴다. 바닥 범위를 미니맵 가운데에 가득 차게 키운다. */
+  private project(gx: number, gy: number) {
+    const [x0, y0, x1, y1] = this.bounds;
+    const w = x1 - x0 + 1;
+    const d = y1 - y0 + 1;
+    const zoom = MAP_SIZE / Math.max(w, d);
+    const u = (gx - x0) * zoom;
+    const v = (gy - y0) * zoom;
+    const backX = WIDTH / 2 - ((w - d) / 2) * zoom * STEP_X;
+    const backY = HEIGHT / 2 - ((w + d) / 2) * zoom * STEP_Y;
+    return { x: backX + (u - v) * STEP_X, y: backY + (u + v) * STEP_Y };
+  }
+
   private toScreen({ x, y }: Tile) {
-    const [x0, y0, x1] = this.bounds;
-    const zoom = MAP_SIZE / (x1 - x0 + 1);
-    const gx = (x - x0) * zoom;
-    const gy = (y - y0) * zoom;
-    return {
-      x: PADDING + MAP_SIZE * STEP_X + (gx - gy) * STEP_X,
-      y: PADDING + (gx + gy + zoom) * STEP_Y,
-    };
+    return this.project(x + 0.5, y + 0.5);
   }
 
   private dot(tile: Tile, color: string, size: number) {
@@ -81,17 +87,16 @@ export class Minimap {
     const { ctx } = this;
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-    const top = PADDING;
-    const left = PADDING;
-    const right = WIDTH - PADDING;
-    const bottom = HEIGHT - PADDING;
-    const middleX = WIDTH / 2;
-    const middleY = HEIGHT / 2;
+    const [x0, y0, x1, y1] = this.bounds;
+    const corners = [
+      this.project(x0, y0),
+      this.project(x1 + 1, y0),
+      this.project(x1 + 1, y1 + 1),
+      this.project(x0, y1 + 1),
+    ];
     ctx.beginPath();
-    ctx.moveTo(middleX, top);
-    ctx.lineTo(right, middleY);
-    ctx.lineTo(middleX, bottom);
-    ctx.lineTo(left, middleY);
+    ctx.moveTo(corners[0].x, corners[0].y);
+    for (const { x, y } of corners.slice(1)) ctx.lineTo(x, y);
     ctx.closePath();
     ctx.fillStyle = this.ground;
     ctx.fill();
