@@ -82,6 +82,30 @@ export const LOBBY_FURNITURE: Furniture[] = [
   { sprite: 'plant', x: 13, y: 31 },
 ];
 
+/**
+ * 4층 오른쪽 아래 바닥 끝 바깥에 숨은 작은 방. 바닥 끝 칸 trigger를 밟으면 밟은 사람 화면에서만 드러나고,
+ * 층을 나가면 다시 숨는다. 자리는 사용자가 정했다(2026-11-08, 실제 사이트 test 계정이 서 있던 칸).
+ */
+export const HIDEOUT = {
+  map: 'tower4' as const,
+  trigger: { x: 42, y: 15 },
+  area: [43, 12, 45, 18] as Area,
+  title: '진우씨가 유일하게 맘 편히 쉬었던 안식처',
+  /** 이불. 바닥 그림에 함께 그리고 칸만 막는다. */
+  futon: [44, 12, 45, 13] as Area,
+  lamp: { x: 43, y: 12 },
+  table: { x: 45, y: 16 },
+  plant: { x: 43, y: 18 },
+};
+
+/** 숨은 방에서 가구가 있어 지나갈 수 없는 칸 */
+export function hideoutSolid(): Tile[] {
+  const [x0, y0, x1, y1] = HIDEOUT.futon;
+  const tiles: Tile[] = [HIDEOUT.lamp, HIDEOUT.table, HIDEOUT.plant];
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) tiles.push({ x, y });
+  return tiles;
+}
+
 /** 한 줄로 늘어선 난간 칸 */
 function railRow(x0: number, x1: number, y: number): Tile[] {
   return Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, y }));

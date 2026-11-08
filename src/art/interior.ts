@@ -1,5 +1,5 @@
 import type { Area } from '../game/maps';
-import { CAFE, FLOORS, type Doorway, type FloorPlan, type TowerId } from '../game/tower';
+import { CAFE, FLOORS, HIDEOUT, type Doorway, type FloorPlan, type TowerId } from '../game/tower';
 import { frac, hash2, Pixels, ramp, shade, type Color } from './pixels';
 import type { Art } from './props';
 
@@ -377,16 +377,12 @@ const EDGE_COLORS = {
   cabin: [0x5b626c, 0x4a505a],
 };
 
-/** 층 하나를 그린다. 같은 층은 처음 들어갈 때 한 번만 그리면 된다. */
-export function paintInterior(id: TowerId): HTMLCanvasElement {
-  const plan = FLOORS[id];
-  const painter = new Painter(plan.area);
+/** 바닥 윗면과 앞쪽 두께를 칠한다. */
+function paintSlab(painter: Painter, shader: FloorShader, [leftEdge, rightEdge]: number[]) {
   const { p, w, d, cx } = painter;
-  const shader = FLOOR_SHADERS[plan.style](painter, plan);
 
   // 바닥 앞쪽 두께. 앞 모서리를 기준으로 왼쪽은 앞-왼쪽 변, 오른쪽은 앞-오른쪽 변이다.
   const corner = cx + (w - d) * 16;
-  const [leftEdge, rightEdge] = EDGE_COLORS[plan.style];
   for (let sx = 0; sx < p.w; sx++) {
     const t = (sx + 0.5 - cx) / 16;
     const base = sx < corner ? WALL_H + (t + 2 * d) * 8 : WALL_H + (2 * w - t) * 8;
@@ -403,6 +399,14 @@ export function paintInterior(id: TowerId): HTMLCanvasElement {
       p.set(sx, sy, shader(gx, gy, sx, sy));
     }
   }
+}
+
+/** 층 하나를 그린다. 같은 층은 처음 들어갈 때 한 번만 그리면 된다. */
+export function paintInterior(id: TowerId): HTMLCanvasElement {
+  const plan = FLOORS[id];
+  const painter = new Painter(plan.area);
+  const { p } = painter;
+  paintSlab(painter, FLOOR_SHADERS[plan.style](painter, plan), EDGE_COLORS[plan.style]);
 
   // 1층 출입문 앞 발판
   const exit = plan.portals.find((portal) => portal.to === 'plains');
@@ -417,10 +421,167 @@ export function paintInterior(id: TowerId): HTMLCanvasElement {
   return p.toCanvas();
 }
 
-/** 층 그림을 맵 위에 놓을 왼쪽 위 위치. corner는 바닥 뒤쪽 모서리의 월드 좌표다. */
-export function interiorOrigin(id: TowerId, corner: { x: number; y: number }) {
-  const [, y0, , y1] = FLOORS[id].area;
+/** 바닥 그림을 맵 위에 놓을 왼쪽 위 위치. corner는 바닥 뒤쪽 모서리의 월드 좌표다. */
+function originOf([, y0, , y1]: Area, corner: { x: number; y: number }) {
   return { left: corner.x - (y1 - y0 + 1) * 16, top: corner.y - WALL_H };
+}
+
+export function interiorOrigin(id: TowerId, corner: { x: number; y: number }) {
+  return originOf(FLOORS[id].area, corner);
+}
+
+export function hideoutOrigin(corner: { x: number; y: number }) {
+  return originOf(HIDEOUT.area, corner);
+}
+
+/** 두 색을 t만큼 섞는다. */
+function mix(a: Color, b: Color, t: number): Color {
+  const channel = (shift: number) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t);
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
+const LAMP_LIGHT = 0xffd98a;
+const BLANKET = [0x4a78b8, 0x3f69a3];
+
+/** 숨은 방 바닥: 짙은 나무 바닥, 가운데 러그, 스탠드 불빛, 이불과 슬리퍼 */
+export function paintHideoutFloor(): HTMLCanvasElement {
+  const painter = new Painter(HIDEOUT.area);
+  const { p, x0, y0 } = painter;
+  const lampX = HIDEOUT.lamp.x - x0 + 0.5;
+  const lampY = HIDEOUT.lamp.y - y0 + 0.5;
+
+  paintSlab(
+    painter,
+    (gx, gy) => {
+      let c: Color;
+      if (gx > 0.35 && gx < 2.65 && gy > 2.35 && gy < 5.65) {
+        const border = gx < 0.55 || gx > 2.45 || gy < 2.55 || gy > 5.45;
+        c = border ? 0xe9d8b4 : (Math.floor(gx * 3) + Math.floor(gy * 3)) & 1 ? 0xb5523b : 0xc8664a;
+      } else {
+        const row = Math.floor(gy * 2);
+        const seam = Math.floor((gx + (row % 3) * 1.3) / 2.6);
+        const onSeam = (gy * 2) % 1 < 0.12 || ((gx + (row % 3) * 1.3) / 2.6) % 1 < 0.03;
+        c = onSeam ? 0x5e3f24 : shade(PLANK[Math.floor(hash2(row, seam) * PLANK.length)], 0.82);
+      }
+      const glow = Math.max(0, 1 - Math.hypot(gx - lampX, gy - lampY) / 3.2);
+      return glow > 0 ? mix(shade(c, 1 + glow * 0.25), LAMP_LIGHT, glow * 0.3) : c;
+    },
+    [0x5a3e28, 0x4a3220],
+  );
+
+  // 이불: 바닥에서 조금 솟은 요 위에 베개와 덮은 이불
+  const [fx0, fy0, fx1, fy1] = HIDEOUT.futon;
+  const g0 = fx0 - x0 + 0.08;
+  const g1 = fx1 - x0 + 0.92;
+  const h0 = fy0 - y0 + 0.08;
+  const h1 = fy1 - y0 + 0.92;
+  const lift = 5;
+  const at = (gx: number, gy: number, z: number): [number, number] => [...painter.screen(gx, gy, z)];
+  const minus = (a: [number, number], b: [number, number]): [number, number] => [a[0] - b[0], a[1] - b[1]];
+  const top = at(g0, h0, -lift);
+  const side = (u: number, v: number) => (v < 0.45 ? 0xd8d0be : u > 0.4 ? BLANKET[1] : 0xd8d0be);
+  p.parallelogram(at(g0, h1, -lift), minus(at(g1, h1, -lift), at(g0, h1, -lift)), [0, lift], (u, v) => shade(side(u, v), 0.8));
+  p.parallelogram(at(g1, h0, -lift), minus(at(g1, h1, -lift), at(g1, h0, -lift)), [0, lift], (u, v) => shade(side(u, v), 0.7));
+  p.parallelogram(top, minus(at(g1, h0, -lift), top), minus(at(g0, h1, -lift), top), (u, v) => {
+    if (v < 0.3) return u > 0.22 && u < 0.78 && v > 0.06 ? (v > 0.24 ? 0xd9d3c6 : 0xf6f3ec) : 0xe6dfcf;
+    if (v < 0.4) return 0xe6dfcf;
+    if (v < 0.47) return 0xf0c86a;
+    const wrinkle = Math.sin(u * 9 + v * 4) > 0.75;
+    const check = (Math.floor(u * 6) + Math.floor(v * 6)) & 1;
+    return wrinkle ? shade(BLANKET[check], 0.85) : BLANKET[check];
+  });
+
+  // 이불 앞에 벗어 둔 슬리퍼 한 켤레
+  for (const k of [0, 1]) {
+    const [sx, sy] = at(g0 + 0.25 + k * 0.32, h1 + 0.35 + k * 0.05, 0);
+    p.ellipse(sx, sy, 3.2, 1.6, 0x6fa3c8);
+    p.set(sx - 1, sy, 0xf4f1ea);
+  }
+
+  p.outlineOuter(OUTLINE);
+  return p.toCanvas();
+}
+
+/** 숨은 방 뒤쪽 벽: 줄무늬 벽지, 노을 지는 창, 작은 전구 줄. 칸보다 뒤에 그려야 해서 바닥과 따로 그린다. */
+export function paintHideoutWall(): HTMLCanvasElement {
+  const painter = new Painter(HIDEOUT.area);
+  const height = 52;
+  const length = painter.length('right');
+  painter.wallRect('right', 0, length, 0, height, (u, v) => {
+    if (v < 5) return 0x5a3e28;
+    if (v >= height - 3) return 0xf3ead8;
+    return u % 6 === 0 ? 0xe2cfae : 0xefe0c2;
+  });
+  const [w0, w1, b, t] = [8, length - 8, 18, 42];
+  const sunset = [0x7a5c8f, 0xe07a5f, 0xf6b26b];
+  painter.wallRect('right', w0, w1, b, t, (u, v) => {
+    if (u === w0 || u === w1 - 1 || v === b || v === t - 1 || u === Math.floor((w0 + w1) / 2)) return 0x6a4a30;
+    if (Math.hypot(u - (w1 - 10), v - 26) < 3.2) return 0xfff1c4;
+    const k = Math.floor(u / 4);
+    if (v - b < 3 + hash2(k, 5) * 6) return 0x3d3350;
+    return ramp(sunset, (v - b) / (t - b), u, v);
+  });
+  for (let u = 3; u < length - 2; u += 6) {
+    const v = height - 8 - Math.round(Math.sin((u / length) * Math.PI) * 3);
+    painter.wallRect('right', u, u + 2, v, v + 2, () => (u % 12 === 3 ? 0xffd98a : 0xff9fb0));
+  }
+  painter.p.outlineOuter(OUTLINE);
+  return painter.p.toCanvas();
+}
+
+/** 숨은 방 구석의 스탠드. 갓 아래로 따뜻한 불빛이 샌다. */
+export function paintLamp(): Art {
+  const p = new Pixels(20, 48);
+  const cx = 10;
+  const cy = 44;
+  p.ellipse(cx, cy, 5, 2, 0x3a3a3a);
+  for (let v = 1; v < 32; v++) {
+    p.set(cx - 1, cy - v, 0x4a4a4a);
+    p.set(cx, cy - v, 0x6a6a6a);
+  }
+  for (let y = cy - 42; y <= cy - 31; y++) {
+    const t = (y - (cy - 42)) / 11;
+    const half = 3 + t * 4;
+    for (let x = Math.ceil(cx - half); x <= Math.floor(cx + half - 1); x++) {
+      p.set(x, y, x < cx - half + 2 ? 0xe9b866 : ramp([0xf6dca0, 0xfbe9bf], t, x, y));
+    }
+  }
+  p.rect(cx - 5, cy - 31, 10, 1, 0xfff1c4);
+  p.outlineOuter(OUTLINE);
+  return { canvas: p.toCanvas(), ax: cx, ay: cy };
+}
+
+/** 숨은 방의 낮은 밥상: 컵라면과 머그컵이 올라가 있다. */
+export function paintLowTable(): Art {
+  const p = new Pixels(32, 32);
+  const cx = 16;
+  const cy = 24;
+  const raise = 7;
+  const topY = cy - raise;
+  // 다리
+  for (const [x, y] of [
+    [cx - 10, topY + 1],
+    [cx, topY + 5],
+    [cx + 10, topY + 1],
+  ]) {
+    for (let v = 0; v < raise - 1; v++) p.set(x, y + 1 + v, 0x5e3f24);
+  }
+  // 상판 두께와 윗면
+  p.parallelogram([cx - 11, topY], [11, 5.5], [0, 2], () => 0x7e5834);
+  p.parallelogram([cx, topY + 5.5], [11, -5.5], [0, 2], () => 0x6a4a30);
+  p.parallelogram([cx, topY - 5.5], [11, 5.5], [-11, 5.5], (u, v) => ((u * 7 + v * 3) % 1 < 0.15 ? 0xa97c4c : 0xc69866));
+  // 컵라면
+  p.rect(cx - 6, topY - 8, 6, 6, 0xf4f1ea);
+  p.rect(cx - 6, topY - 6, 6, 2, 0xd8413b);
+  p.rect(cx - 6, topY - 9, 6, 1, 0xe9e3d3);
+  // 머그컵과 김
+  p.rect(cx + 2, topY - 6, 4, 4, 0xf6f3ec);
+  p.set(cx + 6, topY - 5, 0xf6f3ec);
+  p.set(cx + 6, topY - 4, 0xf6f3ec);
+  p.set(cx + 3, topY - 8, 0xdfe7ec);
+  p.set(cx + 4, topY - 10, 0xdfe7ec);
+  p.outlineOuter(OUTLINE);
+  return { canvas: p.toCanvas(), ax: cx, ay: cy };
 }
 
 /** 바깥 계단 앞 줄의 난간 한 칸. 칸 가운데를 지나 x 방향으로 뻗는다. */

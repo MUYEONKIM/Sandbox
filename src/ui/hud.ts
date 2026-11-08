@@ -35,6 +35,7 @@ export class Hud {
   private readonly guide: HTMLElement;
   private readonly gold: HTMLElement;
   private readonly toastBox: HTMLElement;
+  private readonly announceBox: HTMLElement;
   private dragFrom: number | null = null;
 
   constructor(
@@ -53,6 +54,7 @@ export class Hud {
     signOut.addEventListener('click', onSignOut);
 
     this.toastBox = element('toasts', root);
+    this.announceBox = element('announce', root);
 
     this.connection = element('connection', root);
     this.connection.textContent = '서버에 연결하는 중입니다';
@@ -128,9 +130,19 @@ export class Hud {
     this.expFill.style.width = `${Math.min(exp / need, 1) * 100}%`;
     this.expText.textContent = `EXP ${exp.toLocaleString()} / ${need.toLocaleString()}`;
     if (!leveled) return;
-    // 같은 클래스를 다시 붙여도 애니메이션이 처음부터 돌도록 한 프레임 뗀다.
+    // 클래스를 뗀 상태를 브라우저가 한 번 계산하게 해야 다시 붙일 때 애니메이션이 처음부터 돈다.
     this.levelText.classList.remove('gained');
-    requestAnimationFrame(() => this.levelText.classList.add('gained'));
+    void this.levelText.offsetWidth;
+    this.levelText.classList.add('gained');
+  }
+
+  /** 숨은 장소를 찾았을 때 화면 위쪽 가운데에 이름을 크게 띄웠다가 지운다. */
+  announce(text: string) {
+    this.announceBox.textContent = text;
+    // 클래스를 뗀 상태를 브라우저가 한 번 계산하게 해야 다시 붙일 때 애니메이션이 처음부터 돈다.
+    this.announceBox.classList.remove('show');
+    void this.announceBox.offsetWidth;
+    this.announceBox.classList.add('show');
   }
 
   /** 갓 태어난 플레이어에게 시작마을로 가는 법을 알려 준다. */

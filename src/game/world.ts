@@ -1,7 +1,7 @@
 import { BLOCKS, isWall, type BlockId } from '../blocks';
 import { MAP_SIZE, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
-import { isInside, type Portal } from './maps';
+import { isInside, type Area, type Portal } from './maps';
 
 export interface Tile {
   x: number;
@@ -94,7 +94,16 @@ export class World {
     if (target.x === player.x && target.y === player.y) return false;
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     if (this.isPortalArea(target.x, target.y)) return false;
+    if (this.map.reserved.some(({ x, y }) => x === target.x && y === target.y)) return false;
     return this.isOpenGround(target.x, target.y) && !this.blockAt(target.x, target.y);
+  }
+
+  /** 숨은 방처럼 나중에 드러나는 바닥을 걸을 수 있게 한다. solid는 가구가 있어 막는 칸이다. */
+  openFloor([x0, y0, x1, y1]: Area, solid: Tile[]) {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) this.map.terrain[this.key(x, y)] = Terrain.Ground;
+    }
+    for (const { x, y } of solid) this.map.solid[this.key(x, y)] = 1;
   }
 
   place(x: number, y: number, id: BlockId) {

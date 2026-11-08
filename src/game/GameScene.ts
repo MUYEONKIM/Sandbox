@@ -1,7 +1,16 @@
 import Phaser from 'phaser';
 import { paintJumpShadow, paintSmoke } from '../art/effects';
 import { DECOR_LIFT, paintGround, TILE_CELL, WORLD_H, WORLD_W } from '../art/ground';
-import { interiorOrigin, paintInterior, paintRailing } from '../art/interior';
+import {
+  hideoutOrigin,
+  interiorOrigin,
+  paintHideoutFloor,
+  paintHideoutWall,
+  paintInterior,
+  paintLamp,
+  paintLowTable,
+  paintRailing,
+} from '../art/interior';
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
 import { WALL_ORIGIN_X, WALL_ORIGIN_Y, WALL_VARIANTS, wallVariant } from '../art/walls';
@@ -52,6 +61,7 @@ import {
   arrivalFor,
   CASTLE,
   DEFAULT_MAP,
+  isInside,
   isMapId,
   MAPS,
   OFFICE,
@@ -66,7 +76,7 @@ import {
 } from './maps';
 import { meleeTarget } from './melee';
 import { findPath } from './path';
-import { CAFE_SIGN, FLOORS, isTower, type TowerId } from './tower';
+import { CAFE_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type TowerId } from './tower';
 import type { StatId } from './stats';
 import { WorkFx } from './workFx';
 import { inReach, World, type Tile } from './world';
@@ -94,6 +104,8 @@ const SHOP_SIGN = { x: 115, y: 40 };
 const DEPTH_INTERIOR = 0.5;
 /** 밟고 지나가는 꽃과 풀 블록은 바닥 바로 위에 그려 캐릭터를 가리지 않는다. */
 const DEPTH_DECAL = 0.6;
+/** 4층 숨은 방 바닥은 층 그림 바로 위에 그린다. */
+const DEPTH_HIDEOUT = 0.55;
 const WORLD_BACKGROUND = '#2c6f93';
 const INDOOR_BACKGROUND = '#14141c';
 const ROOF_BACKGROUND = '#8fcfee';
@@ -169,6 +181,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 방향키 없이 Shift를 누르면 이 방향으로 대시한다. 처음에는 화면 아래를 본다. */
   private lastDir: Dir = { dx: 1, dy: 1 };
   private level: bigint;
+  /** 지금 층에서 숨은 방을 찾았는지. 층을 옮기면 다시 숨는다. */
+  private hideoutShown = false;
   /** 지금 레벨에서 모은 경험치 */
   private exp: number;
   private readonly others = new Map<string, Avatar>();
@@ -242,6 +256,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.createTextures();
     this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
     this.showMap(this.mapId);
+    // 숨은 방 안에서 접속을 끊었다면 방이 열린 채로 시작한다.
+    const saved = this.session.profile;
+    if (this.mapId === HIDEOUT.map && isInside(HIDEOUT.area, saved.x, saved.y)) this.showHideout(false);
 
     const { id, nickname, hp, skin } = this.session.profile;
     this.me = new Avatar(this, id, this.startTile(), hp, skin);
@@ -445,6 +462,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 맵 하나를 화면에 올린다. 블록과 다른 플레이어는 서버에서 받아 채운다. */
   private showMap(id: MapId) {
     this.mapId = id;
+    this.hideoutShown = false;
     const info = MAPS[id];
     this.world = new World(generateMap(id), portalsOf(id));
     this.ground.setTexture(this.groundTexture(id));
@@ -503,6 +521,44 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
+  /** 4층 바닥 끝의 정해진 칸을 밟으면 숨은 방이 드러난다. */
+  private checkHideout() {
+    if (this.hideoutShown || this.mapId !== HIDEOUT.map) return;
+    const { x, y } = this.me.tile;
+    if (x === HIDEOUT.trigger.x && y === HIDEOUT.trigger.y) this.showHideout(true);
+  }
+
+  /** 숨은 방을 내 화면에만 드러내고 걸어 들어갈 수 있게 한다. fadeIn이면 천천히 나타난다. */
+  private showHideout(fadeIn: boolean) {
+    this.hideoutShown = true;
+    this.world.openFloor(HIDEOUT.area, hideoutSolid());
+    const [x0, y0] = HIDEOUT.area;
+    const { left, top } = hideoutOrigin(gridToWorld(x0, y0));
+    const texture = (key: string, paint: () => HTMLCanvasElement) => {
+      if (!this.textures.exists(key)) this.textures.addCanvas(key, paint());
+      return key;
+    };
+    const floor = this.add.image(left, top, texture('hideout-floor', paintHideoutFloor)).setOrigin(0, 0).setDepth(DEPTH_HIDEOUT);
+    // 벽은 방 맨 뒤 칸보다 바로 앞에 그려야 벽 뒤쪽 칸에 선 캐릭터가 벽에 가린다.
+    const wall = this.add
+      .image(left, top, texture('hideout-wall', paintHideoutWall))
+      .setOrigin(0, 0)
+      .setDepth(depthOf(x0, y0) - 1);
+    this.mapImages.push(floor, wall);
+    const { lamp, table, plant } = HIDEOUT;
+    const images = [
+      floor,
+      wall,
+      this.addMapArt('hideout-lamp', paintLamp, lamp.x, lamp.y),
+      this.addMapArt('hideout-table', paintLowTable, table.x, table.y),
+      this.addSprite('plant', plant.x, plant.y),
+    ];
+    this.hud.announce(HIDEOUT.title);
+    if (!fadeIn) return;
+    for (const image of images) image.setAlpha(0);
+    this.tweens.add({ targets: images, alpha: 1, duration: 1600, ease: 'Sine.easeOut' });
+  }
+
   /** 아이티공간에서 태어난 플레이어에게 시작마을에 처음 닿기 전까지 가는 법을 띄워 둔다. */
   private updateGuide(id: MapId) {
     const key = `its-sandbox:arrived:${this.session.profile.id}`;
@@ -544,6 +600,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // Phaser의 delta는 포커스가 바뀐 뒤 잠시 16.7ms로 묶여 프레임이 낮으면 움직임이 느려진다.
     const delta = Math.min(this.game.loop.rawDelta, MAX_FRAME_MS);
     this.advancePlayer(delta);
+    this.checkHideout();
     for (const avatar of this.others.values()) avatar.update(delta);
     this.bullets.update(delta);
     this.updateWork();

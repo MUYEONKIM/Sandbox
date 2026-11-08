@@ -3,7 +3,7 @@ import type { BlockId } from '../blocks';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
-import { COUNTER, FLOORS, isTower, LOBBY_FURNITURE } from './tower';
+import { COUNTER, FLOORS, HIDEOUT, isTower, LOBBY_FURNITURE } from './tower';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -41,6 +41,8 @@ export interface GameMap extends Scenery {
   railings: Tile[];
   /** 장식 벽 */
   walls: FixedWall[];
+  /** 블록을 놓으면 안 되는 칸. 숨은 방을 여는 칸이 막히지 않게 한다. */
+  reserved: Tile[];
 }
 
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
@@ -166,7 +168,8 @@ export function generateMap(id: MapId): GameMap {
   for (const { x, y } of railings) solid[x + y * MAP_SIZE] = 1;
   const walls = MAPS[id].work ? workWalls(id as WorkId, terrain, solid) : [];
   const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, MAP_SIZE - 1, MAP_SIZE - 1];
-  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls };
+  const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger] : [];
+  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, reserved };
 }
 
 /** 장식 벽을 놓을 수 있는 칸에만 세우고 그 칸을 막는다. */
