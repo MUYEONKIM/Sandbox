@@ -10,8 +10,10 @@ export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'ro
 
 /** 1층 로비 바닥 */
 const LOBBY: Area = [13, 13, 32, 32];
-/** 4, 7, 8층과 옥상 바닥. 블록 설치 구역도 이 범위다. */
+/** 4층과 옥상 바닥. 블록 설치 구역도 이 범위다. */
 export const UPPER: Area = [3, 3, 42, 42];
+/** 7, 8층 바닥. 뒤쪽 벽과 문 자리는 4층과 같고 앞쪽(+x, +y)으로 더 넓다. 블록 설치 구역도 이 범위다. */
+export const TOP_FLOORS: Area = [3, 3, 82, 82];
 /** 8층에서 옥상으로 오르는 바깥 계단. 건물 벽에 붙은 2칸 너비 계단이고 맨 앞 줄은 난간이다. */
 const STAIRS: Area = [6, 20, 39, 22];
 /** 엘리베이터 안 */
@@ -165,22 +167,22 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
   tower7: {
     number: 7,
     style: 'office',
-    area: UPPER,
+    area: TOP_FLOORS,
     doorways: [elevator],
     flights: [WELL_FLIGHT],
     railings: WELL_RAILINGS,
     signs: [{ at: WELL.y0, text: '8F' }],
-    portals: [wallPortal(UPPER, elevator, 'elevator'), wellPortal('tower8', '8층 (계단)')],
+    portals: [wallPortal(TOP_FLOORS, elevator, 'elevator'), wellPortal('tower8', '8층 (계단)')],
   },
   tower8: {
     number: 8,
     style: 'office',
-    area: UPPER,
+    area: TOP_FLOORS,
     doorways: [outside],
     flights: [WELL_FLIGHT],
     railings: WELL_RAILINGS,
     signs: [{ at: WELL.y0, text: '7F' }],
-    portals: [wellPortal('tower7', '7층 (계단)'), wallPortal(UPPER, outside, 'stairs')],
+    portals: [wellPortal('tower7', '7층 (계단)'), wallPortal(TOP_FLOORS, outside, 'stairs')],
   },
   stairs: {
     ...plain,

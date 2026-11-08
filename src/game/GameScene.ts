@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { paintJumpShadow, paintSmoke } from '../art/effects';
-import { DECOR_LIFT, paintGround, TILE_CELL, WORLD_H, WORLD_W } from '../art/ground';
+import { DECOR_LIFT, paintGround, TILE_CELL, worldRect } from '../art/ground';
 import {
   hideoutOrigin,
   interiorOrigin,
@@ -267,6 +267,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.showLevel(id, this.level);
 
     this.bullets = new Bullets(this, {
+      inBounds: (tx, ty) => this.world.inBounds(tx, ty),
       isSolid: (tx, ty) => this.world.blocksShots(tx, ty),
       targets: () => this.bulletTargets(),
       onImpact: (id, dx, dy) => this.playHit(id, dx, dy),
@@ -282,7 +283,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     const cam = this.cameras.main;
     cam.setZoom(ZOOM);
-    cam.setBounds(-CAMERA_PAD_X, -CAMERA_PAD_Y, WORLD_W + CAMERA_PAD_X * 2, WORLD_H + CAMERA_PAD_Y * 2);
     cam.startFollow(this.me.anchor, true);
 
     this.input.mouse?.disableContextMenu();
@@ -465,7 +465,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.hideoutShown = false;
     const info = MAPS[id];
     this.world = new World(generateMap(id), portalsOf(id));
-    this.ground.setTexture(this.groundTexture(id));
+    // 7, 8층처럼 넓은 맵은 월드 범위가 왼쪽 아래로 더 나가서 바닥 그림과 카메라 범위를 맵마다 맞춘다.
+    const rect = worldRect(this.world.map.size);
+    this.ground.setTexture(this.groundTexture(id)).setPosition(rect.left, 0);
+    this.cameras.main.setBounds(
+      rect.left - CAMERA_PAD_X,
+      -CAMERA_PAD_Y,
+      rect.width + CAMERA_PAD_X * 2,
+      rect.height + CAMERA_PAD_Y * 2,
+    );
     this.minimap.setMap(info.name, info.color, this.world.map.bounds);
     this.cameras.main.setBackgroundColor(
       id === 'rooftop' || id === 'stairs' ? ROOF_BACKGROUND : isTower(id) ? INDOOR_BACKGROUND : WORLD_BACKGROUND,
@@ -1254,7 +1262,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 블록을 놓을 수 있는 범위를 마름모로 표시한다. */
   private drawRange() {
-    const clamp = (v: number) => Math.max(0, Math.min(MAP_SIZE, v));
+    const clamp = (v: number) => Math.max(0, Math.min(this.world.map.size, v));
     const { x, y } = this.me.tile;
     const x0 = clamp(x - PLACE_RANGE);
     const y0 = clamp(y - PLACE_RANGE);

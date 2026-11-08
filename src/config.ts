@@ -5,8 +5,11 @@ export const TILE_H = 16;
 /** 아트 픽셀 1개를 화면 몇 픽셀로 그릴지 */
 export const ZOOM = 2;
 
-/** 맵 한 변의 칸 수 */
+/** 기본 맵 한 변의 칸 수. 넓은 층은 바닥에 맞춰 더 크다(`map.ts`의 `mapSize`). */
 export const MAP_SIZE = 46;
+
+/** 서버가 받는 좌표의 칸 수. profiles와 blocks 표의 x, y 검사(0~99)와 같아야 한다. */
+export const MAX_MAP_SIZE = 100;
 
 /** 블록을 놓을 수 있는 거리 (칸). 1이면 캐릭터를 둘러싼 8칸이다. */
 export const PLACE_RANGE = 1;

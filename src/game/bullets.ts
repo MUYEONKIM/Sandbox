@@ -1,5 +1,4 @@
 import type Phaser from 'phaser';
-import { MAP_SIZE } from '../config';
 import { depthOf, gridToWorld } from '../iso';
 
 /** 총알이 땅에서 떠 있는 높이 (아트 픽셀) */
@@ -18,6 +17,8 @@ export interface BulletTarget {
 }
 
 export interface BulletWorld {
+  /** 맵 안의 칸인지. 맵 밖으로 나간 총알은 사라진다. */
+  inBounds(x: number, y: number): boolean;
   isSolid(x: number, y: number): boolean;
   targets(): BulletTarget[];
   /** 총알이 사람에게 닿았을 때 불린다. (dx, dy)는 총알이 날아온 방향이다. */
@@ -93,7 +94,7 @@ export class Bullets {
       bullet.y += bullet.dy * CHECK_STEP;
       bullet.left -= CHECK_STEP;
 
-      const inside = bullet.x >= 0 && bullet.y >= 0 && bullet.x < MAP_SIZE && bullet.y < MAP_SIZE;
+      const inside = this.world.inBounds(Math.floor(bullet.x), Math.floor(bullet.y));
       if (!inside || bullet.left <= 0) return false;
       if (this.world.isSolid(Math.floor(bullet.x), Math.floor(bullet.y))) return false;
 

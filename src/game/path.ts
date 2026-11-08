@@ -1,4 +1,3 @@
-import { MAP_SIZE } from '../config';
 import type { Tile, World } from './world';
 
 const DIRS = [
@@ -60,9 +59,10 @@ class Heap {
  * to에 갈 수 없으면 갈 수 있는 칸 중 to에 가장 가까운 칸까지 간다.
  */
 export function findPath(world: World, from: Tile, to: Tile): Tile[] {
-  const key = (x: number, y: number) => x + y * MAP_SIZE;
-  const cost = new Float64Array(MAP_SIZE * MAP_SIZE).fill(Infinity);
-  const came = new Int32Array(MAP_SIZE * MAP_SIZE).fill(-1);
+  const { size } = world.map;
+  const key = (x: number, y: number) => x + y * size;
+  const cost = new Float64Array(size * size).fill(Infinity);
+  const came = new Int32Array(size * size).fill(-1);
   const start = key(from.x, from.y);
   const goal = key(to.x, to.y);
   cost[start] = 0;
@@ -79,8 +79,8 @@ export function findPath(world: World, from: Tile, to: Tile): Tile[] {
       best = goal;
       break;
     }
-    const x = here % MAP_SIZE;
-    const y = Math.floor(here / MAP_SIZE);
+    const x = here % size;
+    const y = Math.floor(here / size);
     const gap = Math.hypot(x - to.x, y - to.y);
     if (gap < bestGap) {
       best = here;
@@ -102,7 +102,7 @@ export function findPath(world: World, from: Tile, to: Tile): Tile[] {
 
   const path: Tile[] = [];
   for (let at = best; at !== start; at = came[at]) {
-    path.push({ x: at % MAP_SIZE, y: Math.floor(at / MAP_SIZE) });
+    path.push({ x: at % size, y: Math.floor(at / size) });
   }
   return path.reverse();
 }

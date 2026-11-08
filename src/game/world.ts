@@ -1,5 +1,5 @@
 import { BLOCKS, isWall, type BlockId } from '../blocks';
-import { MAP_SIZE, PLACE_RANGE } from '../config';
+import { PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
 import { isInside, type Area, type Portal } from './maps';
 
@@ -27,11 +27,11 @@ export class World {
   }
 
   private key(x: number, y: number) {
-    return x + y * MAP_SIZE;
+    return x + y * this.map.size;
   }
 
   inBounds(x: number, y: number) {
-    return x >= 0 && y >= 0 && x < MAP_SIZE && y < MAP_SIZE;
+    return x >= 0 && y >= 0 && x < this.map.size && y < this.map.size;
   }
 
   blockAt(x: number, y: number) {
@@ -47,7 +47,8 @@ export class World {
 
   /** 설치된 블록이 있는 칸 목록 */
   blockTiles(): Tile[] {
-    return [...this.blocks.keys()].map((key) => ({ x: key % MAP_SIZE, y: Math.floor(key / MAP_SIZE) }));
+    const { size } = this.map;
+    return [...this.blocks.keys()].map((key) => ({ x: key % size, y: Math.floor(key / size) }));
   }
 
   /** 캐릭터 주변 8칸 안에 있는 자원 칸을 찾는다. */

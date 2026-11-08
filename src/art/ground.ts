@@ -1,6 +1,6 @@
-import { MAP_SIZE, TILE_H, TILE_W } from '../config';
+import { TILE_H, TILE_W } from '../config';
 import { Terrain, type GameMap } from '../game/map';
-import { gridToWorld, ORIGIN_Y } from '../iso';
+import { gridToWorld, ORIGIN_X, ORIGIN_Y } from '../iso';
 import { hash2 } from './pixels';
 import { sprite } from './sprites';
 
@@ -17,8 +17,10 @@ const WATER_TILES = [93, 93, 93, 93, 92, 94, 95, 88];
 /** 맵 앞쪽 가장자리 아래로 드러나는 블록 옆면의 높이 (아트 픽셀) */
 const BLOCK_SIDE = 8;
 
-export const WORLD_W = MAP_SIZE * TILE_W;
-export const WORLD_H = ORIGIN_Y + MAP_SIZE * TILE_H + BLOCK_SIDE * 2;
+/** 한 변이 size칸인 맵이 차지하는 월드 범위. 기본 크기 맵은 왼쪽 끝이 0이고, 넓은 맵은 왼쪽으로 더 나간다. */
+export function worldRect(size: number) {
+  return { left: ORIGIN_X - (size * TILE_W) / 2, width: size * TILE_W, height: ORIGIN_Y + size * TILE_H + BLOCK_SIDE * 2 };
+}
 
 /** 같은 칸에는 항상 같은 타일이 나오도록 좌표로 고른다. */
 function pick(tiles: number[], x: number, y: number) {
@@ -31,9 +33,11 @@ function pick(tiles: number[], x: number, y: number) {
  * 같은 높이에 그리면 바닥보다 낮은 연못처럼 보인다.
  */
 export function paintGround(map: GameMap): HTMLCanvasElement {
+  const { size } = map;
+  const rect = worldRect(size);
   const canvas = document.createElement('canvas');
-  canvas.width = WORLD_W;
-  canvas.height = WORLD_H;
+  canvas.width = rect.width;
+  canvas.height = rect.height;
   const context = canvas.getContext('2d')!;
   const sheet = sprite('tiles');
 
@@ -43,13 +47,13 @@ export function paintGround(map: GameMap): HTMLCanvasElement {
     context.drawImage(sheet, sx, sy, TILE_CELL, TILE_CELL, left, top, TILE_CELL, TILE_CELL);
   };
 
-  for (let y = 0; y < MAP_SIZE; y++) {
-    for (let x = 0; x < MAP_SIZE; x++) {
-      const index = x + y * MAP_SIZE;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const index = x + y * size;
       if (map.terrain[index] === Terrain.Void) continue;
       const water = map.terrain[index] === Terrain.Water;
       const corner = gridToWorld(x, y);
-      const left = corner.x - TILE_CELL / 2;
+      const left = corner.x - TILE_CELL / 2 - rect.left;
       const top = corner.y - map.floorTop;
       // 건물 안처럼 바닥 타일이 없는 맵은 바닥을 따로 그린다.
       const tile = map.floorTiles.get(index) ?? pick(water ? WATER_TILES : map.floor, x, y);

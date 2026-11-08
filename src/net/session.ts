@@ -1,6 +1,6 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { BLOCKS, type BlockId } from '../blocks';
-import { MAP_SIZE, MAX_HP, TEAM_SIZE } from '../config';
+import { MAX_HP, MAX_MAP_SIZE, TEAM_SIZE } from '../config';
 import type { Slot } from '../game/inventory';
 import { parseLevel } from '../game/level';
 import type { StatId } from '../game/stats';
@@ -97,8 +97,8 @@ const MAX_TEXT = 100;
 const MAX_STEP_MS = 1000;
 const SAVE_DELAY_MS = 2000;
 
-const isTileCoord = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < MAP_SIZE;
-const isGridCoord = (v: unknown): v is number => typeof v === 'number' && v >= -1 && v <= MAP_SIZE + 1;
+const isTileCoord = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < MAX_MAP_SIZE;
+const isGridCoord = (v: unknown): v is number => typeof v === 'number' && v >= -1 && v <= MAX_MAP_SIZE + 1;
 const isHp = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= MAX_HP;
 const isBlockId = (v: unknown): v is BlockId => typeof v === 'string' && Object.hasOwn(BLOCKS, v);
 const isSkin = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < TEAM_SIZE;

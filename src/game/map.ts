@@ -23,6 +23,8 @@ export interface FixedWall extends Tile {
 }
 
 export interface GameMap extends Scenery {
+  /** 맵 한 변의 칸 수. 칸 번호는 x + y * size다. */
+  size: number;
   /** 바닥에 섞어 까는 타일 번호 */
   floor: number[];
   /** 타일 그림에서 윗면이 시작하는 높이 (아트 픽셀) */
@@ -123,10 +125,21 @@ function digPond(terrain: Uint8Array): Tile[] {
   return spots;
 }
 
+/** 건물 층의 바닥 앞쪽에 남기는 빈칸 수. 4층 숨은 방이 이 자리에 있다. */
+const FRONT_GAP = 3;
+
+/** 맵 한 변의 칸 수. 건물 층은 바닥에 맞추고, 나머지 맵은 기본 크기다. */
+export function mapSize(id: MapId) {
+  if (!isTower(id)) return MAP_SIZE;
+  const [, , x1, y1] = FLOORS[id].area;
+  return Math.max(MAP_SIZE, x1 + FRONT_GAP + 1, y1 + FRONT_GAP + 1);
+}
+
 /** 맵은 기본적으로 평지다. 맵마다 바닥색이 다르고, 건물이나 자원이 있는 맵은 여기서 채운다. */
 export function generateMap(id: MapId): GameMap {
-  const terrain = new Uint8Array(MAP_SIZE * MAP_SIZE).fill(Terrain.Ground);
-  const solid = new Uint8Array(MAP_SIZE * MAP_SIZE);
+  const size = mapSize(id);
+  const terrain = new Uint8Array(size * size).fill(Terrain.Ground);
+  const solid = new Uint8Array(size * size);
   const buildings: Building[] = [];
   let spots: Tile[] = [];
   let scenery: Scenery = { floorTiles: new Map(), decals: new Map(), props: [], trees: [] };
@@ -136,12 +149,12 @@ export function generateMap(id: MapId): GameMap {
     const village = layoutVillage();
     scenery = village;
     buildings.push(...village.buildings);
-    for (const { x, y } of village.water) terrain[x + y * MAP_SIZE] = Terrain.Water;
+    for (const { x, y } of village.water) terrain[x + y * size] = Terrain.Water;
   } else if (isTower(id)) {
     terrain.fill(Terrain.Void);
     const [x0, y0, x1, y1] = FLOORS[id].area;
     for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) terrain[x + y * MAP_SIZE] = Terrain.Ground;
+      for (let x = x0; x <= x1; x++) terrain[x + y * size] = Terrain.Ground;
     }
     if (id === 'tower1') {
       buildings.push({ ...COUNTER });
@@ -158,18 +171,18 @@ export function generateMap(id: MapId): GameMap {
 
   for (const { x, y, w, d } of buildings) {
     for (let j = y; j < y + d; j++) {
-      for (let i = x; i < x + w; i++) solid[i + j * MAP_SIZE] = 1;
+      for (let i = x; i < x + w; i++) solid[i + j * size] = 1;
     }
   }
-  for (const { x, y } of [...scenery.props, ...scenery.trees]) solid[x + y * MAP_SIZE] = 1;
+  for (const { x, y } of [...scenery.props, ...scenery.trees]) solid[x + y * size] = 1;
 
   const { floor, floorTop, buildZones = [] } = MAPS[id];
   const railings = isTower(id) ? FLOORS[id].railings : [];
-  for (const { x, y } of railings) solid[x + y * MAP_SIZE] = 1;
+  for (const { x, y } of railings) solid[x + y * size] = 1;
   const walls = MAPS[id].work ? workWalls(id as WorkId, terrain, solid) : [];
-  const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, MAP_SIZE - 1, MAP_SIZE - 1];
+  const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, size - 1, size - 1];
   const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger] : [];
-  return { ...scenery, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, reserved };
+  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, reserved };
 }
 
 /** 장식 벽을 놓을 수 있는 칸에만 세우고 그 칸을 막는다. */

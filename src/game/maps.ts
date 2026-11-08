@@ -1,6 +1,6 @@
 import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
-import { COUNTER_INFO, FLOORS, isTower, PANEL_INFO, UPPER, type TowerId } from './tower';
+import { COUNTER_INFO, FLOORS, isTower, PANEL_INFO, TOP_FLOORS, UPPER, type TowerId } from './tower';
 
 const END = MAP_SIZE - 1;
 
@@ -127,7 +127,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x6b7280,
     accent: 0xbfe6ff,
     links: {},
-    buildZones: [UPPER],
+    buildZones: [TOP_FLOORS],
   },
   tower8: {
     name: '아이티공간 8층',
@@ -136,7 +136,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x6b7280,
     accent: 0x7fe3a0,
     links: {},
-    buildZones: [UPPER],
+    buildZones: [TOP_FLOORS],
   },
   // 엘리베이터 안. 층 버튼을 눌러 1, 4, 7층으로 간다.
   elevator: {
