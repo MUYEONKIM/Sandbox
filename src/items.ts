@@ -1,5 +1,5 @@
 import { MACHINE_GUN_ART, PISTOL_ART, SWORD_ART, type WeaponArt } from './art/weapons';
-import { BLOCKS, paintBlock, type BlockId } from './blocks';
+import { BLOCKS, paintBlockIcon, type BlockId } from './blocks';
 
 export type WeaponId = 'pistol' | 'sword' | 'machinegun';
 export type ItemId = BlockId | WeaponId;
@@ -39,5 +39,5 @@ export function itemName(id: ItemId): string {
 }
 
 export function paintItem(id: ItemId): HTMLCanvasElement {
-  return isWeapon(id) ? WEAPONS[id].art.paint() : paintBlock(id);
+  return isWeapon(id) ? WEAPONS[id].art.paint() : paintBlockIcon(id);
 }

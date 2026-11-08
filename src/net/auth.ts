@@ -3,6 +3,7 @@ import type { EconomyData } from '../game/economy';
 import { DEFAULT_MAP, isMapId, type WorkId } from '../game/maps';
 import { isStat } from '../game/stats';
 import { isWeapon } from '../items';
+import { BLOCKS, type BlockId } from '../blocks';
 import { supabase } from './supabase';
 
 export interface Profile {
@@ -70,15 +71,16 @@ export async function signOut() {
 
 /** 노동청과 상점에서 쓸 작업장, 자원, 무기, 도구, 스텟 표와 내 자원을 읽어 온다. */
 export async function loadEconomy(profile: Profile): Promise<EconomyData> {
-  const [workplaces, loot, stash, weapons, tools, stats] = await Promise.all([
+  const [workplaces, loot, stash, weapons, tools, stats, items] = await Promise.all([
     supabase.from('workplaces').select('id, name, blurb, gather_ms').order('sort'),
     supabase.from('loot').select('item, workplace, name, blurb, price, weight'),
     supabase.from('stash').select('item, count'),
     supabase.from('weapons').select('id, blurb, price, damage, cooldown_ms').order('sort'),
     supabase.from('tools').select('id, workplace, name, blurb, price').order('sort'),
     supabase.from('stats').select('id, name, blurb, base_price, price_step').order('sort'),
+    supabase.from('shop_items').select('id, price, amount').order('sort'),
   ]);
-  const error = workplaces.error ?? loot.error ?? stash.error ?? weapons.error ?? tools.error ?? stats.error;
+  const error = workplaces.error ?? loot.error ?? stash.error ?? weapons.error ?? tools.error ?? stats.error ?? items.error;
   if (error) throw new Error(error.message);
   const { gold, str, def, agi, luk, owned_weapons: owned, owned_tools: ownedTools } = profile;
   return {
@@ -90,6 +92,8 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
       isWeapon(id) ? [{ ...rest, id, cooldownMs }] : [],
     ),
     tools: (tools.data ?? []).map(({ workplace, ...rest }) => ({ ...rest, workplace: workplace as WorkId })),
+    // 이 버전의 게임이 모르는 블록은 상점에 내놓지 않는다.
+    items: (items.data ?? []).flatMap(({ id, ...rest }) => (Object.hasOwn(BLOCKS, id) ? [{ ...rest, id: id as BlockId }] : [])),
     stats: (stats.data ?? []).flatMap(({ id, base_price: basePrice, price_step: priceStep, ...rest }) =>
       isStat(id) ? [{ ...rest, id, basePrice, priceStep }] : [],
     ),

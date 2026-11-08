@@ -1080,3 +1080,53 @@ canvas {
   font-weight: 700;
   text-align: center;
 }
+
+.shop-note {
+  margin-bottom: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* 꾸미기 블록은 종류가 많아 작은 칸으로 늘어놓는다. */
+.shop-items {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.shop-item-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  image-rendering: pixelated;
+}
+
+.shop-item-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-item-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.shop-item-blurb {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+@media (max-width: 620px) {
+  .shop-items {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,4 +1,4 @@
-import { BLOCKS, type BlockId } from '../blocks';
+import { BLOCKS, isWall, type BlockId } from '../blocks';
 import { MAP_SIZE, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
 import { isInside, type Portal } from './maps';
@@ -38,10 +38,11 @@ export class World {
     return this.blocks.get(this.key(x, y));
   }
 
-  /** 설치된 블록이나 장식 벽. 벽 그림을 이웃과 이을 때 쓴다. */
+  /** 설치된 벽 블록이나 장식 벽. 벽 그림을 이웃과 이을 때 쓴다. 나무나 꽃 같은 꾸미기 블록은 벽이 아니다. */
   wallAt(x: number, y: number) {
     if (!this.inBounds(x, y)) return undefined;
-    return this.blocks.get(this.key(x, y)) ?? this.walls.get(this.key(x, y));
+    const id = this.blocks.get(this.key(x, y)) ?? this.walls.get(this.key(x, y));
+    return id && isWall(id) ? id : undefined;
   }
 
   /** 설치된 블록이 있는 칸 목록 */
@@ -75,9 +76,10 @@ export class World {
     return !block || !BLOCKS[block].solid;
   }
 
-  /** 총알과 칼을 막는 칸: 건물이나 자원 같은 고정 장애물과 설치된 블록이다. 물은 넘어간다. */
+  /** 총알과 칼을 막는 칸: 건물이나 자원 같은 고정 장애물과 지나갈 수 없는 블록이다. 물과 꽃은 넘어간다. */
   blocksShots(x: number, y: number) {
-    return this.map.solid[this.key(x, y)] === 1 || this.blockAt(x, y) !== undefined;
+    const block = this.blockAt(x, y);
+    return this.map.solid[this.key(x, y)] === 1 || (block !== undefined && BLOCKS[block].solid);
   }
 
   /** from에서 (dx, dy)로 한 칸 갈 수 있는지 본다. 양옆이 모두 막힌 틈은 지나갈 수 없다. */

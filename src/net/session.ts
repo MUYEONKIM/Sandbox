@@ -281,6 +281,12 @@ export class GameSession {
     return error ? null : (data as number);
   }
 
+  /** 꾸미기 블록 한 묶음을 산다. 새 골드와 받은 개수를 돌려주고, 실패하면 null이다. */
+  async buyItem(item: string): Promise<{ gold: number; amount: number } | null> {
+    const { data, error } = await supabase.rpc('buy_item', { item });
+    return error ? null : (data as { gold: number; amount: number });
+  }
+
   /** 레벨 순위를 위에서 size명까지 읽어 온다. 실패하면 null이다. */
   async fetchRanking(size: number): Promise<RankEntry[] | null> {
     const { data, error } = await supabase.rpc('top_players', { how_many: size });

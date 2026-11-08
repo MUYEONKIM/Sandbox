@@ -1,5 +1,6 @@
 import { spriteUrl } from '../art/sprites';
-import type { Economy, ShopTool, ShopWeapon } from '../game/economy';
+import { BLOCKS } from '../blocks';
+import type { Economy, ShopItem, ShopTool, ShopWeapon } from '../game/economy';
 import { paintItem, WEAPONS, type WeaponId } from '../items';
 import { element } from './dom';
 import { PLACE_ICONS } from './office';
@@ -8,13 +9,15 @@ import { PurchaseWindow } from './purchase';
 interface ShopActions {
   onBuyWeapon(id: WeaponId): Promise<void>;
   onBuyTool(tool: ShopTool): Promise<void>;
+  onBuyItem(item: ShopItem): Promise<void>;
   onSell(): void;
 }
 
-/** 상점 창: 무기와 작업 도구를 사고 캐 온 전리품을 판다. 실제 거래는 서버가 한다. */
+/** 상점 창: 무기, 꾸미기 블록, 작업 도구를 사고 캐 온 전리품을 판다. 실제 거래는 서버가 한다. */
 export class ShopWindow extends PurchaseWindow {
   private readonly weaponList: HTMLElement;
   private readonly toolList: HTMLElement;
+  private readonly itemList: HTMLElement;
   private readonly stashList: HTMLElement;
   private readonly sellButton: HTMLButtonElement;
 
@@ -28,6 +31,11 @@ export class ShopWindow extends PurchaseWindow {
     element('office-section', this.root).textContent = '무기';
     this.weaponList = element('shop-weapons', this.root);
     for (const weapon of economy.forSale) this.addWeapon(weapon);
+
+    element('office-section', this.root).textContent = '꾸미기';
+    element('shop-note', this.root).textContent = '아이티공간 4·7·8층, 옥상, 작업장에 놓을 수 있습니다.';
+    this.itemList = element('shop-items', this.root);
+    for (const item of economy.items) this.addItem(item);
 
     element('office-section', this.root).textContent = '작업 도구';
     this.toolList = element('shop-stats', this.root);
@@ -61,6 +69,24 @@ export class ShopWindow extends PurchaseWindow {
       const owned = this.economy.owns(id);
       buy.textContent = owned ? '보유 중' : `${price.toLocaleString()}G`;
       buy.disabled = this.busy || owned || this.economy.gold < price;
+    });
+  }
+
+  private addItem(item: ShopItem) {
+    const { id, price, amount } = item;
+    const block = BLOCKS[id];
+    const row = element('shop-item', this.itemList);
+    const icon = element('shop-item-icon', row, 'img') as HTMLImageElement;
+    icon.src = paintItem(id).toDataURL();
+    icon.alt = '';
+    const text = element('shop-item-text', row);
+    element('shop-item-name', text).textContent = block.name;
+    element('shop-item-blurb', text).textContent = `${amount}개${block.solid ? '' : ' · 밟고 지나감'}`;
+
+    const buy = this.buyButton(row, () => this.actions.onBuyItem(item));
+    this.refreshers.push(() => {
+      buy.textContent = `${price.toLocaleString()}G`;
+      buy.disabled = this.busy || this.economy.gold < price;
     });
   }
 

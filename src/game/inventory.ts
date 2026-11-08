@@ -1,4 +1,4 @@
-import { BLOCK_IDS } from '../blocks';
+import { WALL_IDS } from '../blocks';
 import { isItem, isWeapon, type ItemId, type WeaponId } from '../items';
 
 export const HOTBAR_SIZE = 9;
@@ -32,10 +32,10 @@ function isSlotList(value: unknown): value is Slot[] {
   return Array.isArray(value) && value.length === HOTBAR_SIZE + BAG_SIZE && value.every(isSlot);
 }
 
-/** 처음 가입한 플레이어의 인벤토리: 단축키 칸과 가방에 벽 블록을 한 묶음씩 넣는다. */
+/** 처음 가입한 플레이어의 인벤토리: 단축키 칸과 가방에 벽 블록을 한 묶음씩 넣는다. 꾸미기 블록은 상점에서 산다. */
 function starterSlots(): Slot[] {
   const slots: Slot[] = Array.from({ length: HOTBAR_SIZE + BAG_SIZE }, () => null);
-  BLOCK_IDS.forEach((id, i) => {
+  WALL_IDS.forEach((id, i) => {
     slots[i] = { id, count: STACK_SIZE };
     slots[HOTBAR_SIZE + i] = { id, count: STACK_SIZE };
   });
@@ -94,6 +94,12 @@ export class Inventory {
 
   canAdd(id: ItemId) {
     return this.slots.some((s) => s === null || (s.id === id && s.count < stackLimit(id)));
+  }
+
+  /** id를 몇 개 더 넣을 수 있는지 센다. */
+  room(id: ItemId) {
+    const limit = stackLimit(id);
+    return this.slots.reduce((sum, s) => sum + (s === null ? limit : s.id === id ? limit - s.count : 0), 0);
   }
 
   /** 블록 하나를 넣는다. 가득 차면 false를 돌려준다. */

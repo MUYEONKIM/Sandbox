@@ -28,6 +28,13 @@ export class CoverFader {
     this.covers.push({ textureKey, images });
   }
 
+  /** 회수한 블록처럼 지운 그림을 뺀다. */
+  remove(image: Phaser.GameObjects.Image) {
+    this.scene.tweens.killTweensOf(image);
+    this.covers = this.covers.filter((cover) => !cover.images.includes(image));
+    for (const cover of this.faded) if (cover.images.includes(image)) this.faded.delete(cover);
+  }
+
   /** 맵을 떠날 때 부른다. */
   clear() {
     for (const { images } of this.covers) this.scene.tweens.killTweensOf(images);
