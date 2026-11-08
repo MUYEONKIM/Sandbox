@@ -37,7 +37,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     location.reload();
   });
   hud.setHp(profile.hp);
-  hud.setLevel(BigInt(profile.level));
+  hud.setLevel(BigInt(profile.level), profile.exp);
 
   const economy = new Economy(economyData);
   const showEconomy = () => {

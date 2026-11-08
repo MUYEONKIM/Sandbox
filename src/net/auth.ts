@@ -16,6 +16,8 @@ export interface Profile {
   gold: number;
   /** 숫자가 아주 커질 수 있어 문자열로 받는다. */
   level: string;
+  /** 지금 레벨에서 모은 경험치 */
+  exp: number;
   inventory: unknown;
   str: number;
   def: number;
@@ -111,7 +113,7 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
 export async function loadProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nickname, map, x, y, hp, gold, level::text, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin')
+    .select('id, nickname, map, x, y, hp, gold, level::text, exp, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(error.message);

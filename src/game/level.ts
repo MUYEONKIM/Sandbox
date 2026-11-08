@@ -1,4 +1,4 @@
-/** 레벨은 한없이 커지므로 BigInt로 다루고, 한국어 큰 수 단위로 보여 준다. */
+/** 레벨은 끝이 없어서 BigInt로 다루고, 한국어 큰 수 단위로 보여 준다. */
 const UNITS = [
   '',
   '만',
@@ -50,4 +50,9 @@ export function formatLevel(level: bigint, short = false) {
 /** 다른 사람이 보낸 레벨 문자열을 믿지 않고 형식을 확인한다. */
 export function parseLevel(value: unknown): bigint | null {
   return typeof value === 'string' && /^[1-9]\d{0,20000}$/.test(value) ? BigInt(value) : null;
+}
+
+/** 레벨 level에서 다음 레벨까지 필요한 경험치. 서버의 `level_need`와 같아야 한다. */
+export function levelNeed(level: bigint) {
+  return 100 * Number(level);
 }

@@ -15,7 +15,10 @@ export interface HarvestResult {
   item: string;
   count: number;
   level: string;
-  gained: string;
+  /** 지금 레벨에서 모은 경험치 */
+  exp: number;
+  /** 이번에 얻은 경험치 */
+  gained: number;
 }
 
 export interface PlayerMove {
@@ -71,8 +74,8 @@ export interface SessionEvents {
   onHp(id: string, hp: number): void;
   /** 서버가 판정한 회피 */
   onDodge(id: string): void;
-  /** 서버가 알려 주는 레벨 변화 */
-  onLevel(id: string, level: bigint): void;
+  /** 서버가 알려 주는 레벨과 경험치 변화 */
+  onLevel(id: string, level: bigint, exp: number): void;
   /** 지금 같은 맵에 접속 중인 플레이어 id 목록 */
   onRoster(ids: Set<string>): void;
   onChat(message: ChatMessage): void;
@@ -174,7 +177,8 @@ export class GameSession {
       })
       .on('broadcast', { event: 'level' }, ({ payload }) => {
         const level = parseLevel(payload?.level);
-        if (typeof payload?.id === 'string' && level) events.onLevel(payload.id, level);
+        const exp = typeof payload?.exp === 'number' && payload.exp >= 0 ? payload.exp : 0;
+        if (typeof payload?.id === 'string' && level) events.onLevel(payload.id, level, exp);
       })
       .subscribe();
   }

@@ -1,7 +1,7 @@
 import { BLOCK_IDS } from '../blocks';
 import { MAX_HP } from '../config';
 import { BAG_SIZE, HOTBAR_SIZE, type Inventory } from '../game/inventory';
-import { formatLevel } from '../game/level';
+import { formatLevel, levelNeed } from '../game/level';
 import { itemName, paintItem, WEAPON_IDS, type ItemId } from '../items';
 import { element } from './dom';
 
@@ -23,6 +23,8 @@ export class Hud {
   private readonly pickedName: HTMLElement;
   private readonly pickedIcon: HTMLImageElement;
   private readonly levelText: HTMLElement;
+  private readonly expFill: HTMLElement;
+  private readonly expText: HTMLElement;
   private readonly dragIcon: HTMLImageElement;
   private readonly slots: HTMLElement[] = [];
   private readonly icons = paintIcons();
@@ -78,6 +80,9 @@ export class Hud {
 
     const status = element('status', bottom);
     this.levelText = element('status-level', status);
+    const exp = element('exp', status);
+    this.expFill = element('exp-fill', exp);
+    this.expText = element('exp-text', exp);
     const hp = element('hp', status);
     this.hpFill = element('hp-fill', hp);
     this.hpText = element('hp-text', hp);
@@ -117,9 +122,12 @@ export class Hud {
     this.hpText.textContent = `HP ${hp} / ${MAX_HP}`;
   }
 
-  setLevel(level: bigint, gained = false) {
+  setLevel(level: bigint, exp: number, leveled = false) {
     this.levelText.textContent = `Lv. ${formatLevel(level)}`;
-    if (!gained) return;
+    const need = levelNeed(level);
+    this.expFill.style.width = `${Math.min(exp / need, 1) * 100}%`;
+    this.expText.textContent = `EXP ${exp.toLocaleString()} / ${need.toLocaleString()}`;
+    if (!leveled) return;
     // 같은 클래스를 다시 붙여도 애니메이션이 처음부터 돌도록 한 프레임 뗀다.
     this.levelText.classList.remove('gained');
     requestAnimationFrame(() => this.levelText.classList.add('gained'));

@@ -46,7 +46,7 @@ import { CoverFader } from './covers';
 import type { Economy, ShopItem, ShopTool } from './economy';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
-import { formatLevel } from './level';
+import { formatLevel, levelNeed } from './level';
 import { generateMap, type Building } from './map';
 import {
   arrivalFor,
@@ -169,6 +169,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 방향키 없이 Shift를 누르면 이 방향으로 대시한다. 처음에는 화면 아래를 본다. */
   private lastDir: Dir = { dx: 1, dy: 1 };
   private level: bigint;
+  /** 지금 레벨에서 모은 경험치 */
+  private exp: number;
   private readonly others = new Map<string, Avatar>();
   private bullets!: Bullets;
   private ground!: Phaser.GameObjects.Image;
@@ -233,6 +235,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
     this.level = BigInt(session.profile.level);
+    this.exp = session.profile.exp;
   }
 
   create() {
@@ -880,18 +883,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!result || !info) return;
     this.workFx.finish(this.economy.isRare(info));
     this.economy.add(result.item, result.count);
-    this.gainLevel(BigInt(result.level));
-    const gained = formatLevel(BigInt(result.gained));
     const name = result.count > 1 ? `${info.name} ×${result.count}` : info.name;
-    this.hud.toast(`${name} 획득 (${info.price}G) · Lv +${gained}`, info.blurb, this.economy.isRare(info));
+    this.hud.toast(`${name} 획득 (${info.price}G) · 경험치 +${result.gained}`, info.blurb, this.economy.isRare(info));
+    this.gainExp(BigInt(result.level), result.exp);
   }
 
-  /** 내 레벨이 올랐다. 작업 결과와 서버 알림이 둘 다 오므로 더 높을 때만 바꾼다. */
-  private gainLevel(level: bigint) {
-    if (level <= this.level) return;
+  /** 내 레벨과 경험치가 바뀌었다. 작업 결과와 서버 알림이 둘 다 오므로 지금보다 앞설 때만 바꾼다. */
+  private gainExp(level: bigint, exp: number) {
+    if (level < this.level || (level === this.level && exp <= this.exp)) return;
+    const leveled = level > this.level;
     this.level = level;
-    this.hud.setLevel(level, true);
+    this.exp = exp;
+    this.hud.setLevel(level, exp, leveled);
+    if (!leveled) return;
     this.showLevel(this.session.profile.id, level);
+    this.hud.toast(`레벨 업! Lv. ${formatLevel(level)}`, `다음 레벨까지 경험치 ${levelNeed(level).toLocaleString()}`);
   }
 
   private showLevel(id: string, level: bigint) {
@@ -1383,8 +1389,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (id === this.session.profile.id || this.others.has(id)) this.tags.float(id, '회피!', 'dodge');
   }
 
-  onLevel(id: string, level: bigint) {
-    if (id === this.session.profile.id) this.gainLevel(level);
+  onLevel(id: string, level: bigint, exp: number) {
+    if (id === this.session.profile.id) this.gainExp(level, exp);
     else if (this.others.has(id)) this.showLevel(id, level);
   }
 
