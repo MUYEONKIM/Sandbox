@@ -8,8 +8,8 @@ import type { Tile } from './world';
  */
 export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator';
 
-/** 1층 로비 바닥 */
-const LOBBY: Area = [13, 13, 32, 32];
+/** 1층 로비 바닥. 블록 설치 구역도 이 범위다. */
+export const LOBBY: Area = [13, 13, 32, 32];
 /** 4층과 옥상 바닥. 블록 설치 구역도 이 범위다. */
 export const UPPER: Area = [3, 3, 42, 42];
 /** 7, 8층 바닥. 뒤쪽 벽과 문 자리는 4층과 같고 앞쪽(+x, +y)으로 더 넓다. 블록 설치 구역도 이 범위다. */

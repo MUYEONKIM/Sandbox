@@ -13,7 +13,7 @@ import {
 } from '../art/interior';
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
-import { WALL_ORIGIN_X, WALL_ORIGIN_Y, WALL_VARIANTS, wallVariant } from '../art/walls';
+import { CUBE_ORIGIN_X, CUBE_ORIGIN_Y } from '../art/cube';
 import { paintBullet } from '../art/weapons';
 import { blockArt, blockTile, BLOCKS, paintBlock, WALL_IDS, type BlockId } from '../blocks';
 import {
@@ -198,7 +198,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private range!: Phaser.GameObjects.Graphics;
   private readonly blockImages = new Map<string, Phaser.GameObjects.Image>();
   /** 맵에 박힌 장식 벽 그림 */
-  private readonly wallImages = new Map<string, Phaser.GameObjects.Image>();
   private portalSprites: PortalSprite[] = [];
   private signs: Sign[] = [];
   /** 건물과 자원처럼 맵을 옮길 때 지워야 하는 그림 */
@@ -282,8 +281,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.marker = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.routeMarker = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.ghost = this.add
-      .image(0, 0, `block-${WALL_IDS[0]}-0`)
-      .setOrigin(WALL_ORIGIN_X, WALL_ORIGIN_Y)
+      .image(0, 0, `block-${WALL_IDS[0]}`)
+      .setOrigin(CUBE_ORIGIN_X, CUBE_ORIGIN_Y)
       .setVisible(false);
 
     const cam = this.cameras.main;
@@ -317,9 +316,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private createTextures() {
-    for (const id of WALL_IDS) {
-      for (let v = 0; v < WALL_VARIANTS; v++) this.textures.addCanvas(`block-${id}-${v}`, paintBlock(id, v));
-    }
+    for (const id of WALL_IDS) this.textures.addCanvas(`block-${id}`, paintBlock(id));
     for (const id of WEAPON_IDS) this.textures.addCanvas(id, WEAPONS[id].art.paint());
     this.textures.addCanvas('bullet', paintBullet());
     this.textures.addCanvas('smoke', paintSmoke());
@@ -508,15 +505,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     });
   }
 
-  /** 작업장의 장식 벽. 다 놓은 뒤 이웃끼리 잇는다. */
+  /** 작업장의 장식 벽 */
   private showWalls() {
     for (const { x, y, id } of this.world.map.walls) {
-      const c = tileCenter(x, y);
-      const image = this.add.image(c.x, c.y, `block-${id}-0`).setOrigin(WALL_ORIGIN_X, WALL_ORIGIN_Y).setDepth(depthOf(x, y));
-      this.wallImages.set(`${x},${y}`, image);
-      this.mapImages.push(image);
+      this.mapImages.push(this.dressBlock(this.add.image(0, 0, `block-${id}`), id, x, y));
     }
-    for (const { x, y } of this.world.map.walls) this.connectWalls(x, y);
   }
 
   /** 아이티공간 층 그림: 바닥과 뒤쪽 벽을 한 장에 담았다. 층마다 처음 들어갈 때 한 번만 그린다. */
@@ -624,7 +617,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.covers.clear();
     this.workFx.clear();
     this.spotImages.clear();
-    this.wallImages.clear();
     this.tweens.killTweensOf(this.hideoutImages);
     this.hideoutImages = [];
     for (const image of this.mapImages) image.destroy();
@@ -1359,13 +1351,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const image = this.dressBlock(this.add.image(0, 0, 'tiles'), id, x, y, z);
     this.blockImages.set(`${x},${y},${z}`, image);
     const art = blockArt(id);
-    // 나무와 가구는 키가 커서 뒤에 선 캐릭터를 가리므로 반투명하게 할 대상에 넣는다.
+    // 나무, 가구, 높이 쌓은 상자는 뒤에 선 캐릭터를 가리므로 반투명하게 할 대상에 넣는다.
     if (art.kind === 'sprite') this.covers.add(art.sprite, [image]);
-    this.connectWalls(x, y, z);
+    if (art.kind === 'wall') this.covers.add(`block-${id}`, [image]);
   }
 
   /**
-   * 블록 그림을 칸 (x, y)의 높이 z에 맞춘다. 벽은 이웃에 따라 connectWalls가 그림을 다시 고른다.
+   * 블록 그림을 칸 (x, y)의 높이 z에 맞춘다.
    * 위에 쌓인 블록은 한 층마다 BLOCK_HEIGHT만큼 올려 그리고, 같은 칸 안에서는 위층을 나중에 그린다.
    */
   private dressBlock(image: Phaser.GameObjects.Image, id: BlockId, x: number, y: number, z = 0) {
@@ -1374,7 +1366,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const depth = depthOf(x, y) + z * STACK_DEPTH;
     if (art.kind === 'wall') {
       const c = tileCenter(x, y);
-      return image.setTexture(`block-${id}-0`).setOrigin(WALL_ORIGIN_X, WALL_ORIGIN_Y).setPosition(c.x, c.y - lift).setDepth(depth);
+      return image.setTexture(`block-${id}`).setOrigin(CUBE_ORIGIN_X, CUBE_ORIGIN_Y).setPosition(c.x, c.y - lift).setDepth(depth);
     }
     if (art.kind === 'sprite') {
       this.spriteTexture(art.sprite);
@@ -1395,28 +1387,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setDepth(BLOCKS[id].solid || z > 0 ? depth : DEPTH_DECAL);
   }
 
-  /** 벽이 같은 높이의 이웃과 이어져 보이도록 자기와 주변 벽의 그림을 고른다. 장식 벽과 설치한 블록도 서로 잇는다. */
-  private connectWalls(x: number, y: number, z = 0) {
-    const wallAt = (wx: number, wy: number) => this.world.wallAt(wx, wy, z);
-    for (const [tx, ty] of [
-      [x, y],
-      [x + 1, y],
-      [x - 1, y],
-      [x, y + 1],
-      [x, y - 1],
-    ]) {
-      const id = wallAt(tx, ty);
-      if (!id) continue;
-      const neighbors =
-        (wallAt(tx + 1, ty) ? 1 : 0) |
-        (wallAt(tx - 1, ty) ? 2 : 0) |
-        (wallAt(tx, ty + 1) ? 4 : 0) |
-        (wallAt(tx, ty - 1) ? 8 : 0);
-      const image = this.blockImages.get(`${tx},${ty},${z}`) ?? (z === 0 ? this.wallImages.get(`${tx},${ty}`) : undefined);
-      image?.setTexture(`block-${id}-${wallVariant(neighbors)}`);
-    }
-  }
-
   private removeBlockAt(x: number, y: number, z: number) {
     this.world.remove(x, y, z);
     const key = `${x},${y},${z}`;
@@ -1426,7 +1396,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       image.destroy();
     }
     this.blockImages.delete(key);
-    this.connectWalls(x, y, z);
   }
 
   currentTile() {

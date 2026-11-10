@@ -1,6 +1,6 @@
 import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
-import { COUNTER_INFO, FLOORS, isTower, PANEL_INFO, TOP_FLOORS, UPPER, type TowerId } from './tower';
+import { COUNTER_INFO, FLOORS, isTower, LOBBY, PANEL_INFO, TOP_FLOORS, UPPER, type TowerId } from './tower';
 
 const END = MAP_SIZE - 1;
 
@@ -101,7 +101,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xff6a3d,
     links: { left: 'desert' },
   },
-  // 아이티공간 건물 안. 1층 카페는 비무장지대이고, 나머지는 블록과 무기를 마음대로 쓰는 자유 공간이다.
+  // 아이티공간 건물 안. 1층 카페는 무기를 못 쓰는 비무장지대지만 블록은 놓을 수 있고, 4층부터는 블록과 무기를 마음대로 쓰는 자유 공간이다.
   tower1: {
     name: '아이티공간 1층',
     floor: [],
@@ -110,6 +110,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xff7ad9,
     links: {},
     safe: true,
+    buildZones: [LOBBY],
   },
   tower4: {
     name: '아이티공간 4층',

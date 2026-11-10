@@ -3,6 +3,7 @@ const NAMES = [
   'Smoke0000',
   'Smoke0001',
   'Smoke0002',
+  'block-textures',
   'board',
   'cafe-table',
   'castle',
@@ -27,7 +28,6 @@ const NAMES = [
   'treehouse',
   'villa',
   'watchtower',
-  ...Array.from({ length: 11 }, (_, i) => `wal${String(i).padStart(4, '0')}`),
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

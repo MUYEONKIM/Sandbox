@@ -1,6 +1,6 @@
 import { hash2 } from './art/pixels';
 import { sprite, type SpriteName } from './art/sprites';
-import { paintWall } from './art/walls';
+import { paintCube } from './art/cube';
 
 /** tiles.png는 32×32 칸이 가로 11개씩 놓인 그림이다. */
 const TILE_CELL = 32;
@@ -8,12 +8,12 @@ const TILE_COLUMNS = 11;
 
 /**
  * 블록 그림의 종류.
- * wall: 이웃 벽과 이어지는 벽 조각에 색을 입힌다.
+ * wall: block-textures.png의 텍스처 한 칸으로 그린 상자. 그 위에 다른 블록을 쌓을 수 있다.
  * sprite: public/sprites의 그림 한 장을 칸 위에 세운다(나무, 가구).
  * tile: tiles.png의 칸 그림이고, 같은 칸에는 늘 같은 그림이 나오도록 위치로 하나를 고른다(꽃, 바위 등).
  */
 export type BlockArt =
-  | { kind: 'wall'; tint: number | null }
+  | { kind: 'wall'; texture: number }
   | { kind: 'sprite'; sprite: SpriteName }
   | { kind: 'tile'; tiles: readonly number[] };
 
@@ -29,10 +29,10 @@ interface BlockInfo {
  * 상점에서 팔려면 DB의 shop_items 표에도 같은 id로 가격을 넣는다.
  */
 export const BLOCKS = {
-  stone: { name: '돌벽', solid: true, art: { kind: 'wall', tint: null } },
-  brick: { name: '벽돌벽', solid: true, art: { kind: 'wall', tint: 0xf0a088 } },
-  wood: { name: '나무벽', solid: true, art: { kind: 'wall', tint: 0xd8b078 } },
-  hedge: { name: '덤불벽', solid: true, art: { kind: 'wall', tint: 0x8fdc80 } },
+  stone: { name: '돌벽', solid: true, art: { kind: 'wall', texture: 0 } },
+  brick: { name: '벽돌벽', solid: true, art: { kind: 'wall', texture: 1 } },
+  wood: { name: '나무벽', solid: true, art: { kind: 'wall', texture: 2 } },
+  hedge: { name: '덤불벽', solid: true, art: { kind: 'wall', texture: 3 } },
   oak: { name: '참나무', solid: true, art: { kind: 'sprite', sprite: 'oaktree' } },
   pine: { name: '소나무', solid: true, art: { kind: 'sprite', sprite: 'pinetree' } },
   fir: { name: '전나무', solid: true, art: { kind: 'sprite', sprite: 'firtree' } },
@@ -49,7 +49,7 @@ export type BlockId = keyof typeof BLOCKS;
 
 export const BLOCK_IDS = Object.keys(BLOCKS) as BlockId[];
 
-/** 이웃과 이어지는 벽 블록. 가입할 때 공짜로 준다. */
+/** 상자 모양의 벽 블록. 가입할 때 공짜로 준다. */
 export const WALL_IDS = BLOCK_IDS.filter((id) => BLOCKS[id].art.kind === 'wall');
 
 export function blockArt(id: BlockId): BlockArt {
@@ -65,10 +65,10 @@ export function blockTile(tiles: readonly number[], x: number, y: number) {
   return tiles[Math.floor(hash2(x, y) * tiles.length)];
 }
 
-/** 벽 블록의 이음새 그림. 벽이 아니면 쓰지 않는다. */
-export function paintBlock(id: BlockId, variant = 0): HTMLCanvasElement {
+/** 벽 블록의 상자 그림. 벽이 아니면 쓰지 않는다. */
+export function paintBlock(id: BlockId): HTMLCanvasElement {
   const art = BLOCKS[id].art;
-  return paintWall(variant, art.kind === 'wall' ? art.tint : null);
+  return paintCube(art.kind === 'wall' ? art.texture : 0);
 }
 
 /** 인벤토리와 상점에 쓰는 정사각형 아이콘 */

@@ -17,15 +17,11 @@ export function inReach(from: Tile, to: Tile, range = PLACE_RANGE) {
 export class World {
   /** 칸마다 쌓인 블록. 배열 번호가 높이(z)이고 0이 바닥이다. */
   private readonly blocks = new Map<number, BlockId[]>();
-  /** 맵에 박힌 장식 벽 */
-  private readonly walls = new Map<number, BlockId>();
 
   constructor(
     readonly map: GameMap,
     readonly portals: Portal[],
-  ) {
-    for (const { x, y, id } of map.walls) this.walls.set(this.key(x, y), id);
-  }
+  ) {}
 
   private key(x: number, y: number) {
     return x + y * this.map.size;
@@ -56,14 +52,6 @@ export class World {
     if (!stack?.length) return undefined;
     const z = stack.length - 1;
     return { id: stack[z], z };
-  }
-
-  /** 설치된 벽 블록이나 장식 벽. 벽 그림을 같은 높이의 이웃과 이을 때 쓴다. 나무나 꽃 같은 꾸미기 블록은 벽이 아니다. */
-  wallAt(x: number, y: number, z = 0) {
-    if (!this.inBounds(x, y)) return undefined;
-    const key = this.key(x, y);
-    const id = this.blocks.get(key)?.[z] ?? (z === 0 ? this.walls.get(key) : undefined);
-    return id && isWall(id) ? id : undefined;
   }
 
   /** 설치된 블록이 있는 칸 목록 */

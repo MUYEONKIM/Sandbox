@@ -33,7 +33,7 @@ export class ShopWindow extends PurchaseWindow {
     for (const weapon of economy.forSale) this.addWeapon(weapon);
 
     element('office-section', this.root).textContent = '꾸미기';
-    element('shop-note', this.root).textContent = '아이티공간 4·7·8층, 옥상, 작업장에 놓을 수 있습니다.';
+    element('shop-note', this.root).textContent = '아이티공간 1·4·7·8층, 옥상, 작업장에 놓을 수 있습니다.';
     this.itemList = element('shop-items', this.root);
     for (const item of economy.items) this.addItem(item);
 
