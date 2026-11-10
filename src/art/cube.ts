@@ -20,14 +20,18 @@ const SHADE_LEFT = 0.84;
 const SHADE_RIGHT = 0.66;
 const EDGE_LIGHT = 1.18;
 const EDGE_DARK = 0.7;
+/** 텍스처의 투명한 칸(유리 가운데)은 옅은 하늘색으로 비치게 칠한다. */
+const GLASS = [200, 230, 255] as const;
+const GLASS_ALPHA = 70;
 
 let textures: ImageData | undefined;
 
 /**
  * 텍스처 한 칸으로 아이소메트릭 상자를 그린다. 윗면은 텍스처를 마름모로 눕히고, 옆면 두 개는 기울여 붙인다.
  * 텍스처가 이음매 없는 무늬라 옆면 높이(18)가 텍스처(16)보다 길어도 무늬를 이어 붙인다.
+ * side를 주면 옆면은 그 텍스처로 칠하고(잔디처럼 위아래가 다른 그림), 이어 붙이지 않고 옆면 높이에 맞춰 늘린다.
  */
-export function paintCube(texture: number): HTMLCanvasElement {
+export function paintCube(texture: number, side = texture): HTMLCanvasElement {
   textures ??= spritePixels('block-textures');
   const source = textures;
   const canvas = document.createElement('canvas');
@@ -36,14 +40,16 @@ export function paintCube(texture: number): HTMLCanvasElement {
   const context = canvas.getContext('2d')!;
   const image = context.createImageData(CUBE_W, CUBE_H);
 
-  const put = (x: number, y: number, s: number, t: number, shade: number) => {
-    const sx = texture * TEXTURE + (Math.floor(s) % TEXTURE);
+  const put = (x: number, y: number, cell: number, s: number, t: number, shade: number) => {
+    const sx = cell * TEXTURE + (Math.floor(s) % TEXTURE);
     const sy = Math.floor(t) % TEXTURE;
     const from = (sx + sy * source.width) * 4;
     const to = (x + y * CUBE_W) * 4;
-    for (let c = 0; c < 3; c++) image.data[to + c] = Math.min(255, Math.round(source.data[from + c] * shade));
-    image.data[to + 3] = 255;
+    const clear = source.data[from + 3] < 128;
+    for (let c = 0; c < 3; c++) image.data[to + c] = Math.min(255, Math.round((clear ? GLASS[c] : source.data[from + c]) * shade));
+    image.data[to + 3] = clear ? GLASS_ALPHA : 255;
   };
+  const stretch = side !== texture;
 
   for (let y = 0; y < CUBE_H; y++) {
     for (let x = 0; x < CUBE_W; x++) {
@@ -53,7 +59,7 @@ export function paintCube(texture: number): HTMLCanvasElement {
       const u = (fx - TOP_W / 2 + 2 * fy) / 2;
       const v = (2 * fy - fx + TOP_W / 2) / 2;
       if (u >= 0 && u < TEXTURE && v >= 0 && v < TEXTURE) {
-        put(x, y, u, v, u >= TEXTURE - 1 || v >= TEXTURE - 1 ? EDGE_LIGHT : SHADE_TOP);
+        put(x, y, texture, u, v, u >= TEXTURE - 1 || v >= TEXTURE - 1 ? EDGE_LIGHT : SHADE_TOP);
         continue;
       }
       const left = fx < TOP_W / 2;
@@ -62,7 +68,8 @@ export function paintCube(texture: number): HTMLCanvasElement {
       const t = fy - (left ? TOP_H / 2 + s / 2 : TOP_H - s / 2);
       if (t < 0 || t >= BLOCK_HEIGHT) continue;
       const shade = left ? SHADE_LEFT : SHADE_RIGHT;
-      put(x, y, s, t, t >= BLOCK_HEIGHT - 1 ? shade * EDGE_DARK : shade);
+      const row = stretch ? (t * TEXTURE) / BLOCK_HEIGHT : t;
+      put(x, y, side, s, row, t >= BLOCK_HEIGHT - 1 ? shade * EDGE_DARK : shade);
     }
   }
   context.putImageData(image, 0, 0);

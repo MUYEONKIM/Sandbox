@@ -15,7 +15,7 @@ import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, ty
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
 import { CUBE_ORIGIN_X, CUBE_ORIGIN_Y } from '../art/cube';
 import { paintBullet } from '../art/weapons';
-import { blockArt, blockTile, BLOCKS, paintBlock, WALL_IDS, type BlockId } from '../blocks';
+import { blockArt, blockTile, BLOCKS, paintBlock, CUBE_IDS, type BlockId } from '../blocks';
 import {
   BLOCK_HEIGHT,
   JUMP_MS,
@@ -281,7 +281,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.marker = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.routeMarker = this.add.graphics().setDepth(DEPTH_OVERLAY);
     this.ghost = this.add
-      .image(0, 0, `block-${WALL_IDS[0]}`)
+      .image(0, 0, `block-${CUBE_IDS[0]}`)
       .setOrigin(CUBE_ORIGIN_X, CUBE_ORIGIN_Y)
       .setVisible(false);
 
@@ -316,7 +316,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private createTextures() {
-    for (const id of WALL_IDS) this.textures.addCanvas(`block-${id}`, paintBlock(id));
+    for (const id of CUBE_IDS) this.textures.addCanvas(`block-${id}`, paintBlock(id));
     for (const id of WEAPON_IDS) this.textures.addCanvas(id, WEAPONS[id].art.paint());
     this.textures.addCanvas('bullet', paintBullet());
     this.textures.addCanvas('smoke', paintSmoke());
@@ -1353,7 +1353,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const art = blockArt(id);
     // 나무, 가구, 높이 쌓은 상자는 뒤에 선 캐릭터를 가리므로 반투명하게 할 대상에 넣는다.
     if (art.kind === 'sprite') this.covers.add(art.sprite, [image]);
-    if (art.kind === 'wall') this.covers.add(`block-${id}`, [image]);
+    if (art.kind === 'cube') this.covers.add(`block-${id}`, [image]);
   }
 
   /**
@@ -1364,7 +1364,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const art = blockArt(id);
     const lift = z * BLOCK_HEIGHT;
     const depth = depthOf(x, y) + z * STACK_DEPTH;
-    if (art.kind === 'wall') {
+    if (art.kind === 'cube') {
       const c = tileCenter(x, y);
       return image.setTexture(`block-${id}`).setOrigin(CUBE_ORIGIN_X, CUBE_ORIGIN_Y).setPosition(c.x, c.y - lift).setDepth(depth);
     }

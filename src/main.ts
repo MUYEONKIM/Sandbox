@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { loadSprites } from './art/sprites';
 import { Economy, type EconomyData } from './game/economy';
 import { GameScene } from './game/GameScene';
-import { Inventory } from './game/inventory';
+import { BASIC_GIFT, Inventory, STACK_SIZE } from './game/inventory';
 import { Keys } from './game/keys';
 import { STAT_IDS } from './game/stats';
 import { currentUser, loadEconomy, loadProfile, signOut, type Profile } from './net/auth';
@@ -38,6 +38,11 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   });
   hud.setHp(profile.hp);
   hud.setLevel(BigInt(profile.level), profile.exp);
+  void session.claimGift(BASIC_GIFT.name).then((first) => {
+    if (!first) return;
+    for (const id of BASIC_GIFT.blocks) inventory.give(id, STACK_SIZE);
+    hud.toast(`기본 블록 ${BASIC_GIFT.blocks.length}종이 가방에 들어왔습니다`, '한 묶음씩 드립니다. 더 필요하면 상점에서 사세요.');
+  });
 
   const economy = new Economy(economyData);
   const showEconomy = () => {

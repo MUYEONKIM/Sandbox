@@ -1,4 +1,4 @@
-import { WALL_IDS } from '../blocks';
+import type { BlockId } from '../blocks';
 import { isItem, isWeapon, type ItemId, type WeaponId } from '../items';
 
 export const HOTBAR_SIZE = 9;
@@ -32,10 +32,34 @@ function isSlotList(value: unknown): value is Slot[] {
   return Array.isArray(value) && value.length === HOTBAR_SIZE + BAG_SIZE && value.every(isSlot);
 }
 
+/** 가입할 때 단축키 칸과 가방에 한 묶음씩 넣어 주는 벽 블록 */
+const STARTER_BLOCKS: readonly BlockId[] = ['stone', 'brick', 'wood', 'hedge'];
+
+/**
+ * 모든 플레이어가 한 번 한 묶음씩 받는 기본 블록(2026-11-10에 더함). 서버 gifts 표가 계정마다 한 번만 주게 막는다.
+ * 새로 가입한 사람도 처음 접속할 때 이것으로 받는다.
+ */
+export const BASIC_GIFT = {
+  name: 'basic-blocks',
+  blocks: [
+    'cobble',
+    'dirt',
+    'grass',
+    'sand',
+    'glass',
+    'snow',
+    'white_block',
+    'black_block',
+    'red_block',
+    'blue_block',
+    'yellow_block',
+  ] as readonly BlockId[],
+};
+
 /** 처음 가입한 플레이어의 인벤토리: 단축키 칸과 가방에 벽 블록을 한 묶음씩 넣는다. 꾸미기 블록은 상점에서 산다. */
 function starterSlots(): Slot[] {
   const slots: Slot[] = Array.from({ length: HOTBAR_SIZE + BAG_SIZE }, () => null);
-  WALL_IDS.forEach((id, i) => {
+  STARTER_BLOCKS.forEach((id, i) => {
     slots[i] = { id, count: STACK_SIZE };
     slots[HOTBAR_SIZE + i] = { id, count: STACK_SIZE };
   });
@@ -100,6 +124,22 @@ export class Inventory {
   room(id: ItemId) {
     const limit = stackLimit(id);
     return this.slots.reduce((sum, s) => sum + (s === null ? limit : s.id === id ? limit - s.count : 0), 0);
+  }
+
+  /** 블록 여러 개를 한 번에 넣고 넣은 개수를 돌려준다. 자리가 모자라면 남는 것은 버린다. */
+  give(id: ItemId, count: number) {
+    let given = 0;
+    while (given < count) {
+      const stack = this.slots.find((s) => s?.id === id && s.count < stackLimit(id));
+      const empty = stack ? -1 : this.slots.indexOf(null);
+      if (!stack && empty < 0) break;
+      const target = stack ?? (this.slots[empty] = { id, count: 0 });
+      const moved = Math.min(count - given, stackLimit(id) - target.count);
+      target.count += moved;
+      given += moved;
+    }
+    if (given) this.changed();
+    return given;
   }
 
   /** 블록 하나를 넣는다. 가득 차면 false를 돌려준다. */

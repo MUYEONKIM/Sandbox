@@ -8,12 +8,12 @@ const TILE_COLUMNS = 11;
 
 /**
  * 블록 그림의 종류.
- * wall: block-textures.png의 텍스처 한 칸으로 그린 상자. 그 위에 다른 블록을 쌓을 수 있다.
+ * cube: block-textures.png의 텍스처 칸으로 그린 상자(기본 블록). 그 위에 다른 블록을 쌓을 수 있다. side는 옆면 텍스처.
  * sprite: public/sprites의 그림 한 장을 칸 위에 세운다(나무, 가구).
  * tile: tiles.png의 칸 그림이고, 같은 칸에는 늘 같은 그림이 나오도록 위치로 하나를 고른다(꽃, 바위 등).
  */
 export type BlockArt =
-  | { kind: 'wall'; texture: number }
+  | { kind: 'cube'; texture: number; side?: number }
   | { kind: 'sprite'; sprite: SpriteName }
   | { kind: 'tile'; tiles: readonly number[] };
 
@@ -29,10 +29,21 @@ interface BlockInfo {
  * 상점에서 팔려면 DB의 shop_items 표에도 같은 id로 가격을 넣는다.
  */
 export const BLOCKS = {
-  stone: { name: '돌벽', solid: true, art: { kind: 'wall', texture: 0 } },
-  brick: { name: '벽돌벽', solid: true, art: { kind: 'wall', texture: 1 } },
-  wood: { name: '나무벽', solid: true, art: { kind: 'wall', texture: 2 } },
-  hedge: { name: '덤불벽', solid: true, art: { kind: 'wall', texture: 3 } },
+  stone: { name: '돌벽', solid: true, art: { kind: 'cube', texture: 0 } },
+  brick: { name: '벽돌벽', solid: true, art: { kind: 'cube', texture: 1 } },
+  wood: { name: '나무벽', solid: true, art: { kind: 'cube', texture: 2 } },
+  hedge: { name: '덤불벽', solid: true, art: { kind: 'cube', texture: 3 } },
+  cobble: { name: '조약돌', solid: true, art: { kind: 'cube', texture: 4 } },
+  dirt: { name: '흙', solid: true, art: { kind: 'cube', texture: 5 } },
+  grass: { name: '잔디', solid: true, art: { kind: 'cube', texture: 6, side: 7 } },
+  sand: { name: '모래', solid: true, art: { kind: 'cube', texture: 8 } },
+  glass: { name: '유리', solid: true, art: { kind: 'cube', texture: 9 } },
+  snow: { name: '눈 블록', solid: true, art: { kind: 'cube', texture: 10 } },
+  white_block: { name: '흰 블록', solid: true, art: { kind: 'cube', texture: 11 } },
+  black_block: { name: '검은 블록', solid: true, art: { kind: 'cube', texture: 12 } },
+  red_block: { name: '빨간 블록', solid: true, art: { kind: 'cube', texture: 13 } },
+  blue_block: { name: '파란 블록', solid: true, art: { kind: 'cube', texture: 14 } },
+  yellow_block: { name: '노란 블록', solid: true, art: { kind: 'cube', texture: 15 } },
   oak: { name: '참나무', solid: true, art: { kind: 'sprite', sprite: 'oaktree' } },
   pine: { name: '소나무', solid: true, art: { kind: 'sprite', sprite: 'pinetree' } },
   fir: { name: '전나무', solid: true, art: { kind: 'sprite', sprite: 'firtree' } },
@@ -49,15 +60,15 @@ export type BlockId = keyof typeof BLOCKS;
 
 export const BLOCK_IDS = Object.keys(BLOCKS) as BlockId[];
 
-/** 상자 모양의 벽 블록. 가입할 때 공짜로 준다. */
-export const WALL_IDS = BLOCK_IDS.filter((id) => BLOCKS[id].art.kind === 'wall');
+/** 상자 모양의 기본 블록. 위에 다른 블록을 쌓을 수 있다. */
+export const CUBE_IDS = BLOCK_IDS.filter((id) => BLOCKS[id].art.kind === 'cube');
 
 export function blockArt(id: BlockId): BlockArt {
   return BLOCKS[id].art;
 }
 
-export function isWall(id: BlockId) {
-  return BLOCKS[id].art.kind === 'wall';
+export function isCube(id: BlockId) {
+  return BLOCKS[id].art.kind === 'cube';
 }
 
 /** tile 블록이 칸 (x, y)에서 쓰는 tiles.png 번호 */
@@ -65,16 +76,16 @@ export function blockTile(tiles: readonly number[], x: number, y: number) {
   return tiles[Math.floor(hash2(x, y) * tiles.length)];
 }
 
-/** 벽 블록의 상자 그림. 벽이 아니면 쓰지 않는다. */
+/** 기본 블록의 상자 그림. 기본 블록이 아니면 쓰지 않는다. */
 export function paintBlock(id: BlockId): HTMLCanvasElement {
-  const art = BLOCKS[id].art;
-  return paintCube(art.kind === 'wall' ? art.texture : 0);
+  const art = blockArt(id);
+  return art.kind === 'cube' ? paintCube(art.texture, art.side) : paintCube(0);
 }
 
 /** 인벤토리와 상점에 쓰는 정사각형 아이콘 */
 export function paintBlockIcon(id: BlockId): HTMLCanvasElement {
   const art = BLOCKS[id].art;
-  if (art.kind === 'wall') return paintBlock(id);
+  if (art.kind === 'cube') return paintBlock(id);
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d')!;
   if (art.kind === 'tile') {

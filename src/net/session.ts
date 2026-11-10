@@ -294,6 +294,12 @@ export class GameSession {
     return error ? null : (data as { gold: number; amount: number });
   }
 
+  /** 계정마다 한 번만 받는 선물을 받는다. 처음 받는 것이면 true이고, 이미 받았거나 서버에 아직 없으면 false다. */
+  async claimGift(gift: string) {
+    const { data, error } = await supabase.rpc('claim_gift', { gift });
+    return !error && data === true;
+  }
+
   /** 레벨 순위를 위에서 size명까지 읽어 온다. 실패하면 null이다. */
   async fetchRanking(size: number): Promise<RankEntry[] | null> {
     const { data, error } = await supabase.rpc('top_players', { how_many: size });

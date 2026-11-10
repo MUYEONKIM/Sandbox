@@ -1,5 +1,5 @@
 import { spriteUrl } from '../art/sprites';
-import { BLOCKS } from '../blocks';
+import { BLOCKS, isCube } from '../blocks';
 import type { Economy, ShopItem, ShopTool, ShopWeapon } from '../game/economy';
 import { paintItem, WEAPONS, type WeaponId } from '../items';
 import { element } from './dom';
@@ -13,11 +13,10 @@ interface ShopActions {
   onSell(): void;
 }
 
-/** 상점 창: 무기, 꾸미기 블록, 작업 도구를 사고 캐 온 전리품을 판다. 실제 거래는 서버가 한다. */
+/** 상점 창: 무기, 기본 블록과 꾸미기 블록, 작업 도구를 사고 캐 온 전리품을 판다. 실제 거래는 서버가 한다. */
 export class ShopWindow extends PurchaseWindow {
   private readonly weaponList: HTMLElement;
   private readonly toolList: HTMLElement;
-  private readonly itemList: HTMLElement;
   private readonly stashList: HTMLElement;
   private readonly sellButton: HTMLButtonElement;
 
@@ -32,10 +31,14 @@ export class ShopWindow extends PurchaseWindow {
     this.weaponList = element('shop-weapons', this.root);
     for (const weapon of economy.forSale) this.addWeapon(weapon);
 
+    element('office-section', this.root).textContent = '기본 블록';
+    element('shop-note', this.root).textContent = '아이티공간 1·4·7·8층, 옥상, 작업장에 놓을 수 있습니다. 기본 블록 위에는 다른 블록을 쌓을 수 있습니다.';
+    const cubeList = element('shop-items', this.root);
+    for (const item of economy.items.filter(({ id }) => isCube(id))) this.addItem(cubeList, item);
+
     element('office-section', this.root).textContent = '꾸미기';
-    element('shop-note', this.root).textContent = '아이티공간 1·4·7·8층, 옥상, 작업장에 놓을 수 있습니다.';
-    this.itemList = element('shop-items', this.root);
-    for (const item of economy.items) this.addItem(item);
+    const decorList = element('shop-items', this.root);
+    for (const item of economy.items.filter(({ id }) => !isCube(id))) this.addItem(decorList, item);
 
     element('office-section', this.root).textContent = '작업 도구';
     this.toolList = element('shop-stats', this.root);
@@ -72,10 +75,10 @@ export class ShopWindow extends PurchaseWindow {
     });
   }
 
-  private addItem(item: ShopItem) {
+  private addItem(list: HTMLElement, item: ShopItem) {
     const { id, price, amount } = item;
     const block = BLOCKS[id];
-    const row = element('shop-item', this.itemList);
+    const row = element('shop-item', list);
     const icon = element('shop-item-icon', row, 'img') as HTMLImageElement;
     icon.src = paintItem(id).toDataURL();
     icon.alt = '';

@@ -1,4 +1,4 @@
-import { BLOCKS, isWall, type BlockId } from '../blocks';
+import { BLOCKS, isCube, type BlockId } from '../blocks';
 import { MAX_STACK, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
 import { isInside, type Area, type Portal } from './maps';
@@ -108,12 +108,12 @@ export class World {
     return this.isOpenGround(target.x, target.y) && !this.heightAt(target.x, target.y);
   }
 
-  /** 칸의 블록 위에 하나 더 쌓을 수 있는지. 벽 블록 위에만, MAX_STACK개까지 쌓는다. */
+  /** 칸의 블록 위에 하나 더 쌓을 수 있는지. 기본 블록(상자) 위에만, MAX_STACK개까지 쌓는다. */
   canStack(target: Tile, player: Tile) {
     if (!inReach(player, target)) return false;
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     const top = this.topAt(target.x, target.y);
-    return top !== undefined && top.z + 1 < MAX_STACK && isWall(top.id);
+    return top !== undefined && top.z + 1 < MAX_STACK && isCube(top.id);
   }
 
   /** 숨은 방처럼 나중에 드러나는 바닥을 걸을 수 있게 한다. solid는 가구가 있어 막는 칸이다. */
