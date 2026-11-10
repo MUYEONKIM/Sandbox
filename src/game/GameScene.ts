@@ -22,6 +22,7 @@ import {
   JUMP_TILES,
   MAP_SIZE,
   MAX_HP,
+  MAX_STACK,
   PLACE_RANGE,
   RUN_SPEED,
   STEP_MS,
@@ -106,6 +107,8 @@ const DEPTH_INTERIOR = 0.5;
 const DEPTH_DECAL = 0.6;
 /** 4층 숨은 방 바닥은 층 그림 바로 위에 그린다. */
 const DEPTH_HIDEOUT = 0.55;
+/** 같은 칸에 쌓인 블록끼리 위층을 나중에 그리도록 높이마다 더하는 깊이. 칸 하나의 깊이 차(10)보다 훨씬 작다. */
+const STACK_DEPTH = 0.01;
 const WORLD_BACKGROUND = '#2c6f93';
 const INDOOR_BACKGROUND = '#14141c';
 const ROOF_BACKGROUND = '#8fcfee';
@@ -181,8 +184,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 방향키 없이 Shift를 누르면 이 방향으로 대시한다. 처음에는 화면 아래를 본다. */
   private lastDir: Dir = { dx: 1, dy: 1 };
   private level: bigint;
-  /** 지금 층에서 숨은 방을 찾았는지. 층을 옮기면 다시 숨는다. */
+  /** 숨은 방이 보이는지. 그 칸들을 밟고 있는 동안에만 보인다. */
   private hideoutShown = false;
+  /** 숨은 방 그림. 사라지는 중에도 여기 남아 있다가 다 사라지면 지운다. */
+  private hideoutImages: Phaser.GameObjects.Image[] = [];
   /** 지금 레벨에서 모은 경험치 */
   private exp: number;
   private readonly others = new Map<string, Avatar>();
@@ -478,7 +483,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.cameras.main.setBackgroundColor(
       id === 'rooftop' || id === 'stairs' ? ROOF_BACKGROUND : isTower(id) ? INDOOR_BACKGROUND : WORLD_BACKGROUND,
     );
-    this.updateGuide(id);
     if (isTower(id)) this.showInterior(id);
     this.chimneySmoke = null;
     for (const building of this.world.map.buildings) {
@@ -529,15 +533,43 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
-  /** 4층 바닥 끝의 정해진 칸을 밟으면 숨은 방이 드러난다. */
+  /** 숨은 방은 4층 바닥 끝의 정해진 칸이나 방 안을 밟고 있는 동안에만 보인다. */
   private checkHideout() {
-    if (this.hideoutShown || this.mapId !== HIDEOUT.map) return;
+    if (this.mapId !== HIDEOUT.map) return;
     const { x, y } = this.me.tile;
-    if (x === HIDEOUT.trigger.x && y === HIDEOUT.trigger.y) this.showHideout(true);
+    const inside = (x === HIDEOUT.trigger.x && y === HIDEOUT.trigger.y) || isInside(HIDEOUT.area, x, y);
+    if (inside && !this.hideoutShown) this.showHideout(true);
+    else if (!inside && this.hideoutShown) this.hideHideout();
+  }
+
+  /** 숨은 방 그림을 지운다. 맵을 옮길 때 지워지도록 mapImages에서도 뺀다. */
+  private dropHideoutImages() {
+    const images = this.hideoutImages;
+    this.hideoutImages = [];
+    this.tweens.killTweensOf(images);
+    for (const image of images) image.destroy();
+    this.mapImages = this.mapImages.filter((image) => !images.includes(image));
+  }
+
+  /** 방을 벗어나면 서서히 사라지고 다시 걸을 수 없는 허공이 된다. */
+  private hideHideout() {
+    this.hideoutShown = false;
+    this.world.closeFloor(HIDEOUT.area);
+    this.tweens.killTweensOf(this.hideoutImages);
+    this.tweens.add({
+      targets: this.hideoutImages,
+      alpha: 0,
+      duration: 500,
+      ease: 'Sine.easeIn',
+      onComplete: () => {
+        if (!this.hideoutShown) this.dropHideoutImages();
+      },
+    });
   }
 
   /** 숨은 방을 내 화면에만 드러내고 걸어 들어갈 수 있게 한다. fadeIn이면 천천히 나타난다. */
   private showHideout(fadeIn: boolean) {
+    this.dropHideoutImages();
     this.hideoutShown = true;
     this.world.openFloor(HIDEOUT.area, hideoutSolid());
     const [x0, y0] = HIDEOUT.area;
@@ -561,17 +593,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.addMapArt('hideout-table', paintLowTable, table.x, table.y),
       this.addSprite('plant', plant.x, plant.y),
     ];
+    this.hideoutImages = images;
     this.hud.announce(HIDEOUT.title);
     if (!fadeIn) return;
     for (const image of images) image.setAlpha(0);
     this.tweens.add({ targets: images, alpha: 1, duration: 1600, ease: 'Sine.easeOut' });
-  }
-
-  /** 아이티공간에서 태어난 플레이어에게 시작마을에 처음 닿기 전까지 가는 법을 띄워 둔다. */
-  private updateGuide(id: MapId) {
-    const key = `its-sandbox:arrived:${this.session.profile.id}`;
-    if (id === DEFAULT_MAP) localStorage.setItem(key, '1');
-    this.hud.showGuide(isTower(id) && !localStorage.getItem(key));
   }
 
   private addSign(name: string, x: number, y: number) {
@@ -599,6 +625,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.workFx.clear();
     this.spotImages.clear();
     this.wallImages.clear();
+    this.tweens.killTweensOf(this.hideoutImages);
+    this.hideoutImages = [];
     for (const image of this.mapImages) image.destroy();
     this.mapImages = [];
     this.bullets.clear();
@@ -801,11 +829,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.walk = null;
   }
 
-  /** 벽 너머에 설 곳이 있으면 거기로, 없으면 바로 앞이나 제자리로 내린다. */
+  /** 벽 너머에 설 곳이 있으면 거기로, 없으면 바로 앞이나 제자리로 내린다. 두 개 이상 쌓은 벽은 못 넘는다. */
   private jumpLanding(from: Tile, { dx, dy }: Dir): Tile {
-    const far = { x: from.x + dx * JUMP_TILES, y: from.y + dy * JUMP_TILES };
-    if (this.world.isWalkable(far.x, far.y)) return far;
     const near = { x: from.x + dx, y: from.y + dy };
+    const far = { x: from.x + dx * JUMP_TILES, y: from.y + dy * JUMP_TILES };
+    if (this.world.heightAt(near.x, near.y) < 2 && this.world.isWalkable(far.x, far.y)) return far;
     return this.world.isWalkable(near.x, near.y) ? near : from;
   }
 
@@ -1181,13 +1209,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (hp <= 0) this.goDown();
   }
 
+  /** 칸 (x, y)에 쌓인 블록 더미가 화면의 (wx, wy)를 덮는지 */
   private hitsCube(x: number, y: number, wx: number, wy: number) {
     const c = tileCenter(x, y);
     const across = Math.abs(wx - c.x) / (TILE_W / 2);
     if (across > 1) return false;
     const half = (1 - across) * (TILE_H / 2);
     const dy = wy - c.y;
-    return dy <= half && dy >= -half - BLOCK_HEIGHT;
+    return dy <= half && dy >= -half - BLOCK_HEIGHT * Math.max(1, this.world.heightAt(x, y));
   }
 
   private updateHover() {
@@ -1204,14 +1233,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const x = Math.floor(g.gx);
     const y = Math.floor(g.gy);
 
-    // 블록은 뒤쪽 칸을 가리므로 화면 앞쪽 칸부터 확인한다.
-    const candidates = [
-      [x + 1, y + 1],
-      [x + 1, y],
-      [x, y + 1],
-      [x, y],
-    ];
-    const hit = candidates.find(([cx, cy]) => this.world.blockAt(cx, cy) && this.hitsCube(cx, cy, w.x, w.y));
+    // 블록은 뒤쪽 칸을 가리므로 화면 앞쪽 칸부터 확인한다. 높이 쌓은 블록은 몇 칸 뒤까지 가린다.
+    const candidates: [number, number][] = [];
+    for (let k = MAX_STACK; k >= 0; k--) {
+      candidates.push([x + k + 1, y + k + 1], [x + k + 1, y + k], [x + k, y + k + 1], [x + k, y + k]);
+    }
+    const hit = candidates.find(([cx, cy]) => this.world.heightAt(cx, cy) && this.hitsCube(cx, cy, w.x, w.y));
     this.hoveredBlock = hit ? { x: hit[0], y: hit[1] } : null;
     this.hoveredGround = !hit && this.world.inBounds(x, y) ? { x, y } : null;
     this.drawHover();
@@ -1229,15 +1256,20 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.marker.clear();
     this.ghost.setVisible(false);
 
+    const stack = this.inventory.selectedStack;
     if (this.hoveredBlock) {
       const { x, y } = this.hoveredBlock;
+      const height = this.world.heightAt(x, y);
       const ok = inReach(this.me.tile, this.hoveredBlock);
       this.marker.setDepth(depthOf(x, y) + 2);
-      this.strokeTile(x, y, ok ? 0xffffff : 0xff6b5e, -BLOCK_HEIGHT);
+      this.strokeTile(x, y, ok ? 0xffffff : 0xff6b5e, -BLOCK_HEIGHT * height);
+      // 블록을 들고 벽 블록을 가리키면 그 위에 쌓일 자리를 미리 보여 준다.
+      if (stack && !isWeapon(stack.id) && this.canBuildHere && this.world.canStack(this.hoveredBlock, this.me.tile)) {
+        this.dressBlock(this.ghost, stack.id, x, y, height).setAlpha(0.7).setTint(0xffffff).setVisible(true);
+      }
       return;
     }
 
-    const stack = this.inventory.selectedStack;
     if (!this.hoveredGround || !this.canBuildHere || (stack && isWeapon(stack.id))) return;
     const { x, y } = this.hoveredGround;
     const ok = stack !== null && this.canPlaceAt(this.hoveredGround);
@@ -1278,54 +1310,71 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.range.closePath().fillPath().strokePath();
   }
 
+  /** 지금 가리키는 곳에 놓을 자리. 벽 블록을 가리키면 그 위, 빈 바닥을 가리키면 바닥이다. */
+  private placementSpot(): (Tile & { z: number }) | null {
+    if (this.hoveredBlock) {
+      const { x, y } = this.hoveredBlock;
+      return this.world.canStack(this.hoveredBlock, this.me.tile) ? { x, y, z: this.world.heightAt(x, y) } : null;
+    }
+    return this.hoveredGround && this.canPlaceAt(this.hoveredGround) ? { ...this.hoveredGround, z: 0 } : null;
+  }
+
   private placeBlock() {
-    const target = this.hoveredGround;
     const stack = this.inventory.selectedStack;
-    if (!target || !stack || isWeapon(stack.id) || !this.canPlaceAt(target)) return;
+    if (!stack || isWeapon(stack.id)) return;
+    const spot = this.placementSpot();
+    if (!spot) return;
     const id = stack.id;
+    const { x, y, z } = spot;
     this.inventory.takeSelected();
 
     // 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
     const { mapId } = this;
-    this.spawnBlock(target, id);
-    void this.session.placeBlock(target.x, target.y, id).then((placed) => {
+    this.spawnBlock(spot, z, id);
+    void this.session.placeBlock(x, y, z, id).then((placed) => {
       if (placed) return;
       this.inventory.add(id);
       if (mapId !== this.mapId) return;
-      this.removeBlockAt(target.x, target.y);
+      this.removeBlockAt(x, y, z);
       void this.session.syncBlocks();
     });
   }
 
+  /** 가리킨 칸의 맨 위 블록을 회수한다. */
   private async collectBlock() {
     const target = this.hoveredBlock;
     if (!target || !inReach(this.me.tile, target)) return;
-    const id = this.world.blockAt(target.x, target.y);
-    if (!id || !this.inventory.canAdd(id)) return;
+    const top = this.world.topAt(target.x, target.y);
+    if (!top || !this.inventory.canAdd(top.id)) return;
 
     const { mapId } = this;
-    const removed = await this.session.removeBlock(target.x, target.y);
+    const removed = await this.session.removeBlock(target.x, target.y, top.z);
     if (!removed) return;
     this.inventory.add(removed);
-    if (mapId === this.mapId) this.removeBlockAt(target.x, target.y);
+    if (mapId === this.mapId) this.removeBlockAt(target.x, target.y, top.z);
   }
 
-  private spawnBlock({ x, y }: Tile, id: BlockId) {
-    this.world.place(x, y, id);
-    const image = this.dressBlock(this.add.image(0, 0, 'tiles'), id, x, y);
-    this.blockImages.set(`${x},${y}`, image);
+  private spawnBlock({ x, y }: Tile, z: number, id: BlockId) {
+    this.world.place(x, y, z, id);
+    const image = this.dressBlock(this.add.image(0, 0, 'tiles'), id, x, y, z);
+    this.blockImages.set(`${x},${y},${z}`, image);
     const art = blockArt(id);
     // 나무와 가구는 키가 커서 뒤에 선 캐릭터를 가리므로 반투명하게 할 대상에 넣는다.
     if (art.kind === 'sprite') this.covers.add(art.sprite, [image]);
-    this.connectWalls(x, y);
+    this.connectWalls(x, y, z);
   }
 
-  /** 블록 그림을 칸 (x, y)에 맞춘다. 벽은 이웃에 따라 connectWalls가 그림을 다시 고른다. */
-  private dressBlock(image: Phaser.GameObjects.Image, id: BlockId, x: number, y: number) {
+  /**
+   * 블록 그림을 칸 (x, y)의 높이 z에 맞춘다. 벽은 이웃에 따라 connectWalls가 그림을 다시 고른다.
+   * 위에 쌓인 블록은 한 층마다 BLOCK_HEIGHT만큼 올려 그리고, 같은 칸 안에서는 위층을 나중에 그린다.
+   */
+  private dressBlock(image: Phaser.GameObjects.Image, id: BlockId, x: number, y: number, z = 0) {
     const art = blockArt(id);
+    const lift = z * BLOCK_HEIGHT;
+    const depth = depthOf(x, y) + z * STACK_DEPTH;
     if (art.kind === 'wall') {
       const c = tileCenter(x, y);
-      return image.setTexture(`block-${id}-0`).setOrigin(WALL_ORIGIN_X, WALL_ORIGIN_Y).setPosition(c.x, c.y).setDepth(depthOf(x, y));
+      return image.setTexture(`block-${id}-0`).setOrigin(WALL_ORIGIN_X, WALL_ORIGIN_Y).setPosition(c.x, c.y - lift).setDepth(depth);
     }
     if (art.kind === 'sprite') {
       this.spriteTexture(art.sprite);
@@ -1335,20 +1384,20 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return image
         .setTexture(art.sprite)
         .setOrigin(foot.x / source.width, foot.y / source.height)
-        .setPosition(c.x, c.y)
-        .setDepth(depthOf(x, y));
+        .setPosition(c.x, c.y - lift)
+        .setDepth(depth);
     }
     const corner = gridToWorld(x, y);
     return image
       .setTexture('tiles', blockTile(art.tiles, x, y))
       .setOrigin(0.5, 0)
-      .setPosition(corner.x, corner.y - this.world.map.floorTop - DECOR_LIFT)
-      .setDepth(BLOCKS[id].solid ? depthOf(x, y) : DEPTH_DECAL);
+      .setPosition(corner.x, corner.y - this.world.map.floorTop - DECOR_LIFT - lift)
+      .setDepth(BLOCKS[id].solid || z > 0 ? depth : DEPTH_DECAL);
   }
 
-  /** 벽이 이웃과 이어져 보이도록 자기와 주변 벽의 그림을 고른다. 장식 벽과 설치한 블록도 서로 잇는다. */
-  private connectWalls(x: number, y: number) {
-    const wallAt = (wx: number, wy: number) => this.world.wallAt(wx, wy);
+  /** 벽이 같은 높이의 이웃과 이어져 보이도록 자기와 주변 벽의 그림을 고른다. 장식 벽과 설치한 블록도 서로 잇는다. */
+  private connectWalls(x: number, y: number, z = 0) {
+    const wallAt = (wx: number, wy: number) => this.world.wallAt(wx, wy, z);
     for (const [tx, ty] of [
       [x, y],
       [x + 1, y],
@@ -1363,21 +1412,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         (wallAt(tx - 1, ty) ? 2 : 0) |
         (wallAt(tx, ty + 1) ? 4 : 0) |
         (wallAt(tx, ty - 1) ? 8 : 0);
-      const key = `${tx},${ty}`;
-      (this.blockImages.get(key) ?? this.wallImages.get(key))?.setTexture(`block-${id}-${wallVariant(neighbors)}`);
+      const image = this.blockImages.get(`${tx},${ty},${z}`) ?? (z === 0 ? this.wallImages.get(`${tx},${ty}`) : undefined);
+      image?.setTexture(`block-${id}-${wallVariant(neighbors)}`);
     }
   }
 
-  private removeBlockAt(x: number, y: number) {
-    this.world.remove(x, y);
-    const key = `${x},${y}`;
+  private removeBlockAt(x: number, y: number, z: number) {
+    this.world.remove(x, y, z);
+    const key = `${x},${y},${z}`;
     const image = this.blockImages.get(key);
     if (image) {
       this.covers.remove(image);
       image.destroy();
     }
     this.blockImages.delete(key);
-    this.connectWalls(x, y);
+    this.connectWalls(x, y, z);
   }
 
   currentTile() {
@@ -1474,21 +1523,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   onBlocksLoaded(blocks: PlacedBlock[]) {
-    const wanted = new Set(blocks.map(({ x, y }) => `${x},${y}`));
+    const wanted = new Set(blocks.map(({ x, y, z }) => `${x},${y},${z}`));
     for (const key of [...this.blockImages.keys()]) {
       if (wanted.has(key)) continue;
-      const [x, y] = key.split(',').map(Number);
-      this.removeBlockAt(x, y);
+      const [x, y, z] = key.split(',').map(Number);
+      this.removeBlockAt(x, y, z);
     }
     for (const block of blocks) this.onBlockPlaced(block);
   }
 
-  onBlockPlaced({ x, y, id }: PlacedBlock) {
-    if (!this.world.blockAt(x, y)) this.spawnBlock({ x, y }, id);
+  onBlockPlaced({ x, y, z, id }: PlacedBlock) {
+    if (!this.world.blockAtLevel(x, y, z)) this.spawnBlock({ x, y }, z, id);
   }
 
-  onBlockRemoved(x: number, y: number) {
-    this.removeBlockAt(x, y);
+  onBlockRemoved(x: number, y: number, z: number) {
+    this.removeBlockAt(x, y, z);
   }
 
   onConnection(connected: boolean) {

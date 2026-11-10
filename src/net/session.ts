@@ -1,6 +1,6 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { BLOCKS, type BlockId } from '../blocks';
-import { MAX_HP, MAX_MAP_SIZE, TEAM_SIZE } from '../config';
+import { MAX_HP, MAX_MAP_SIZE, MAX_STACK, TEAM_SIZE } from '../config';
 import type { Slot } from '../game/inventory';
 import { parseLevel } from '../game/level';
 import type { StatId } from '../game/stats';
@@ -58,6 +58,8 @@ export interface RankEntry {
 export interface PlacedBlock {
   x: number;
   y: number;
+  /** 쌓인 높이. 0이 바닥이다. */
+  z: number;
   id: BlockId;
 }
 
@@ -81,7 +83,7 @@ export interface SessionEvents {
   onChat(message: ChatMessage): void;
   onBlocksLoaded(blocks: PlacedBlock[]): void;
   onBlockPlaced(block: PlacedBlock): void;
-  onBlockRemoved(x: number, y: number): void;
+  onBlockRemoved(x: number, y: number, z: number): void;
   onConnection(connected: boolean): void;
 }
 
@@ -101,6 +103,7 @@ const isTileCoord = (v: unknown): v is number => Number.isInteger(v) && (v as nu
 const isGridCoord = (v: unknown): v is number => typeof v === 'number' && v >= -1 && v <= MAX_MAP_SIZE + 1;
 const isHp = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= MAX_HP;
 const isBlockId = (v: unknown): v is BlockId => typeof v === 'string' && Object.hasOwn(BLOCKS, v);
+const isLevel = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < MAX_STACK;
 const isSkin = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < TEAM_SIZE;
 
 /** 다른 플레이어가 보낸 값은 믿을 수 없으므로 형식을 확인한다. */
@@ -135,9 +138,9 @@ function parseChat(value: unknown): ChatMessage | null {
   return { id: m.id, author: m.author.slice(0, MAX_NAME), text: m.text.slice(0, MAX_TEXT) };
 }
 
-function parseBlock(row: { x?: unknown; y?: unknown; block?: unknown }): PlacedBlock | null {
-  if (!isTileCoord(row.x) || !isTileCoord(row.y) || !isBlockId(row.block)) return null;
-  return { x: row.x, y: row.y, id: row.block };
+function parseBlock(row: { x?: unknown; y?: unknown; z?: unknown; block?: unknown }): PlacedBlock | null {
+  if (!isTileCoord(row.x) || !isTileCoord(row.y) || !isLevel(row.z) || !isBlockId(row.block)) return null;
+  return { x: row.x, y: row.y, z: row.z, id: row.block };
 }
 
 /** 로그인한 플레이어 한 명의 서버 연결. 멀티플레이 통신은 이 파일에만 둔다. */
@@ -209,7 +212,7 @@ export class GameSession {
         if (block && row.map === mapId) events.onBlockPlaced(block);
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'blocks' }, ({ old }) => {
-        if (old.map === mapId && isTileCoord(old.x) && isTileCoord(old.y)) events.onBlockRemoved(old.x, old.y);
+        if (old.map === mapId && isTileCoord(old.x) && isTileCoord(old.y) && isLevel(old.z)) events.onBlockRemoved(old.x, old.y, old.z);
       })
       .subscribe((status) => {
         if (channel !== this.channel) return;
@@ -238,7 +241,7 @@ export class GameSession {
   /** 지금 맵의 블록을 서버 기준으로 다시 맞춘다. */
   async syncBlocks() {
     const { mapId } = this;
-    const { data } = await supabase.from('blocks').select('x, y, block').eq('map', mapId);
+    const { data } = await supabase.from('blocks').select('x, y, z, block').eq('map', mapId);
     if (!data || mapId !== this.mapId) return;
     this.events.onBlocksLoaded(data.map(parseBlock).filter((block) => block !== null));
   }
@@ -327,20 +330,21 @@ export class GameSession {
     await supabase.rpc('send_chat', { message: text });
   }
 
-  /** 다른 사람이 먼저 같은 칸에 놓았으면 false를 돌려준다. */
-  async placeBlock(x: number, y: number, id: BlockId) {
-    const { error } = await supabase.from('blocks').insert({ map: this.mapId, x, y, block: id });
+  /** 다른 사람이 먼저 같은 자리에 놓았거나 아래 블록이 빠졌으면 false를 돌려준다. */
+  async placeBlock(x: number, y: number, z: number, id: BlockId) {
+    const { error } = await supabase.from('blocks').insert({ map: this.mapId, x, y, z, block: id });
     return !error;
   }
 
-  /** 블록을 지우고 지운 블록 종류를 돌려준다. 다른 사람이 먼저 지웠으면 null이다. */
-  async removeBlock(x: number, y: number): Promise<BlockId | null> {
+  /** 블록을 지우고 지운 블록 종류를 돌려준다. 다른 사람이 먼저 지웠거나 그 위에 쌓았으면 null이다. */
+  async removeBlock(x: number, y: number, z: number): Promise<BlockId | null> {
     const { data } = await supabase
       .from('blocks')
       .delete()
       .eq('map', this.mapId)
       .eq('x', x)
       .eq('y', y)
+      .eq('z', z)
       .select('block')
       .maybeSingle();
     return data && isBlockId(data.block) ? data.block : null;

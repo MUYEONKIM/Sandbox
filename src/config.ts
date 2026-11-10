@@ -33,3 +33,6 @@ export const TEAM_SIZE = 7;
 
 /** 설치 블록의 높이 (아트 픽셀) */
 export const BLOCK_HEIGHT = 18;
+
+/** 한 칸에 쌓을 수 있는 블록 수. blocks 표의 z 검사(0~4)와 같아야 한다. */
+export const MAX_STACK = 5;

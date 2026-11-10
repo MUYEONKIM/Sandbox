@@ -1,5 +1,5 @@
 import { BLOCKS, isWall, type BlockId } from '../blocks';
-import { PLACE_RANGE } from '../config';
+import { MAX_STACK, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
 import { isInside, type Area, type Portal } from './maps';
 
@@ -15,7 +15,8 @@ export function inReach(from: Tile, to: Tile, range = PLACE_RANGE) {
 
 /** 맵 위 상태(지형, 고정 장애물, 설치된 블록)와 그에 대한 규칙 */
 export class World {
-  private readonly blocks = new Map<number, BlockId>();
+  /** 칸마다 쌓인 블록. 배열 번호가 높이(z)이고 0이 바닥이다. */
+  private readonly blocks = new Map<number, BlockId[]>();
   /** 맵에 박힌 장식 벽 */
   private readonly walls = new Map<number, BlockId>();
 
@@ -34,14 +35,34 @@ export class World {
     return x >= 0 && y >= 0 && x < this.map.size && y < this.map.size;
   }
 
+  /** 바닥에 놓인 블록. 지나갈 수 있는지와 총알이 막히는지는 이 블록으로 정한다. */
   blockAt(x: number, y: number) {
-    return this.blocks.get(this.key(x, y));
+    return this.blocks.get(this.key(x, y))?.[0];
   }
 
-  /** 설치된 벽 블록이나 장식 벽. 벽 그림을 이웃과 이을 때 쓴다. 나무나 꽃 같은 꾸미기 블록은 벽이 아니다. */
-  wallAt(x: number, y: number) {
+  /** 높이 z에 놓인 블록 */
+  blockAtLevel(x: number, y: number, z: number) {
+    return this.blocks.get(this.key(x, y))?.[z];
+  }
+
+  /** 칸에 쌓인 블록 수 */
+  heightAt(x: number, y: number) {
+    return this.blocks.get(this.key(x, y))?.length ?? 0;
+  }
+
+  /** 칸의 맨 위 블록과 그 높이 */
+  topAt(x: number, y: number) {
+    const stack = this.blocks.get(this.key(x, y));
+    if (!stack?.length) return undefined;
+    const z = stack.length - 1;
+    return { id: stack[z], z };
+  }
+
+  /** 설치된 벽 블록이나 장식 벽. 벽 그림을 같은 높이의 이웃과 이을 때 쓴다. 나무나 꽃 같은 꾸미기 블록은 벽이 아니다. */
+  wallAt(x: number, y: number, z = 0) {
     if (!this.inBounds(x, y)) return undefined;
-    const id = this.blocks.get(this.key(x, y)) ?? this.walls.get(this.key(x, y));
+    const key = this.key(x, y);
+    const id = this.blocks.get(key)?.[z] ?? (z === 0 ? this.walls.get(key) : undefined);
     return id && isWall(id) ? id : undefined;
   }
 
@@ -96,7 +117,15 @@ export class World {
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     if (this.isPortalArea(target.x, target.y)) return false;
     if (this.map.reserved.some(({ x, y }) => x === target.x && y === target.y)) return false;
-    return this.isOpenGround(target.x, target.y) && !this.blockAt(target.x, target.y);
+    return this.isOpenGround(target.x, target.y) && !this.heightAt(target.x, target.y);
+  }
+
+  /** 칸의 블록 위에 하나 더 쌓을 수 있는지. 벽 블록 위에만, MAX_STACK개까지 쌓는다. */
+  canStack(target: Tile, player: Tile) {
+    if (!inReach(player, target)) return false;
+    if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
+    const top = this.topAt(target.x, target.y);
+    return top !== undefined && top.z + 1 < MAX_STACK && isWall(top.id);
   }
 
   /** 숨은 방처럼 나중에 드러나는 바닥을 걸을 수 있게 한다. solid는 가구가 있어 막는 칸이다. */
@@ -107,11 +136,30 @@ export class World {
     for (const { x, y } of solid) this.map.solid[this.key(x, y)] = 1;
   }
 
-  place(x: number, y: number, id: BlockId) {
-    this.blocks.set(this.key(x, y), id);
+  /** openFloor로 연 바닥을 다시 허공으로 되돌린다. */
+  closeFloor([x0, y0, x1, y1]: Area) {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        this.map.terrain[this.key(x, y)] = Terrain.Void;
+        this.map.solid[this.key(x, y)] = 0;
+      }
+    }
   }
 
-  remove(x: number, y: number) {
-    this.blocks.delete(this.key(x, y));
+  place(x: number, y: number, z: number, id: BlockId) {
+    const key = this.key(x, y);
+    const stack = this.blocks.get(key) ?? [];
+    stack[z] = id;
+    this.blocks.set(key, stack);
+  }
+
+  remove(x: number, y: number, z: number) {
+    const key = this.key(x, y);
+    const stack = this.blocks.get(key);
+    if (!stack) return;
+    delete stack[z];
+    // 맨 위가 빠지면 비어 있는 꼭대기를 걷어 낸다.
+    while (stack.length && stack[stack.length - 1] === undefined) stack.pop();
+    if (!stack.length) this.blocks.delete(key);
   }
 }
