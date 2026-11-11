@@ -33,9 +33,9 @@ let textures: ImageData | undefined;
  * 텍스처 한 칸으로 아이소메트릭 상자를 그린다. 윗면은 텍스처를 마름모로 눕히고, 옆면 두 개는 기울여 붙인다.
  * 텍스처가 이음매 없는 무늬라 옆면 높이(18)가 텍스처(16)보다 길어도 무늬를 이어 붙인다.
  * side를 주면 옆면은 그 텍스처로 칠하고(잔디처럼 위아래가 다른 그림), 이어 붙이지 않고 옆면 높이에 맞춰 늘린다.
- * height는 옆면 높이다. 건물 안 벽은 블록 두 개 높이로 그린다.
+ * height는 옆면 높이다. edges가 false면 윗면 앞 모서리를 밝히지 않아, 여러 칸을 붙인 덩어리(건물 안 기둥)의 윗면이 바둑판처럼 보이지 않는다.
  */
-export function paintCube(texture: number, side = texture, height = BLOCK_HEIGHT): HTMLCanvasElement {
+export function paintCube(texture: number, side = texture, height = BLOCK_HEIGHT, edges = true): HTMLCanvasElement {
   const cubeH = TOP_H + height;
   textures ??= spritePixels('block-textures');
   const source = textures;
@@ -64,7 +64,7 @@ export function paintCube(texture: number, side = texture, height = BLOCK_HEIGHT
       const u = (fx - TOP_W / 2 + 2 * fy) / 2;
       const v = (2 * fy - fx + TOP_W / 2) / 2;
       if (u >= 0 && u < TEXTURE && v >= 0 && v < TEXTURE) {
-        put(x, y, texture, u, v, u >= TEXTURE - 1 || v >= TEXTURE - 1 ? EDGE_LIGHT : SHADE_TOP);
+        put(x, y, texture, u, v, edges && (u >= TEXTURE - 1 || v >= TEXTURE - 1) ? EDGE_LIGHT : SHADE_TOP);
         continue;
       }
       const left = fx < TOP_W / 2;

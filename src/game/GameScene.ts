@@ -14,6 +14,7 @@ import {
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
 import { CUBE_ORIGIN_X, CUBE_ORIGIN_Y, cubeOriginY, paintCube } from '../art/cube';
+import { GLASS_RAIL, NEIGHBOR, OFFICE_WALL, paintThinWall, thinWallOriginY, type ThinWallStyle } from '../art/partition';
 import { paintBullet } from '../art/weapons';
 import { blockArt, blockTile, BLOCKS, paintBlock, CUBE_IDS, type BlockId } from '../blocks';
 import {
@@ -110,12 +111,13 @@ const DEPTH_HIDEOUT = 0.55;
 /** 같은 칸에 쌓인 블록끼리 위층을 나중에 그리도록 높이마다 더하는 깊이. 칸 하나의 깊이 차(10)보다 훨씬 작다. */
 const STACK_DEPTH = 0.01;
 
-/** 건물 층 안 벽 그림: block-textures.png 칸 번호와 옆면 높이(아트 픽셀). 유리 난간만 낮다. */
-const PARTITION_ART: Record<PartitionKind, { texture: number; height: number }> = {
-  wall: { texture: 16, height: BLOCK_HEIGHT * 2 },
-  core: { texture: 17, height: BLOCK_HEIGHT * 2 },
-  elevator: { texture: 18, height: BLOCK_HEIGHT * 2 },
-  glass: { texture: 9, height: BLOCK_HEIGHT },
+/**
+ * 건물 층 안 벽 그림. 방을 나누는 벽과 유리 난간은 칸 가운데를 지나는 얇은 판(art/partition.ts)이고,
+ * 엘리베이터 통과 덕트는 꽉 찬 콘크리트 덩어리(block-textures.png 칸 번호와 옆면 높이)다.
+ */
+const THIN_PARTITIONS: Partial<Record<PartitionKind, ThinWallStyle>> = { wall: OFFICE_WALL, glass: GLASS_RAIL };
+const SOLID_PARTITIONS: Partial<Record<PartitionKind, { texture: number; height: number }>> = {
+  core: { texture: 16, height: BLOCK_HEIGHT * 2 },
 };
 const WORLD_BACKGROUND = '#2c6f93';
 const INDOOR_BACKGROUND = '#14141c';
@@ -537,12 +539,44 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 층 안의 벽. 칸마다 상자 하나를 세우고, 내 캐릭터를 가리면 반투명해지게 한다. */
   private showPartitions() {
-    for (const { x, y, kind } of this.world.map.partitions) {
-      const key = `partition-${kind}`;
-      const { texture, height } = PARTITION_ART[kind];
-      if (!this.textures.exists(key)) this.textures.addCanvas(key, paintCube(texture, texture, height));
+    const { partitions, bounds } = this.world.map;
+    const kinds = new Map(partitions.map(({ x, y, kind }) => [`${x},${y}`, kind]));
+    const thinAt = (x: number, y: number) => {
+      const kind = kinds.get(`${x},${y}`);
+      return kind !== undefined && THIN_PARTITIONS[kind] !== undefined;
+    };
+    /** 콘크리트 덩어리나 뒤쪽 벽(바닥 뒤 바깥) */
+    const solidAt = (x: number, y: number) => (kinds.has(`${x},${y}`) && !thinAt(x, y)) || x < bounds[0] || y < bounds[1];
+    const dirs = [
+      [1, 0, NEIGHBOR.px],
+      [-1, 0, NEIGHBOR.nx],
+      [0, 1, NEIGHBOR.py],
+      [0, -1, NEIGHBOR.ny],
+    ] as const;
+    for (const { x, y, kind } of partitions) {
+      const thin = THIN_PARTITIONS[kind];
+      let key: string;
+      let originY: number;
+      if (thin) {
+        // 이웃한 얇은 벽과 잇는다. 콘크리트나 뒤쪽 벽은 벽이 그쪽으로 이어질 때만 붙인다.
+        // 나란히 지나가는 벽까지 붙이면 칸마다 짧은 팔이 튀어나와 톱니처럼 보인다.
+        let mask = 0;
+        for (const [dx, dy, bit] of dirs) if (thinAt(x + dx, y + dy)) mask |= bit;
+        const line = mask;
+        for (const [dx, dy, bit] of dirs) {
+          if (solidAt(x + dx, y + dy) && (line === 0 || thinAt(x - dx, y - dy))) mask |= bit;
+        }
+        key = `partition-${kind}-${mask}`;
+        if (!this.textures.exists(key)) this.textures.addCanvas(key, paintThinWall(thin, mask));
+        originY = thinWallOriginY(thin);
+      } else {
+        const { texture, height } = SOLID_PARTITIONS[kind]!;
+        key = `partition-${kind}`;
+        if (!this.textures.exists(key)) this.textures.addCanvas(key, paintCube(texture, texture, height, false));
+        originY = cubeOriginY(height);
+      }
       const c = tileCenter(x, y);
-      const image = this.add.image(c.x, c.y, key).setOrigin(CUBE_ORIGIN_X, cubeOriginY(height)).setDepth(depthOf(x, y));
+      const image = this.add.image(c.x, c.y, key).setOrigin(CUBE_ORIGIN_X, originY).setDepth(depthOf(x, y));
       this.mapImages.push(image);
       this.covers.add(key, [image]);
     }

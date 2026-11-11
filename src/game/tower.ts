@@ -13,9 +13,9 @@ export const LOBBY: Area = [13, 13, 32, 32];
 /** 4층과 옥상 바닥. 블록 설치 구역도 이 범위다. */
 export const UPPER: Area = [3, 3, 42, 42];
 /**
- * 7, 8층 바닥. 사용자가 준 실제 평면도(2026-11-11)를 한 칸 7.16pt로 옮겼다: x는 평면도 아래(엘리베이터 쪽)에서 위로 62칸,
- * y는 평면도 왼쪽(창가)에서 오른쪽으로 80칸이다. 그래서 뒤쪽 왼쪽 벽이 평면도 아래 변, 뒤쪽 오른쪽 벽이 평면도 왼쪽 변이다.
- * 블록 설치 구역도 이 범위다(벽 칸에는 못 놓는다).
+ * 7, 8층 바닥. 사용자가 준 실제 평면도(2026-11-11)를 한 칸 7.16pt로 옮겼다: x는 62칸(평면도 세로), y는 80칸(평면도 가로)이다.
+ * 평면도 아래(엘리베이터 쪽)가 화면 앞쪽에 오도록 놓아서 뒤쪽 왼쪽 벽이 평면도 위 변, 뒤쪽 오른쪽 벽이 평면도 오른쪽 변이다.
+ * 평면도 좌표는 아래 at()이 바꾼다. 블록 설치 구역도 이 범위다(벽 칸에는 못 놓는다).
  */
 export const TOP_FLOORS: Area = [3, 3, 64, 82];
 /** 8층에서 옥상으로 오르는 바깥 계단. 건물 벽에 붙은 2칸 너비 계단이고 맨 앞 줄은 난간이다. */
@@ -61,9 +61,9 @@ export interface Flight {
 
 /**
  * 층 안을 나누는 벽. 칸을 막고 상자 그림(art/cube.ts)으로 세운다.
- * wall: 방을 나누는 흰 벽, core: 엘리베이터 옆 기둥과 덕트, elevator: 엘리베이터 통, glass: 뚫린 바닥 둘레의 유리 난간
+ * wall: 방을 나누는 얇은 흰 벽, core: 엘리베이터 통과 덕트 같은 콘크리트 덩어리, glass: 뚫린 바닥 둘레의 유리 난간
  */
-export type PartitionKind = 'wall' | 'core' | 'elevator' | 'glass';
+export type PartitionKind = 'wall' | 'core' | 'glass';
 
 export interface Partition {
   kind: PartitionKind;
@@ -133,17 +133,25 @@ export function hideoutSolid(): Tile[] {
 }
 
 /** 한 줄로 늘어선 난간 칸 */
-function railRow(x0: number, x1: number, y: number): Tile[] {
-  return Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, y }));
+function railRow(xa: number, xb: number, y: number): Tile[] {
+  const x0 = Math.min(xa, xb);
+  return Array.from({ length: Math.abs(xb - xa) + 1 }, (_, i) => ({ x: x0 + i, y }));
 }
 
-/** 7, 8층 평면도 좌표(gx: 아래에서 위, gy: 왼쪽에서 오른쪽)를 맵 칸으로 바꾼다. */
-const at = (gx: number, gy: number) => ({ x: TOP_FLOORS[0] + gx, y: TOP_FLOORS[1] + gy });
+/**
+ * 7, 8층 평면도 좌표(gx: 평면도 아래에서 위로 0~61, gy: 왼쪽에서 오른쪽으로 0~79)를 맵 칸으로 바꾼다.
+ * 평면도 아래(엘리베이터 쪽)가 화면 아래(앞쪽)에 오도록 돌려 놓는다(사용자 요청 2026-11-11).
+ */
+const PLAN_GX = TOP_FLOORS[2] - TOP_FLOORS[0];
+const PLAN_GY = TOP_FLOORS[3] - TOP_FLOORS[1];
+const at = (gx: number, gy: number) => ({ x: TOP_FLOORS[0] + PLAN_GX - gx, y: TOP_FLOORS[1] + PLAN_GY - gy });
 const rect = (gx0: number, gy0: number, gx1 = gx0, gy1 = gy0): Area => {
   const a = at(gx0, gy0);
   const b = at(gx1, gy1);
-  return [a.x, a.y, b.x, b.y];
+  return [Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y)];
 };
+/** 평면도 기준으로 적은 계단 오르는 쪽을 맵 방향으로 바꾼다. 돌려 놓았으므로 y 방향이 뒤집힌다. */
+const flight = (area: Area, planUp: 'y+' | 'y-'): Flight => ({ area, up: planUp === 'y+' ? 'y-' : 'y+' });
 const parts = (kind: PartitionKind, areas: Area[]): Partition[] => areas.map((area) => ({ kind, area }));
 
 /**
@@ -159,21 +167,18 @@ const SHARED_PARTITIONS: Partition[] = [
     rect(14, 38, 14, 39), // 아래쪽 방들의 위 벽(문 40~42, 54~56 또는 55~57)
     rect(0, 51, 13, 51), // 아래쪽 방 사이
     rect(15, 58, 21, 58), // 복도 끝
-  ]),
-  ...parts('core', [
     rect(27, 44, 27, 53), // 가운데 계단 사이 벽
-    rect(5, 5, 6, 18), // 계단실 계단 사이 벽
-    rect(0, 47, 1, 54), // 아래쪽 덕트
+    rect(5, 5, 5, 18), // 계단실 계단 사이 벽
   ]),
-  ...parts('elevator', [rect(0, 27, 9, 37)]),
+  ...parts('core', [rect(0, 47, 1, 54), rect(0, 27, 9, 37)]), // 아래쪽 덕트, 엘리베이터 통
 ];
 
-/** 계단실(평면도 아래 왼쪽)과 가운데 U자 계단의 계단 무늬 */
+/** 계단실(평면도 아래 왼쪽)과 가운데 U자 계단의 계단 무늬. 오르는 쪽은 평면도 기준이다. */
 const SHARED_FLIGHTS: Flight[] = [
-  { area: rect(7, 3, 11, 19), up: 'y-' },
-  { area: rect(0, 3, 4, 19), up: 'y+' },
-  { area: rect(22, 44, 26, 53), up: 'y+' },
-  { area: rect(28, 44, 32, 53), up: 'y-' },
+  flight(rect(6, 3, 11, 19), 'y-'),
+  flight(rect(0, 3, 4, 19), 'y+'),
+  flight(rect(22, 44, 26, 53), 'y+'),
+  flight(rect(28, 44, 32, 53), 'y-'),
 ];
 
 /** 가운데 U자 계단. 7층에서 아래 계단, 층참, 위 계단을 걸어 올라 끝 칸에서 8층으로 가고, 8층은 계단 끝 칸에서 바로 내려간다. */
