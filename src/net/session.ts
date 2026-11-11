@@ -96,7 +96,8 @@ export interface SessionEvents {
   onBlocksLoaded(blocks: PlacedBlock[]): void;
   onBlockPlaced(block: PlacedBlock): void;
   onBlockRemoved(x: number, y: number, z: number): void;
-  onConnection(connected: boolean): void;
+  /** 맵 채널 연결 상태. 끊겼으면 reason에 이유가 온다. */
+  onConnection(connected: boolean, reason: string | null): void;
 }
 
 interface ProfilePatch {
@@ -114,6 +115,39 @@ const SAVE_DELAY_MS = 2000;
 const PRESENCE_DELAY_MS = 800;
 /** 여러 사람이 한꺼번에 들어와도 내 위치는 이 간격에 한 번만 다시 알린다. */
 const ANNOUNCE_GAP_MS = 300;
+/** 맵 채널이 끊기면 이만큼 기다렸다가 채널을 새로 만들어 다시 든다. 실패할 때마다 두 배로 늘린다. */
+const REJOIN_MS = 3000;
+const REJOIN_MAX_MS = 30000;
+
+const DROP_REASONS: Record<string, string> = {
+  CHANNEL_ERROR: '채널 오류',
+  TIMED_OUT: '서버 응답 없음',
+  CLOSED: '채널이 닫힘',
+};
+
+/** 연결이 끊긴 이유를 짧게. 화면 문구 옆에 띄워 원인을 알 수 있게 한다. */
+function dropReason(status: string, error?: Error) {
+  const name = DROP_REASONS[status] ?? status;
+  const detail = error?.message?.trim();
+  return detail ? `${name}: ${detail.slice(0, 60)}` : name;
+}
+
+/**
+ * 같은 이름의 채널이 남아 있으면 치운다. 라이브러리는 같은 이름으로 채널을 만들면 남아 있던 것을 돌려주는데,
+ * 다 나가지 못하고 남은 채널을 다시 쓰면 구독이 꼬여 연결 문구가 계속 떠 있을 수 있다.
+ */
+async function dropChannel(channel: RealtimeChannel | null) {
+  if (!channel) return;
+  const status = await supabase.removeChannel(channel);
+  if (status !== 'ok') {
+    channel.teardown();
+    supabase.realtime.channels = supabase.realtime.channels.filter((c) => c !== channel);
+  }
+}
+
+async function dropTopic(topic: string) {
+  for (const channel of supabase.getChannels().filter((c) => c.topic === `realtime:${topic}`)) await dropChannel(channel);
+}
 
 const isTileCoord = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < MAX_MAP_SIZE;
 const isGridCoord = (v: unknown): v is number => typeof v === 'number' && v >= -1 && v <= MAX_MAP_SIZE + 1;
@@ -177,6 +211,8 @@ export class GameSession {
   private saveTimer = 0;
   private presenceTimer = 0;
   private lastAnnounce = 0;
+  private rejoinTimer = 0;
+  private rejoinTries = 0;
 
   constructor(readonly profile: Profile) {
     this.mapId = profile.map;
@@ -189,7 +225,7 @@ export class GameSession {
   async connect(events: SessionEvents) {
     this.events = events;
     await supabase.realtime.setAuth();
-    this.joinMap();
+    await this.joinMap();
 
     // 서버만 보낼 수 있는 채널이다. 체력, 회피, 레벨 알림은 맵과 상관없이 모든 플레이어에게 전달된다.
     this.chat
@@ -208,8 +244,11 @@ export class GameSession {
   }
 
   /** 지금 맵의 채널에 들어간다. 위치, 접속자, 채팅은 같은 맵끼리만 주고받는다(채팅은 2026-11-11 사용자 요청). */
-  private joinMap() {
+  private async joinMap() {
     const { events, mapId } = this;
+    await dropTopic(`chat:${mapId}`);
+    await dropTopic(`world:${mapId}`);
+    if (mapId !== this.mapId) return;
     const mapChat = supabase.channel(`chat:${mapId}`, { config: { private: true } });
     this.mapChat = mapChat;
     const channel = supabase.channel(`world:${mapId}`, {
@@ -260,16 +299,47 @@ export class GameSession {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'blocks' }, ({ old }) => {
         if (current() && old.map === mapId && isTileCoord(old.x) && isTileCoord(old.y) && isLevel(old.z)) events.onBlockRemoved(old.x, old.y, old.z);
       })
-      .subscribe((status) => {
+      .subscribe((status, error) => {
         if (!current()) return;
         this.joined = status === 'SUBSCRIBED';
-        events.onConnection(this.joined);
         if (this.joined) {
+          this.rejoinTries = 0;
+          window.clearTimeout(this.rejoinTimer);
+          this.rejoinTimer = 0;
+          events.onConnection(true, null);
           void channel.track(this.myState(0, 'walk'));
           this.announce();
           void this.syncBlocks();
+          return;
         }
+        const reason = dropReason(status, error);
+        console.warn('[실시간 연결 끊김]', mapId, reason, error);
+        events.onConnection(false, reason);
+        this.scheduleRejoin();
       });
+  }
+
+  /**
+   * 맵 채널이 끊기고 잠시 뒤에도 돌아오지 않으면 채널을 치우고 새로 만들어 다시 든다(2026-11-11 사용자가 "연결하는 중" 문구가
+   * 계속 뜬다고 함). 라이브러리도 스스로 다시 들려고 하므로, 그사이 붙으면 아무것도 하지 않는다.
+   */
+  private scheduleRejoin() {
+    if (this.rejoinTimer) return;
+    const delay = Math.min(REJOIN_MAX_MS, REJOIN_MS * 2 ** this.rejoinTries);
+    this.rejoinTries++;
+    this.rejoinTimer = window.setTimeout(() => {
+      this.rejoinTimer = 0;
+      if (!this.joined) void this.rejoin();
+    }, delay);
+  }
+
+  private async rejoin() {
+    const { channel, mapChat } = this;
+    this.channel = null;
+    this.mapChat = null;
+    await dropChannel(mapChat);
+    await dropChannel(channel);
+    if (this.channel === null) await this.joinMap();
   }
 
   /** 다른 맵으로 옮겨 간다. */
@@ -282,11 +352,14 @@ export class GameSession {
     this.joined = false;
     this.mapId = mapId;
     window.clearTimeout(this.presenceTimer);
+    window.clearTimeout(this.rejoinTimer);
+    this.rejoinTimer = 0;
+    this.rejoinTries = 0;
     // 예전 맵 채널을 다 나갈 때까지 기다리지 않고 새 맵 채널에 바로 든다. 같은 맵이면 채널 이름이 같아서 먼저 나간다.
-    if (previousChat) void supabase.removeChannel(previousChat);
-    if (previous && sameMap) await supabase.removeChannel(previous);
-    else if (previous) void supabase.removeChannel(previous);
-    this.joinMap();
+    if (previousChat) void dropChannel(previousChat);
+    if (previous && sameMap) await dropChannel(previous);
+    else if (previous) void dropChannel(previous);
+    await this.joinMap();
     this.saveLater({ map: mapId, x, y });
     await this.flush();
   }

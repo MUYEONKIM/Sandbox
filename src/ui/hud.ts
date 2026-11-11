@@ -108,8 +108,10 @@ export class Hud {
     return !this.panel.hidden;
   }
 
-  setConnected(connected: boolean) {
+  /** 끊겼으면 이유를 문구 옆에 작게 쓴다. 원인을 알아보는 데 쓴다. */
+  setConnected(connected: boolean, reason: string | null = null) {
     this.connection.hidden = connected;
+    this.connection.textContent = reason ? `서버에 연결하는 중입니다 (${reason})` : '서버에 연결하는 중입니다';
   }
 
   setHp(hp: number, max: number) {

@@ -1622,7 +1622,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.removeBlockAt(x, y, z);
   }
 
-  onConnection(connected: boolean) {
-    this.hud.setConnected(connected);
+  onConnection(connected: boolean, reason: string | null) {
+    this.hud.setConnected(connected, reason);
   }
 }
