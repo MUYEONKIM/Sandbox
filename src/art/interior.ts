@@ -1,5 +1,17 @@
 import type { Area } from '../game/maps';
-import { CAFE, FLOORS, HIDEOUT, type Doorway, type Flight, type FloorPlan, type TowerId } from '../game/tower';
+import { SNAIL_COLORS } from '../game/casino';
+import {
+  CAFE,
+  FLOORS,
+  HIDEOUT,
+  LADDER_BOARD_X,
+  ODDEVEN_BOARD_X,
+  SNAIL_TRACK,
+  type Doorway,
+  type Flight,
+  type FloorPlan,
+  type TowerId,
+} from '../game/tower';
 import { frac, hash2, Pixels, ramp, shade, type Color } from './pixels';
 import type { Art } from './props';
 
@@ -30,6 +42,8 @@ const GLASS = [0x4f7fa8, 0x6a9cc6, 0x8fbde0];
 /** 벽에 쓰는 3×5 글꼴 */
 const GLYPHS: Record<string, string[]> = {
   '1': ['010', '110', '010', '010', '111'],
+  '2': ['111', '001', '111', '100', '111'],
+  '3': ['111', '001', '111', '001', '111'],
   '4': ['101', '101', '111', '001', '001'],
   '7': ['111', '001', '010', '010', '010'],
   '8': ['111', '101', '111', '101', '111'],
@@ -199,7 +213,41 @@ function cabinFloor(): FloorShader {
   };
 }
 
-const FLOOR_SHADERS = { lobby: lobbyFloor, office: officeFloor, roof: roofFloor, stairs: stairsFloor, cabin: cabinFloor };
+const CARPET = [0x7a1824, 0x8a1e2a];
+const CASINO_GOLD = 0xd9b45a;
+const DIM_GOLD = 0xb08a3e;
+
+/** 도박장 바닥: 금색 마름모 무늬 붉은 카펫. 벽에 건 게임판 앞에는 금테 두른 펠트를 깔았다. */
+function casinoFloor(painter: Painter): FloorShader {
+  const felts = [
+    { gx: LADDER_BOARD_X - painter.x0 + 0.5, color: 0x23466e },
+    { gx: ODDEVEN_BOARD_X - painter.x0 + 0.5, color: 0x1f5e3a },
+  ];
+  return (gx, gy, sx, sy) => {
+    for (const felt of felts) {
+      const du = Math.abs(gx - felt.gx);
+      if (du < 2.4 && gy > 0.3 && gy < 3.4) {
+        if (du > 2.15 || gy < 0.55 || gy > 3.15) return DIM_GOLD;
+        return hash2(sx, sy) < 0.15 ? shade(felt.color, 0.9) : felt.color;
+      }
+    }
+    const a = frac((gx + gy) / 2);
+    const b = frac((gx - gy) / 2);
+    if (a < 0.03 || b < 0.03) return DIM_GOLD;
+    if (Math.abs(a - 0.5) + Math.abs(b - 0.5) < 0.07) return CASINO_GOLD;
+    const base = CARPET[(Math.floor((gx + gy) / 2) + Math.floor((gx - gy) / 2)) & 1];
+    return hash2(sx >> 1, sy) > 0.94 ? shade(base, 0.9) : base;
+  };
+}
+
+const FLOOR_SHADERS = {
+  lobby: lobbyFloor,
+  office: officeFloor,
+  roof: roofFloor,
+  stairs: stairsFloor,
+  cabin: cabinFloor,
+  casino: casinoFloor,
+};
 
 /** 건물 바깥 유리벽. 바깥 계단 뒤에 보인다. */
 function paintFacade(painter: Painter, plan: FloorPlan) {
@@ -235,9 +283,119 @@ function paintCabin(painter: Painter) {
   }
 }
 
+/** 도박장 벽: 아래는 짙은 나무 판, 위는 마름모 무늬 벽지, 맨 위에는 전구 줄. 오른쪽 벽에 사다리판과 홀짝판, 왼쪽 벽에 달팽이 경주 점수판을 건다. */
+function paintCasinoWalls(painter: Painter) {
+  const wallpaper = [0x4a1420, 0x561826];
+  for (const wall of ['left', 'right'] as Wall[]) {
+    painter.wallRect(wall, 0, painter.length(wall), 0, WALL_H, (u, v) => {
+      if (v < 6) return 0x2a0f14;
+      if (v >= WALL_H - 3) return CASINO_GOLD;
+      if (v === 24 || v === 25) return DIM_GOLD;
+      if (v < 24) return u % 12 === 0 ? 0x2e0c12 : 0x3e1018;
+      const d = Math.abs((u % 16) - 8) + Math.abs(((v - 26) % 16) - 8);
+      if (d === 7) return 0x7a3a2a;
+      return wallpaper[(Math.floor(u / 16) + Math.floor((v - 26) / 16)) & 1];
+    });
+    for (let u = 4; u < painter.length(wall) - 2; u += 8) {
+      const on = Math.floor(u / 8) & 1;
+      painter.wallRect(wall, u, u + 2, WALL_H - 8, WALL_H - 6, () => (on ? 0xffe08a : 0xff7a5a));
+    }
+  }
+
+  // 사다리판: 세로줄 둘, 가로줄 넷. 위는 출발(좌 빨강, 우 파랑), 아래는 도착 표시다.
+  const ladder = (LADDER_BOARD_X - painter.x0) * U + U / 2;
+  painter.wallRect('right', ladder - 26, ladder + 26, 14, 66, (u, v) => {
+    const du = u - ladder;
+    if (Math.abs(du) >= 24 || v < 16 || v >= 64) return CASINO_GOLD;
+    const rail = Math.abs(du + 11) <= 1 || Math.abs(du - 11) <= 1;
+    if (rail && v >= 24 && v <= 55) return 0x2c2430;
+    const rung = [27, 34, 41, 48].findIndex((r) => v >= r && v < r + 2);
+    if (rung >= 0 && Math.abs(du) <= 11) return rung & 1 ? 0x2f5fa8 : 0xd8413b;
+    const nearRail = Math.abs(Math.abs(du) - 11) <= 2;
+    if (nearRail && v >= 57 && v < 61) return du < 0 ? 0xd8413b : 0x2f5fa8;
+    if (nearRail && v >= 18 && v < 22) return 0x2c2430;
+    return 0xf4f1ea;
+  });
+
+  // 홀짝판: 왼쪽은 홀(빨강, 구슬 셋), 오른쪽은 짝(파랑, 구슬 넷)
+  const oddEven = (ODDEVEN_BOARD_X - painter.x0) * U + U / 2;
+  const marbles = [
+    [-16, 48],
+    [-8, 40],
+    [-16, 32],
+    [8, 48],
+    [16, 48],
+    [8, 32],
+    [16, 32],
+  ];
+  painter.wallRect('right', oddEven - 26, oddEven + 26, 14, 66, (u, v) => {
+    const du = u - oddEven;
+    if (Math.abs(du) >= 24 || v < 16 || v >= 64 || du === 0 || du === -1) return CASINO_GOLD;
+    for (const [mu, mv] of marbles) {
+      if ((du - mu) ** 2 + (v - mv) ** 2 <= 10) return du < mu && v > mv ? 0xffffff : 0xd6dce4;
+    }
+    return du < 0 ? 0xb23a3a : 0x2f5fa8;
+  });
+
+  // 달팽이 경주 점수판: 왼쪽 벽, 경주로 바로 위. 출발은 앞쪽(u가 큰 쪽), 결승은 뒤쪽이다.
+  const [, ty0, , ty1] = SNAIL_TRACK;
+  const s0 = (ty0 - painter.y0) * U + 4;
+  const s1 = (ty1 + 1 - painter.y0) * U - 4;
+  painter.wallRect('left', s0, s1, 26, 68, (u, v) => {
+    if (u < s0 + 2 || u >= s1 - 2 || v < 28 || v >= 66) return 0x6a4430;
+    if (u < s0 + 8) return (Math.floor(u / 2) + Math.floor(v / 2)) & 1 ? 0xf4f4f0 : 0x1d1d22;
+    return 0x24402e;
+  });
+  SNAIL_COLORS.forEach((color, lane) => {
+    const v0 = 54 - lane * 12;
+    painter.text('left', String(lane + 1), s1 - 12, v0, 2, 0xf4f1ea);
+    for (let u = s0 + 12; u < s1 - 16; u += 4) painter.wallRect('left', u, u + 2, v0 + 4, v0 + 5, () => 0x6f8f78);
+    const at = s1 - 26 - Math.floor(hash2(lane, 9) * (s1 - s0 - 60));
+    painter.wallRect('left', at - 3, at + 3, v0 + 2, v0 + 8, (u, v) => (Math.hypot(u - at, v - v0 - 5) < 3 ? color : null));
+    painter.wallRect('left', at - 2, at + 7, v0 + 2, v0 + 4, () => 0xe8d8a8);
+  });
+}
+
+/** 달팽이 경주로: 왼쪽 벽을 따라 놓인 낮은 상자. 세 줄 잔디 레인, 뒤쪽 끝 결승선, 앞쪽 출발선에 선 달팽이 셋 */
+function paintSnailTrack(painter: Painter) {
+  const { p } = painter;
+  const [x0, y0, x1, y1] = SNAIL_TRACK;
+  const g0 = x0 - painter.x0 + 0.05;
+  const g1 = x1 - painter.x0 + 0.9;
+  const h0 = y0 - painter.y0 + 0.1;
+  const h1 = y1 - painter.y0 + 0.9;
+  const lift = 6;
+  const at = (gx: number, gy: number, z = -lift): [number, number] => [...painter.screen(gx, gy, z)];
+  const minus = (a: [number, number], b: [number, number]): [number, number] => [a[0] - b[0], a[1] - b[1]];
+
+  p.parallelogram(at(g0, h1), minus(at(g1, h1), at(g0, h1)), [0, lift], (_u, v) => (v > 0.7 ? 0x3a2414 : 0x6a4430));
+  p.parallelogram(at(g1, h0), minus(at(g1, h1), at(g1, h0)), [0, lift], (_u, v) => (v > 0.7 ? 0x2e1c10 : 0x5a3a22));
+  p.parallelogram(at(g0, h0), minus(at(g1, h0), at(g0, h0)), minus(at(g0, h1), at(g0, h0)), (u, v) => {
+    if (u < 0.07 || u > 0.93) return 0x8a5a3c;
+    const w = ((u - 0.07) / 0.86) * 3;
+    const lane = Math.min(2, Math.floor(w));
+    if (lane > 0 && frac(w) < 0.06) return 0xf4f1ea;
+    if (v < 0.05) return (Math.floor(u * 10) + Math.floor(v * 120)) & 1 ? 0xf4f4f0 : 0x1d1d22;
+    if (v > 0.9 && v < 0.915) return 0xf4f1ea;
+    return lane & 1 ? 0x4f8a3c : 0x5a9a44;
+  });
+
+  SNAIL_COLORS.forEach((color, lane) => {
+    const gx = g0 + (0.07 + ((lane + 0.5) / 3) * 0.86) * (g1 - g0);
+    const [sx, sy] = at(gx, h0 + 0.95 * (h1 - h0));
+    p.ellipse(sx + 1, sy, 3, 1.3, 0xe8d8a8);
+    p.ellipse(sx - 1, sy - 2, 2.3, 2.3, color);
+    p.set(sx - 1, sy - 2, shade(color, 0.6));
+  });
+}
+
 /** 가장 먼저 그리는 벽면: 사무실 벽, 1층 로비 벽, 옥상 난간 */
 function paintWalls(painter: Painter, plan: FloorPlan) {
   const { style } = plan;
+  if (style === 'casino') {
+    paintCasinoWalls(painter);
+    return;
+  }
   if (style === 'stairs') {
     paintFacade(painter, plan);
     return;
@@ -395,6 +553,7 @@ const EDGE_COLORS = {
   roof: [0x7d7d78, 0x6a6a66],
   stairs: [0x3e4248, 0x2f3338],
   cabin: [0x5b626c, 0x4a505a],
+  casino: [0x3a1418, 0x2a0e12],
 };
 
 /** 바닥 윗면과 앞쪽 두께를 칠한다. */
@@ -437,6 +596,7 @@ export function paintInterior(id: TowerId): HTMLCanvasElement {
 
   paintWalls(painter, plan);
   for (const door of plan.doorways) paintDoor(painter, door, plan.number);
+  if (plan.style === 'casino') paintSnailTrack(painter);
   p.outlineOuter(OUTLINE);
   return p.toCanvas();
 }

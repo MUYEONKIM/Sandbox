@@ -3,6 +3,7 @@ import { BLOCKS, type BlockId } from '../blocks';
 import { BASE_HP, MAX_MAP_SIZE, MAX_STACK, TEAM_SIZE } from '../config';
 import type { Slot } from '../game/inventory';
 import { parseLevel } from '../game/level';
+import type { BetResult, GameId } from '../game/casino';
 import type { StatId } from '../game/stats';
 import { isWeapon, type WeaponId } from '../items';
 import type { Profile } from './auth';
@@ -321,6 +322,12 @@ export class GameSession {
   async buyStat(stat: StatId): Promise<{ gold: number; value: number } | null> {
     const { data, error } = await supabase.rpc('buy_stat', { stat });
     return error ? null : (data as { gold: number; value: number });
+  }
+
+  /** 도박장에서 골드를 건다. 결과와 배당은 서버가 정한다. 실패하면 null이다. */
+  async placeBet(game: GameId, pick: string, amount: number): Promise<BetResult | null> {
+    const { data, error } = await supabase.rpc('place_bet', { game, pick, amount });
+    return error ? null : (data as BetResult);
   }
 
   /** 내 공격이 맞았음을 서버에 알린다. 피해량과 체력은 서버가 계산한다. */

@@ -1,5 +1,6 @@
 import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
+import { GAMES, isGame, type GameId } from './casino';
 import { COUNTER_INFO, FLOORS, isTower, LOBBY, PANEL_INFO, TOP_FLOORS, UPPER, type TowerId } from './tower';
 
 const END = MAP_SIZE - 1;
@@ -157,6 +158,16 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0x7fe3a0,
     links: {},
   },
+  // 시작마을 주점을 고친 도박장. 공격은 막혀 있고 블록도 놓을 수 없다.
+  casino: {
+    name: '인생한방 도박장',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x7a1824,
+    accent: 0xffc34d,
+    links: {},
+    safe: true,
+  },
   rooftop: {
     name: '아이티공간 옥상',
     floor: [],
@@ -257,6 +268,9 @@ export const SHOP = {
   accent: 0xb58cff,
 };
 
+/** 시작마을 오른쪽 귀퉁이 주점(tavern)의 오른쪽 벽 문. 문 앞 칸이 포탈이고, 타면 도박장으로 들어간다. 맵 끝이라 벽을 따라 비껴 선다. */
+export const CASINO_DOOR = { door: { x: 45, y: 14 }, landing: { x: 45, y: 16 } };
+
 /** 아이티공간 정문 앞 광장의 명예의 전당 게시판. 앞 칸이 포탈이고, 타면 레벨 순위 창이 열린다. */
 export const FAME = {
   sprite: 'board' as const,
@@ -275,8 +289,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office', 'shop', 'counter', 'fame', 'panel'은 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'panel';
+  /** 'office', 'shop', 'counter', 'fame', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'panel' | GameId;
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
@@ -296,6 +310,7 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...SHOP.door, to: 'shop', landing: SHOP.landing });
     portals.push({ ...CASTLE.door, to: 'tower1', label: CASTLE.name, landing: CASTLE.landing });
     portals.push({ ...FAME.door, to: 'fame', landing: FAME.landing });
+    portals.push({ ...CASINO_DOOR.door, to: 'casino', landing: CASINO_DOOR.landing });
   }
   return portals;
 }
@@ -305,6 +320,7 @@ function portalInfo({ to }: Portal) {
   if (to === 'counter') return COUNTER_INFO;
   if (to === 'panel') return PANEL_INFO;
   if (to === 'fame') return FAME;
+  if (isGame(to)) return GAMES[to];
   return to === 'shop' ? SHOP : MAPS[to];
 }
 

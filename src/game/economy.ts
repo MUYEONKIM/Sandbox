@@ -64,6 +64,9 @@ export interface EconomyData {
   ownedTools: string[];
 }
 
+/** 한 번 캘 때 얻는 기본 개수. 서버 harvest의 2와 같다(2026-11-11 사용자 요청으로 2배). */
+export const HARVEST_COUNT = 2;
+
 /** 희귀 자원을 알림에서 돋보이게 하는 가격 기준 */
 const RARE_PRICE = 40;
 
@@ -115,12 +118,12 @@ export class Economy {
     return this.loot.get(item);
   }
 
-  /** 자원 표의 확률과 가격으로 계산한 분당 평균 벌이 */
+  /** 자원 표의 확률과 가격으로 계산한 분당 평균 벌이. LUK와 도구는 빼고 센다. */
   goldPerMinute(place: Workplace) {
     const items = [...this.loot.values()].filter((item) => item.workplace === place.id);
     const totalWeight = items.reduce((sum, { weight }) => sum + weight, 0);
     const totalValue = items.reduce((sum, { weight, price }) => sum + weight * price, 0);
-    return totalWeight ? (totalValue / totalWeight) * (60000 / place.gatherMs) : 0;
+    return totalWeight ? (totalValue / totalWeight) * HARVEST_COUNT * (60000 / place.gatherMs) : 0;
   }
 
   isRare(item: LootItem) {
@@ -144,6 +147,12 @@ export class Economy {
 
   get stashValue() {
     return this.entries().reduce((sum, { price, count }) => sum + price * count, 0);
+  }
+
+  /** 서버가 알려 준 골드로 맞춘다. 도박장에서 걸고 받을 때 쓴다. */
+  setGold(gold: number) {
+    this.gold = gold;
+    this.changed();
   }
 
   setSold(gold: number) {

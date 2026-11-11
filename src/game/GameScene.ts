@@ -46,6 +46,7 @@ import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import type { CastleWindow } from '../ui/castle';
+import type { CasinoWindows } from '../ui/casino';
 import type { ElevatorWindow } from '../ui/elevator';
 import type { FameWindow } from '../ui/fame';
 import type { OfficeWindow } from '../ui/office';
@@ -77,7 +78,8 @@ import {
 } from './maps';
 import { meleeTarget } from './melee';
 import { findPath } from './path';
-import { CAFE_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type PartitionKind, type TowerId } from './tower';
+import { isGame } from './casino';
+import { CAFE_SIGN, CASINO_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type PartitionKind, type TowerId } from './tower';
 import { maxHpOf, type StatId } from './stats';
 import { WorkFx } from './workFx';
 import { inReach, World, type Tile } from './world';
@@ -258,6 +260,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly castle: CastleWindow,
     private readonly fame: FameWindow,
     private readonly elevator: ElevatorWindow,
+    private readonly casino: CasinoWindows,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -534,6 +537,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const sign = gridToWorld(CAFE_SIGN.x + 0.5, CAFE_SIGN.y);
       this.addSign("ITS'room", sign.x, sign.y - CAFE_SIGN.lift);
     }
+    if (id === 'casino') {
+      const sign = gridToWorld(CASINO_SIGN.x, CASINO_SIGN.y);
+      this.addSign(MAPS.casino.name, sign.x, sign.y - CASINO_SIGN.lift);
+    }
   }
 
   /** 층 안의 벽. 칸마다 상자 하나를 세우고, 내 캐릭터를 가리면 반투명해지게 한다. */
@@ -705,6 +712,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.castle.isOpen ||
       this.fame.isOpen ||
       this.elevator.isOpen ||
+      this.casino.isOpen ||
       this.chat.isOpen;
     return !windowOpen && !this.traveling && !this.down;
   }
@@ -745,6 +753,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
       else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor);
+      else if (isGame(portal.to)) this.casino.open(portal.to);
       else this.travel(portal.to);
       return;
     }

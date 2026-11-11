@@ -5,8 +5,9 @@ import type { Tile } from './world';
 /**
  * 아이티공간 건물 안. 9층과 옥상이 있지만 들어갈 수 있는 곳은 1, 4, 7, 8층과 옥상뿐이다.
  * 엘리베이터는 7층까지 가고, 8층은 7층 사무실 안 계단으로, 옥상은 8층 바깥 계단으로 올라간다.
+ * 시작마을 주점을 고친 도박장(casino)도 같은 방식으로 그리는 건물 안이라 여기에 함께 둔다.
  */
-export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator';
+export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino';
 
 /** 1층 로비 바닥. 블록 설치 구역도 이 범위다. */
 export const LOBBY: Area = [13, 13, 32, 32];
@@ -73,7 +74,7 @@ export interface Partition {
 export interface FloorPlan {
   /** 층 번호. 옥상, 바깥 계단, 엘리베이터 안은 null */
   number: number | null;
-  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin';
+  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino';
   /** 바닥이 있는 칸 */
   area: Area;
   doorways: Doorway[];
@@ -264,6 +265,24 @@ const FLOOR8: Pick<FloorPlan, 'partitions' | 'flights' | 'voids' | 'railings' | 
   ],
 };
 
+/** 도박장 바닥. 앞-오른쪽 변 가운데로 시작마을에 나간다. */
+export const CASINO_HALL: Area = [13, 13, 30, 30];
+/** 달팽이 경주로: 왼쪽 벽을 따라 놓인 낮은 경주로. 지나갈 수 없고, 뒤쪽(y가 작은 쪽) 끝이 결승선이다. */
+export const SNAIL_TRACK: Area = [13, 17, 14, 27];
+/** 오른쪽 벽에 건 게임판의 가운데 칸(x). 판 앞 두 칸에 포탈이 있다. */
+export const LADDER_BOARD_X = 18;
+export const ODDEVEN_BOARD_X = 25;
+/** 도박장 간판을 다는 벽 위치와 높이 (아트 픽셀) */
+export const CASINO_SIGN = { x: 21.5, y: CASINO_HALL[1], lift: 70 };
+
+export const CASINO_FURNITURE: Furniture[] = [
+  { sprite: 'plant', x: 13, y: 13 },
+  { sprite: 'plant', x: 30, y: 13 },
+  { sprite: 'plant', x: 13, y: 30 },
+  { sprite: 'cafe-table', x: 22, y: 24 },
+  { sprite: 'cafe-table', x: 25, y: 27 },
+];
+
 function wallPortal([x0, y0]: Area, { wall, at }: Doorway, to: Portal['to'], label?: string): Portal {
   return wall === 'right'
     ? { x: at, y: y0, to, label, landing: { x: at, y: y0 + 2 } }
@@ -347,6 +366,19 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     area: UPPER,
     doorways: [roofStairs],
     portals: [wallPortal(UPPER, roofStairs, 'stairs')],
+  },
+  casino: {
+    ...plain,
+    number: null,
+    style: 'casino',
+    area: CASINO_HALL,
+    doorways: [],
+    portals: [
+      { x: CASINO_HALL[2], y: 22, to: 'plains', label: '시작마을', landing: { x: CASINO_HALL[2] - 2, y: 22 } },
+      { x: LADDER_BOARD_X, y: CASINO_HALL[1] + 2, to: 'ladder', landing: { x: LADDER_BOARD_X, y: CASINO_HALL[1] + 4 } },
+      { x: ODDEVEN_BOARD_X, y: CASINO_HALL[1] + 2, to: 'oddeven', landing: { x: ODDEVEN_BOARD_X, y: CASINO_HALL[1] + 4 } },
+      { x: SNAIL_TRACK[2] + 2, y: 22, to: 'snail', landing: { x: SNAIL_TRACK[2] + 4, y: 22 } },
+    ],
   },
   elevator: {
     ...plain,

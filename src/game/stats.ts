@@ -14,6 +14,8 @@ export const maxHpOf = (points: number) => BASE_HP + points;
 /** 1포인트의 효과는 0.1%다. DEF와 AGI는 이 값으로 점점 완만해진다. */
 const SCALE = 1000;
 const MAX_DODGE = 0.6;
+/** LUK 1포인트는 자원 개수 평균 +0.5%다(2026-11-11 사용자 요청). 서버 harvest의 0.005와 같다. */
+const LUK_RATE = 0.005;
 
 const percent = (ratio: number) => `${Number((ratio * 100).toFixed(1))}%`;
 
@@ -27,7 +29,7 @@ export function statEffect(id: StatId, value: number) {
     case 'agi':
       return `확률 ${percent(Math.min(MAX_DODGE, value / (value + SCALE)))}`;
     case 'luk':
-      return `평균 +${percent(value / SCALE)}`;
+      return `평균 +${percent(value * LUK_RATE)}`;
     case 'hp':
       return `최대 HP ${maxHpOf(value)}`;
   }

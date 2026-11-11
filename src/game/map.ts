@@ -3,7 +3,7 @@ import type { BlockId } from '../blocks';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
-import { COUNTER, FLOORS, HIDEOUT, isTower, LOBBY_FURNITURE, type PartitionKind } from './tower';
+import { CASINO_FURNITURE, COUNTER, FLOORS, HIDEOUT, isTower, LOBBY_FURNITURE, SNAIL_TRACK, type PartitionKind } from './tower';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -171,6 +171,13 @@ export function generateMap(id: MapId): GameMap {
     if (id === 'tower1') {
       buildings.push({ ...COUNTER });
       scenery.trees.push(...LOBBY_FURNITURE);
+    }
+    if (id === 'casino') {
+      scenery.trees.push(...CASINO_FURNITURE);
+      const [tx0, ty0, tx1, ty1] = SNAIL_TRACK;
+      for (let y = ty0; y <= ty1; y++) {
+        for (let x = tx0; x <= tx1; x++) solid[x + y * size] = 1;
+      }
     }
   } else if (id === 'fishing') {
     spots = digPond(terrain);

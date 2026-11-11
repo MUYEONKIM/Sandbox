@@ -63,7 +63,7 @@ export abstract class PurchaseWindow {
     return button;
   }
 
-  private render() {
+  protected render() {
     this.wallet.textContent = `보유 골드 ${this.economy.gold.toLocaleString()}G`;
     for (const refresh of this.refreshers) refresh();
   }

@@ -1,4 +1,4 @@
-import type { Economy } from '../game/economy';
+import { HARVEST_COUNT, type Economy } from '../game/economy';
 import type { WorkId } from '../game/maps';
 import { spriteUrl } from '../art/sprites';
 import { element } from './dom';
@@ -36,7 +36,7 @@ export class OfficeWindow {
       element('office-place-name', button).textContent = place.name;
       element('office-place-blurb', button).textContent = place.blurb;
       element('office-place-rate', button).textContent =
-        `${(place.gatherMs / 1000).toFixed(1)}초에 하나 · 분당 약 ${Math.round(economy.goldPerMinute(place) / 10) * 10}G`;
+        `${(place.gatherMs / 1000).toFixed(1)}초에 ${HARVEST_COUNT}개 · 분당 약 ${Math.round(economy.goldPerMinute(place) / 10) * 10}G`;
       button.addEventListener('click', () => actions.onGo(place.id));
     }
 

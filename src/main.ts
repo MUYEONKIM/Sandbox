@@ -14,6 +14,7 @@ import { Hud } from './ui/hud';
 import { showLogin } from './ui/login';
 import { Minimap } from './ui/minimap';
 import { NameTags } from './ui/nametags';
+import { CasinoWindows } from './ui/casino';
 import { CastleWindow } from './ui/castle';
 import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
@@ -74,6 +75,8 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   const fame = new FameWindow(root, profile.nickname, () => session.fetchRanking(FAME_SIZE));
 
+  const casino = new CasinoWindows(root, economy, (game, pick, amount) => session.placeBet(game, pick, amount));
+
   const elevator = new ElevatorWindow(root, {
     onGo: (to) => scene.rideElevator(to),
   });
@@ -88,13 +91,15 @@ function enterGame(profile: Profile, economyData: EconomyData) {
       castle.close();
       fame.close();
       elevator.close();
+      casino.close();
     },
     onChat: () => {
-      if (!hud.isOpen && !office.isOpen && !shop.isOpen && !castle.isOpen && !fame.isOpen && !elevator.isOpen) chat.open();
+      const windowOpen = hud.isOpen || office.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || elevator.isOpen || casino.isOpen;
+      if (!windowOpen) chat.open();
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino);
 
   new Phaser.Game({
     type: Phaser.AUTO,
@@ -109,7 +114,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, elevator } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, elevator, casino } });
   }
 }
 
