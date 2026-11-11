@@ -225,6 +225,9 @@ const FLOOR7: Pick<FloorPlan, 'partitions' | 'flights' | 'voids' | 'railings' | 
   ],
 };
 
+/** 8층 바깥 계단 문: 뒤쪽 오른쪽 벽(평면도 오른쪽 변 가운데쯤). 사용자가 실제 화면에 표시한 자리다(2026-11-11). */
+const ROOF_EXIT: Doorway = { wall: 'right', at: at(29, 79).x, kind: 'outside' };
+
 const FLOOR8: Pick<FloorPlan, 'partitions' | 'flights' | 'voids' | 'railings' | 'portals'> = {
   partitions: [
     ...SHARED_PARTITIONS,
@@ -256,8 +259,8 @@ const FLOOR8: Pick<FloorPlan, 'partitions' | 'flights' | 'voids' | 'railings' | 
   railings: [],
   portals: [
     { ...STAIR_TOP, to: 'tower7', label: '7층 (계단)', landing: at(30, 41) },
-    // 계단실 문으로 들어가면 옥상으로 오르는 바깥 계단이다.
-    { ...at(12, 24), to: 'stairs', landing: at(14, 24) },
+    // 뒤쪽 벽의 문으로 나가면 옥상으로 오르는 바깥 계단이다.
+    wallPortal(TOP_FLOORS, ROOF_EXIT, 'stairs'),
   ],
 };
 
@@ -317,7 +320,7 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     number: 8,
     style: 'office',
     area: TOP_FLOORS,
-    doorways: [],
+    doorways: [ROOF_EXIT],
     signs: [],
     ...FLOOR8,
   },
