@@ -36,6 +36,8 @@ function isShift(e: KeyboardEvent) {
 }
 
 interface KeyActions {
+  /** Tab을 누르면 true, 떼면 false. 누르고 있는 동안 킬/데스 순위를 보인다. */
+  onScoreboard(open: boolean): void;
   onSlot(index: number): void;
   onInventory(): void;
   onEscape(): void;
@@ -58,17 +60,26 @@ export class Keys {
     });
     window.addEventListener('keyup', (e) => {
       if (isShift(e)) this.shiftHeld = false;
+      if (e.code === 'Tab') this.actions.onScoreboard(false);
       this.held.delete(e.code);
     });
     window.addEventListener('blur', () => {
       this.held.clear();
       this.shiftHeld = false;
+      this.actions.onScoreboard(false);
     });
   }
 
   private down(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // Tab은 브라우저가 다른 칸으로 초점을 옮기지 않게 막고 순위표를 연다.
+    if (e.code === 'Tab') {
+      e.preventDefault();
+      if (!e.repeat) this.actions.onScoreboard(true);
+      return;
+    }
 
     if (e.code in MOVE_KEYS) {
       e.preventDefault();

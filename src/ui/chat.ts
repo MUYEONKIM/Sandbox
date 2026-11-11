@@ -3,11 +3,14 @@ import { element } from './dom';
 
 const MAX_MESSAGES = 50;
 const MAX_LENGTH = 100;
+/** 맨 아래에서 이만큼 안이면 맨 아래를 보고 있는 것으로 친다. */
+const BOTTOM_SLACK = 24;
 
 /** 채팅 기록과 입력창 */
 export class ChatBox {
   private readonly log: HTMLElement;
   private readonly input: HTMLInputElement;
+  private stuckToBottom = true;
 
   constructor(
     root: HTMLElement,
@@ -54,10 +57,26 @@ export class ChatBox {
   }
 
   show(message: ChatMessage) {
-    const line = element('chat-line', this.log);
+    const line = this.addLine('chat-line');
     element('chat-author', line, 'span').textContent = message.author;
     element('chat-text', line, 'span').textContent = message.text;
+    this.settle();
+  }
+
+  /** 입장, 처치 같은 전체 알림을 채팅 기록에도 남긴다. */
+  system(text: string) {
+    this.addLine('chat-line chat-system').textContent = text;
+    this.settle();
+  }
+
+  /** 줄을 붙이기 전에 맨 아래를 보고 있었는지 기억한다. 위로 올려 읽는 중이면 끌어내리지 않는다. */
+  private addLine(className: string) {
+    this.stuckToBottom = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < BOTTOM_SLACK;
+    return element(className, this.log);
+  }
+
+  private settle() {
     if (this.log.childElementCount > MAX_MESSAGES) this.log.firstElementChild?.remove();
-    this.log.scrollTop = this.log.scrollHeight;
+    if (this.stuckToBottom) this.log.scrollTop = this.log.scrollHeight;
   }
 }

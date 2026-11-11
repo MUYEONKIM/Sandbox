@@ -47,6 +47,7 @@ import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import type { CastleWindow } from '../ui/castle';
 import type { CasinoWindows } from '../ui/casino';
+import { noticeText, type Notice, type NoticeBar } from '../ui/notice';
 import type { ElevatorWindow } from '../ui/elevator';
 import type { FameWindow } from '../ui/fame';
 import type { OfficeWindow } from '../ui/office';
@@ -268,6 +269,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly fame: FameWindow,
     private readonly elevator: ElevatorWindow,
     private readonly casino: CasinoWindows,
+    private readonly notices: NoticeBar,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -1576,6 +1578,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   onHarvest(id: string, rare: boolean) {
     this.workFx.finish(id, rare);
+  }
+
+  onNotice(notice: Notice) {
+    this.notices.show(notice);
+    this.chat.system(noticeText(notice));
   }
 
   onDodge(id: string) {

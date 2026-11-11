@@ -12,7 +12,9 @@ import { ChatBox } from './ui/chat';
 import { element } from './ui/dom';
 import { Hud } from './ui/hud';
 import { showLogin } from './ui/login';
+import { KillBoard } from './ui/killboard';
 import { Minimap } from './ui/minimap';
+import { NoticeBar } from './ui/notice';
 import { NameTags } from './ui/nametags';
 import { CasinoWindows } from './ui/casino';
 import { CastleWindow } from './ui/castle';
@@ -24,6 +26,8 @@ import { ShopWindow } from './ui/shop';
 /** 명예의 전당 창과 미니맵 밑 패널에 보여 줄 인원 */
 const FAME_SIZE = 50;
 const PANEL_SIZE = 10;
+/** Tab 킬/데스 순위표에 보여 줄 인원 */
+const KILL_BOARD_SIZE = 10;
 
 function enterGame(profile: Profile, economyData: EconomyData) {
   const root = document.getElementById('hud')!;
@@ -55,6 +59,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   const office = new OfficeWindow(root, economy, {
     onGo: (place) => scene.goToWork(place),
+    loadRoster: () => session.fetchWorkplaceRoster(),
   });
 
   const shop = new ShopWindow(root, economy, {
@@ -68,6 +73,8 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   });
 
   const fame = new FameWindow(root, profile.nickname, () => session.fetchRanking(FAME_SIZE));
+  const notices = new NoticeBar(root);
+  const killBoard = new KillBoard(root, profile.nickname, () => session.fetchKillRanking(KILL_BOARD_SIZE));
 
   const casino = new CasinoWindows(root, economy, (game, pick, amount) => session.placeBet(game, pick, amount));
 
@@ -76,6 +83,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   });
 
   const keys = new Keys({
+    onScoreboard: (open) => (open ? void killBoard.show() : killBoard.hide()),
     onSlot: (index) => inventory.select(index),
     onInventory: () => hud.toggle(),
     onEscape: () => {
@@ -93,7 +101,9 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices);
+
+  void session.announceJoin();
 
   new Phaser.Game({
     type: Phaser.AUTO,

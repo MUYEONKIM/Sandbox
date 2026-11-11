@@ -7,6 +7,7 @@ import type { BetResult, GameId } from '../game/casino';
 import type { StatId } from '../game/stats';
 import { isWeapon, type WeaponId } from '../items';
 import type { Profile } from './auth';
+import type { Notice } from '../ui/notice';
 import { supabase } from './supabase';
 
 export type Motion = 'walk' | 'run' | 'jump';
@@ -55,6 +56,12 @@ export interface ChatMessage {
   text: string;
 }
 
+export interface KillEntry {
+  nickname: string;
+  kills: number;
+  deaths: number;
+}
+
 export interface RankEntry {
   nickname: string;
   level: bigint;
@@ -84,6 +91,8 @@ export interface SessionEvents {
   onHp(id: string, hp: number, max: number | null): void;
   /** 서버가 판정한 회피 */
   onDodge(id: string): void;
+  /** 서버가 모두에게 보내는 알림(입장, 처치) */
+  onNotice(notice: Notice): void;
   /** 접속 명단에 실린 다른 사람의 위치와 상태. 맵에 들어오자마자 오며, 아직 안 보이는 사람만 그리면 된다. */
   onPresence(move: PlayerMove): void;
   /** 같은 맵의 다른 사람이 자원을 하나 얻었다. rare면 희귀 자원이다. */
@@ -111,8 +120,14 @@ const MAX_NAME = 12;
 const MAX_TEXT = 100;
 const MAX_STEP_MS = 1000;
 const SAVE_DELAY_MS = 2000;
-/** 움직임이 멈추고 이만큼 지나면 접속 명단에 실린 내 위치와 상태를 고친다. 걸을 때마다 고치면 명단 알림이 너무 많아진다. */
+/** 내 위치나 상태가 바뀌면 이만큼 뒤에 접속 명단을 고친다. */
 const PRESENCE_DELAY_MS = 800;
+/**
+ * 접속 명단은 이 간격보다 자주 고치지 않는다. Supabase는 한 사람이 30초에 명단을 5번(채널에 들 때 포함)까지만 고치게 하고,
+ * 넘으면 그 채널을 닫아 버린다(ClientPresenceRateLimitReached). 2026-11-11에 멈출 때마다 고치다가 이 제한에 걸려
+ * "서버에 연결하는 중입니다 (채널이 닫힘)"이 계속 떴다. 15초면 채널에 들 때 1번 + 2번이라 맵을 몇 번 옮겨도 남는다.
+ */
+const PRESENCE_GAP_MS = 15000;
 /** 여러 사람이 한꺼번에 들어와도 내 위치는 이 간격에 한 번만 다시 알린다. */
 const ANNOUNCE_GAP_MS = 300;
 /** 맵 채널이 끊기면 이만큼 기다렸다가 채널을 새로 만들어 다시 든다. 실패할 때마다 두 배로 늘린다. */
@@ -187,6 +202,17 @@ function parseShot(value: unknown): PlayerShot | null {
   return { id: s.id, weapon, fromX: s.fromX, fromY: s.fromY, toX: s.toX, toY: s.toY };
 }
 
+const isName = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+
+function parseNotice(value: unknown): Notice | null {
+  const n = value as { kind?: unknown; name?: unknown; killer?: unknown; victim?: unknown } | null;
+  if (n?.kind === 'join' && isName(n.name)) return { kind: 'join', name: n.name.slice(0, MAX_NAME) };
+  if (n?.kind === 'kill' && isName(n.killer) && isName(n.victim)) {
+    return { kind: 'kill', killer: n.killer.slice(0, MAX_NAME), victim: n.victim.slice(0, MAX_NAME) };
+  }
+  return null;
+}
+
 function parseChat(value: unknown): ChatMessage | null {
   const m = value as Partial<ChatMessage> | null;
   if (!m || typeof m.id !== 'string' || typeof m.author !== 'string' || typeof m.text !== 'string') return null;
@@ -210,6 +236,9 @@ export class GameSession {
   private pending: ProfilePatch = {};
   private saveTimer = 0;
   private presenceTimer = 0;
+  private lastTrack = -Infinity;
+  /** 서버가 맵 채널에 보낸 마지막 시스템 메시지. 채널이 닫힌 이유를 알아보는 데 쓴다. */
+  private lastSystem: string | null = null;
   private lastAnnounce = 0;
   private rejoinTimer = 0;
   private rejoinTries = 0;
@@ -234,6 +263,10 @@ export class GameSession {
       })
       .on('broadcast', { event: 'dodge' }, ({ payload }) => {
         if (typeof payload?.id === 'string') events.onDodge(payload.id);
+      })
+      .on('broadcast', { event: 'notice' }, ({ payload }) => {
+        const notice = parseNotice(payload);
+        if (notice) events.onNotice(notice);
       })
       .on('broadcast', { event: 'level' }, ({ payload }) => {
         const level = parseLevel(payload?.level);
@@ -265,7 +298,11 @@ export class GameSession {
       })
       .subscribe();
 
+    this.lastSystem = null;
     channel
+      .on('system', {}, (payload: { message?: string; status?: string }) => {
+        if (current() && payload?.status !== 'ok') this.lastSystem = String(payload?.message ?? payload?.status ?? '').slice(0, 80) || null;
+      })
       .on('presence', { event: 'sync' }, () => {
         if (!current()) return;
         const state = channel.presenceState();
@@ -307,12 +344,13 @@ export class GameSession {
           window.clearTimeout(this.rejoinTimer);
           this.rejoinTimer = 0;
           events.onConnection(true, null);
-          void channel.track(this.myState(0, 'walk'));
+          this.trackNow();
           this.announce();
           void this.syncBlocks();
           return;
         }
-        const reason = dropReason(status, error);
+        const server = status === 'CLOSED' && this.lastSystem ? ` / 서버: ${this.lastSystem}` : '';
+        const reason = dropReason(status, error) + server;
         console.warn('[실시간 연결 끊김]', mapId, reason, error);
         events.onConnection(false, reason);
         this.scheduleRejoin();
@@ -352,6 +390,7 @@ export class GameSession {
     this.joined = false;
     this.mapId = mapId;
     window.clearTimeout(this.presenceTimer);
+    this.presenceTimer = 0;
     window.clearTimeout(this.rejoinTimer);
     this.rejoinTimer = 0;
     this.rejoinTries = 0;
@@ -398,10 +437,19 @@ export class GameSession {
 
   /** 잠시 뒤 접속 명단에 실린 내 위치와 상태를 지금 것으로 고친다. 체력이나 레벨이 바뀌었을 때도 부른다. */
   refreshPresence() {
-    window.clearTimeout(this.presenceTimer);
+    if (this.presenceTimer) return;
+    const wait = Math.max(PRESENCE_DELAY_MS, this.lastTrack + PRESENCE_GAP_MS - performance.now());
     this.presenceTimer = window.setTimeout(() => {
-      if (this.joined && this.channel) void this.channel.track(this.myState(0, 'walk'));
-    }, PRESENCE_DELAY_MS);
+      this.presenceTimer = 0;
+      this.trackNow();
+    }, wait);
+  }
+
+  /** 접속 명단에 지금 위치와 상태를 싣는다. 너무 자주 부르면 서버가 채널을 닫으므로 refreshPresence를 거친다. */
+  private trackNow() {
+    if (!this.joined || !this.channel) return;
+    this.lastTrack = performance.now();
+    void this.channel.track(this.myState(0, 'walk'));
   }
 
   /** 자원을 하나 얻었다고 같은 맵 사람들에게 알린다. 마무리 효과를 그리는 데만 쓴다. */
@@ -438,6 +486,23 @@ export class GameSession {
   async buyTool(tool: string): Promise<number | null> {
     const { data, error } = await supabase.rpc('buy_tool', { tool });
     return error ? null : (data as number);
+  }
+
+  /** 작업장마다 지금 있는 사람(최근 2분 안에 일했거나 움직인 사람). 실패하면 null이다. */
+  async fetchWorkplaceRoster(): Promise<{ workplace: string; nickname: string }[] | null> {
+    const { data, error } = await supabase.rpc('workplace_roster');
+    return error ? null : (data as { workplace: string; nickname: string }[]);
+  }
+
+  /** 접속했다고 모두에게 알린다. 같은 사람은 서버가 1분에 한 번만 알린다. */
+  async announceJoin() {
+    await supabase.rpc('announce_join');
+  }
+
+  /** 킬/데스 순위를 위에서 size명까지 읽어 온다. 실패하면 null이다. */
+  async fetchKillRanking(size: number): Promise<KillEntry[] | null> {
+    const { data, error } = await supabase.rpc('top_killers', { how_many: size });
+    return error ? null : (data as KillEntry[]);
   }
 
   /** 레벨 순위를 위에서 size명까지 읽어 온다. 실패하면 null이다. */
