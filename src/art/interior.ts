@@ -1,5 +1,5 @@
 import type { Area } from '../game/maps';
-import { CAFE, FLOORS, HIDEOUT, type Doorway, type FloorPlan, type TowerId } from '../game/tower';
+import { CAFE, FLOORS, HIDEOUT, type Doorway, type Flight, type FloorPlan, type TowerId } from '../game/tower';
 import { frac, hash2, Pixels, ramp, shade, type Color } from './pixels';
 import type { Art } from './props';
 
@@ -104,20 +104,36 @@ class Painter {
 
 type FloorShader = (gx: number, gy: number, sx: number, sy: number) => Color;
 
-/** 계단 한 칸은 두 단이다. 단의 앞 모서리(+x 쪽)에 띠와 그림자를 넣고, 뒤쪽(-x)으로 갈수록 밝게 해서 오르막으로 보이게 한다. */
-function stepColor(gx: number, sx: number, sy: number, w: number, tread: Color, edge: Color, riser: Color): Color {
-  const s = frac(gx * 2);
+/**
+ * 계단 한 칸은 두 단이다. 단의 아래쪽 모서리에 띠와 그림자를 넣고, 올라가는 쪽으로 갈수록 밝게 해서 오르막으로 보이게 한다.
+ * (gx, gy)는 바닥 안쪽 격자 좌표다.
+ */
+function stepColor(painter: Painter, flight: Flight, gx: number, gy: number, sx: number, sy: number, tread: Color, edge: Color, riser: Color): Color {
+  const [x0, y0, x1, y1] = flight.area;
+  const x = painter.x0 + gx;
+  const y = painter.y0 + gy;
+  // along: 내려가는 쪽으로 커지는 좌표, rise: 계단 안에서 0(아래)~1(위)
+  const along = flight.up === 'x-' ? x : flight.up === 'y-' ? y : -y;
+  const rise =
+    flight.up === 'x-' ? (x1 + 1 - x) / (x1 - x0 + 1) : flight.up === 'y-' ? (y1 + 1 - y) / (y1 - y0 + 1) : (y - y0) / (y1 - y0 + 1);
+  const s = frac(along * 2);
   if (s > 0.78) return riser;
   if (s > 0.7) return edge;
-  const lift = 1 + (1 - gx / w) * 0.15;
-  return shade((sx + sy) % 3 === 0 ? shade(tread, 0.88) : tread, lift);
+  return shade((sx + sy) % 3 === 0 ? shade(tread, 0.88) : tread, 1 + rise * 0.15);
 }
 
-/** 계단 칸인지 본다. */
-function onFlight(painter: Painter, plan: FloorPlan, gx: number, gy: number) {
+/** 계단 칸이면 그 계단을 돌려준다. */
+function flightAt(painter: Painter, plan: FloorPlan, gx: number, gy: number) {
   const x = painter.x0 + Math.floor(gx);
   const y = painter.y0 + Math.floor(gy);
-  return plan.flights.some(([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1);
+  return plan.flights.find(({ area: [x0, y0, x1, y1] }) => x >= x0 && x <= x1 && y >= y0 && y <= y1);
+}
+
+/** 아래층이 보이게 뚫린 바닥 칸인지 본다. */
+function inVoid(painter: Painter, plan: FloorPlan, gx: number, gy: number) {
+  const x = painter.x0 + Math.floor(gx);
+  const y = painter.y0 + Math.floor(gy);
+  return plan.voids.some(([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1);
 }
 
 function lobbyFloor(painter: Painter): FloorShader {
@@ -139,10 +155,13 @@ function lobbyFloor(painter: Painter): FloorShader {
 
 function officeFloor(painter: Painter, plan: FloorPlan): FloorShader {
   return (gx, gy, sx, sy) => {
-    if (onFlight(painter, plan, gx, gy)) return stepColor(gx, sx, sy, painter.w, 0xb7bcc4, 0x2f3338, 0x4f5560);
+    const flight = flightAt(painter, plan, gx, gy);
+    if (flight) return stepColor(painter, flight, gx, gy, sx, sy, 0xb7bcc4, 0x2f3338, 0x4f5560);
     if (frac(gx / 2) < 0.025 || frac(gy / 2) < 0.025) return 0x4f5560;
     const base = (Math.floor(gx / 2) + Math.floor(gy / 2)) & 1 ? 0x5f6672 : 0x666e7b;
-    return hash2(sx, sy) < 0.18 ? shade(base, 0.92) : base;
+    const color = hash2(sx, sy) < 0.18 ? shade(base, 0.92) : base;
+    // 뚫린 바닥 너머로 아래층 바닥이 어둡게 보인다.
+    return inVoid(painter, plan, gx, gy) ? shade(color, 0.45) : color;
   };
 }
 
@@ -166,8 +185,9 @@ function roofFloor(painter: Painter): FloorShader {
 /** 바깥 계단: 층참은 미끄럼 방지 철판, 계단은 한 칸에 두 단이고 뒤쪽(왼쪽 위)으로 갈수록 높다. */
 function stairsFloor(painter: Painter, plan: FloorPlan): FloorShader {
   return (gx, gy, sx, sy) => {
-    if (!onFlight(painter, plan, gx, gy)) return (sx + 2 * sy) % 6 === 0 ? 0xa3a9b0 : 0x8a9098;
-    return stepColor(gx, sx, sy, painter.w, 0x7d838c, 0xf2c14e, 0x3e4248);
+    const flight = flightAt(painter, plan, gx, gy);
+    if (!flight) return (sx + 2 * sy) % 6 === 0 ? 0xa3a9b0 : 0x8a9098;
+    return stepColor(painter, flight, gx, gy, sx, sy, 0x7d838c, 0xf2c14e, 0x3e4248);
   };
 }
 

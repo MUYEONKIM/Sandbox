@@ -8,11 +8,14 @@ const TOP_W = 32;
 const TOP_H = 16;
 
 const CUBE_W = TOP_W;
-const CUBE_H = TOP_H + BLOCK_HEIGHT;
 
 /** 그림에서 칸 중심에 맞출 위치 (0~1). 칸 중심은 바닥 마름모의 가운데로, 앞 꼭짓점보다 8픽셀 위다. */
 export const CUBE_ORIGIN_X = 0.5;
-export const CUBE_ORIGIN_Y = (CUBE_H - TOP_H / 2) / CUBE_H;
+export function cubeOriginY(height = BLOCK_HEIGHT) {
+  const h = TOP_H + height;
+  return (h - TOP_H / 2) / h;
+}
+export const CUBE_ORIGIN_Y = cubeOriginY();
 
 /** 빛이 왼쪽 위에서 온다. 윗면 앞 모서리는 밝게, 옆면 밑줄은 어둡게 해서 붙은 블록끼리 구분한다. */
 const SHADE_TOP = 1;
@@ -30,15 +33,17 @@ let textures: ImageData | undefined;
  * 텍스처 한 칸으로 아이소메트릭 상자를 그린다. 윗면은 텍스처를 마름모로 눕히고, 옆면 두 개는 기울여 붙인다.
  * 텍스처가 이음매 없는 무늬라 옆면 높이(18)가 텍스처(16)보다 길어도 무늬를 이어 붙인다.
  * side를 주면 옆면은 그 텍스처로 칠하고(잔디처럼 위아래가 다른 그림), 이어 붙이지 않고 옆면 높이에 맞춰 늘린다.
+ * height는 옆면 높이다. 건물 안 벽은 블록 두 개 높이로 그린다.
  */
-export function paintCube(texture: number, side = texture): HTMLCanvasElement {
+export function paintCube(texture: number, side = texture, height = BLOCK_HEIGHT): HTMLCanvasElement {
+  const cubeH = TOP_H + height;
   textures ??= spritePixels('block-textures');
   const source = textures;
   const canvas = document.createElement('canvas');
   canvas.width = CUBE_W;
-  canvas.height = CUBE_H;
+  canvas.height = cubeH;
   const context = canvas.getContext('2d')!;
-  const image = context.createImageData(CUBE_W, CUBE_H);
+  const image = context.createImageData(CUBE_W, cubeH);
 
   const put = (x: number, y: number, cell: number, s: number, t: number, shade: number) => {
     const sx = cell * TEXTURE + (Math.floor(s) % TEXTURE);
@@ -51,7 +56,7 @@ export function paintCube(texture: number, side = texture): HTMLCanvasElement {
   };
   const stretch = side !== texture;
 
-  for (let y = 0; y < CUBE_H; y++) {
+  for (let y = 0; y < cubeH; y++) {
     for (let x = 0; x < CUBE_W; x++) {
       const fx = x + 0.5;
       const fy = y + 0.5;
@@ -66,10 +71,10 @@ export function paintCube(texture: number, side = texture): HTMLCanvasElement {
       const s = left ? fx : fx - TOP_W / 2;
       // 옆면 윗변의 높이: 왼쪽 면은 내려가고 오른쪽 면은 올라간다.
       const t = fy - (left ? TOP_H / 2 + s / 2 : TOP_H - s / 2);
-      if (t < 0 || t >= BLOCK_HEIGHT) continue;
+      if (t < 0 || t >= height) continue;
       const shade = left ? SHADE_LEFT : SHADE_RIGHT;
-      const row = stretch ? (t * TEXTURE) / BLOCK_HEIGHT : t;
-      put(x, y, side, s, row, t >= BLOCK_HEIGHT - 1 ? shade * EDGE_DARK : shade);
+      const row = stretch ? (t * TEXTURE) / height : t;
+      put(x, y, side, s, row, t >= height - 1 ? shade * EDGE_DARK : shade);
     }
   }
   context.putImageData(image, 0, 0);

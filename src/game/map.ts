@@ -3,7 +3,7 @@ import type { BlockId } from '../blocks';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
-import { COUNTER, FLOORS, HIDEOUT, isTower, LOBBY_FURNITURE } from './tower';
+import { COUNTER, FLOORS, HIDEOUT, isTower, LOBBY_FURNITURE, type PartitionKind } from './tower';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -15,6 +15,11 @@ export interface Building extends Tile {
   sprite: SpriteName;
   w: number;
   d: number;
+}
+
+/** 건물 층 안을 나누는 벽 칸 */
+export interface PartitionTile extends Tile {
+  kind: PartitionKind;
 }
 
 /** 맵에 박혀 있는 장식 벽. 블록 그림을 쓰지만 회수할 수 없다. */
@@ -43,6 +48,8 @@ export interface GameMap extends Scenery {
   railings: Tile[];
   /** 장식 벽 */
   walls: FixedWall[];
+  /** 건물 층 안의 벽. 칸을 막고 뛰어넘을 수도 없다. */
+  partitions: PartitionTile[];
   /** 블록을 놓으면 안 되는 칸. 숨은 방을 여는 칸이 막히지 않게 한다. */
   reserved: Tile[];
 }
@@ -156,6 +163,11 @@ export function generateMap(id: MapId): GameMap {
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) terrain[x + y * size] = Terrain.Ground;
     }
+    for (const [vx0, vy0, vx1, vy1] of FLOORS[id].voids) {
+      for (let y = vy0; y <= vy1; y++) {
+        for (let x = vx0; x <= vx1; x++) terrain[x + y * size] = Terrain.Void;
+      }
+    }
     if (id === 'tower1') {
       buildings.push({ ...COUNTER });
       scenery.trees.push(...LOBBY_FURNITURE);
@@ -179,10 +191,21 @@ export function generateMap(id: MapId): GameMap {
   const { floor, floorTop, buildZones = [] } = MAPS[id];
   const railings = isTower(id) ? FLOORS[id].railings : [];
   for (const { x, y } of railings) solid[x + y * size] = 1;
+  const partitions: PartitionTile[] = [];
+  for (const { kind, area } of isTower(id) ? FLOORS[id].partitions : []) {
+    const [px0, py0, px1, py1] = area;
+    for (let y = py0; y <= py1; y++) {
+      for (let x = px0; x <= px1; x++) {
+        if (solid[x + y * size]) continue;
+        partitions.push({ x, y, kind });
+        solid[x + y * size] = 1;
+      }
+    }
+  }
   const walls = MAPS[id].work ? workWalls(id as WorkId, terrain, solid) : [];
   const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, size - 1, size - 1];
   const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger] : [];
-  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, reserved };
+  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved };
 }
 
 /** 장식 벽을 놓을 수 있는 칸에만 세우고 그 칸을 막는다. */

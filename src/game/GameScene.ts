@@ -13,7 +13,7 @@ import {
 } from '../art/interior';
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
-import { CUBE_ORIGIN_X, CUBE_ORIGIN_Y } from '../art/cube';
+import { CUBE_ORIGIN_X, CUBE_ORIGIN_Y, cubeOriginY, paintCube } from '../art/cube';
 import { paintBullet } from '../art/weapons';
 import { blockArt, blockTile, BLOCKS, paintBlock, CUBE_IDS, type BlockId } from '../blocks';
 import {
@@ -77,7 +77,7 @@ import {
 } from './maps';
 import { meleeTarget } from './melee';
 import { findPath } from './path';
-import { CAFE_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type TowerId } from './tower';
+import { CAFE_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type PartitionKind, type TowerId } from './tower';
 import type { StatId } from './stats';
 import { WorkFx } from './workFx';
 import { inReach, World, type Tile } from './world';
@@ -109,6 +109,14 @@ const DEPTH_DECAL = 0.6;
 const DEPTH_HIDEOUT = 0.55;
 /** 같은 칸에 쌓인 블록끼리 위층을 나중에 그리도록 높이마다 더하는 깊이. 칸 하나의 깊이 차(10)보다 훨씬 작다. */
 const STACK_DEPTH = 0.01;
+
+/** 건물 층 안 벽 그림: block-textures.png 칸 번호와 옆면 높이(아트 픽셀). 유리 난간만 낮다. */
+const PARTITION_ART: Record<PartitionKind, { texture: number; height: number }> = {
+  wall: { texture: 16, height: BLOCK_HEIGHT * 2 },
+  core: { texture: 17, height: BLOCK_HEIGHT * 2 },
+  elevator: { texture: 18, height: BLOCK_HEIGHT * 2 },
+  glass: { texture: 9, height: BLOCK_HEIGHT },
+};
 const WORLD_BACKGROUND = '#2c6f93';
 const INDOOR_BACKGROUND = '#14141c';
 const ROOF_BACKGROUND = '#8fcfee';
@@ -520,9 +528,23 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const { left, top } = interiorOrigin(id, gridToWorld(x0, y0));
     this.mapImages.push(this.add.image(left, top, key).setOrigin(0, 0).setDepth(DEPTH_INTERIOR));
     for (const { x, y } of this.world.map.railings) this.addMapArt('railing', paintRailing, x, y);
+    this.showPartitions();
     if (id === 'tower1') {
       const sign = gridToWorld(CAFE_SIGN.x + 0.5, CAFE_SIGN.y);
       this.addSign("ITS'room", sign.x, sign.y - CAFE_SIGN.lift);
+    }
+  }
+
+  /** 층 안의 벽. 칸마다 상자 하나를 세우고, 내 캐릭터를 가리면 반투명해지게 한다. */
+  private showPartitions() {
+    for (const { x, y, kind } of this.world.map.partitions) {
+      const key = `partition-${kind}`;
+      const { texture, height } = PARTITION_ART[kind];
+      if (!this.textures.exists(key)) this.textures.addCanvas(key, paintCube(texture, texture, height));
+      const c = tileCenter(x, y);
+      const image = this.add.image(c.x, c.y, key).setOrigin(CUBE_ORIGIN_X, cubeOriginY(height)).setDepth(depthOf(x, y));
+      this.mapImages.push(image);
+      this.covers.add(key, [image]);
     }
   }
 
@@ -821,11 +843,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.walk = null;
   }
 
-  /** 벽 너머에 설 곳이 있으면 거기로, 없으면 바로 앞이나 제자리로 내린다. 두 개 이상 쌓은 벽은 못 넘는다. */
+  /** 벽 너머에 설 곳이 있으면 거기로, 없으면 바로 앞이나 제자리로 내린다. 두 개 이상 쌓은 블록과 건물 안 벽은 못 넘는다. */
   private jumpLanding(from: Tile, { dx, dy }: Dir): Tile {
     const near = { x: from.x + dx, y: from.y + dy };
     const far = { x: from.x + dx * JUMP_TILES, y: from.y + dy * JUMP_TILES };
-    if (this.world.heightAt(near.x, near.y) < 2 && this.world.isWalkable(far.x, far.y)) return far;
+    if (!this.world.blocksJump(near.x, near.y) && this.world.isWalkable(far.x, far.y)) return far;
     return this.world.isWalkable(near.x, near.y) ? near : from;
   }
 
@@ -1039,7 +1061,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.minimap.draw({
       me: this.me.tile,
       others: [...this.others.values()].map((avatar) => avatar.tile),
-      blocks: [...this.world.blockTiles(), ...this.world.map.walls],
+      blocks: [...this.world.blockTiles(), ...this.world.map.walls, ...this.world.map.partitions],
       portals: this.world.portals,
     });
   }
@@ -1502,6 +1524,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   onBlockPlaced({ x, y, z, id }: PlacedBlock) {
+    // 층 구조가 바뀌어 벽이나 바닥 밖이 된 칸의 옛 블록은 그리지 않는다.
+    if (!this.world.isOpenGround(x, y)) return;
     if (!this.world.blockAtLevel(x, y, z)) this.spawnBlock({ x, y }, z, id);
   }
 

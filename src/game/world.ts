@@ -17,11 +17,15 @@ export function inReach(from: Tile, to: Tile, range = PLACE_RANGE) {
 export class World {
   /** 칸마다 쌓인 블록. 배열 번호가 높이(z)이고 0이 바닥이다. */
   private readonly blocks = new Map<number, BlockId[]>();
+  /** 건물 층 안의 벽 칸 */
+  private readonly partitions = new Set<number>();
 
   constructor(
     readonly map: GameMap,
     readonly portals: Portal[],
-  ) {}
+  ) {
+    for (const { x, y } of map.partitions) this.partitions.add(this.key(x, y));
+  }
 
   private key(x: number, y: number) {
     return x + y * this.map.size;
@@ -74,7 +78,8 @@ export class World {
     return this.portals.some((p) => (p.x === x && p.y === y) || (p.landing.x === x && p.landing.y === y));
   }
 
-  private isOpenGround(x: number, y: number) {
+  /** 블록을 놓을 수 있는 빈 바닥인지(벽, 가구, 허공, 물이 아닌 칸) */
+  isOpenGround(x: number, y: number) {
     if (!this.inBounds(x, y)) return false;
     const i = this.key(x, y);
     return this.map.terrain[i] === Terrain.Ground && !this.map.solid[i];
@@ -84,6 +89,11 @@ export class World {
     if (!this.isOpenGround(x, y)) return false;
     const block = this.blockAt(x, y);
     return !block || !BLOCKS[block].solid;
+  }
+
+  /** 점프로 넘을 수 없는 칸: 두 개 이상 쌓은 블록과 건물 층 안의 벽 */
+  blocksJump(x: number, y: number) {
+    return this.heightAt(x, y) >= 2 || this.partitions.has(this.key(x, y));
   }
 
   /** 총알과 칼을 막는 칸: 건물이나 자원 같은 고정 장애물과 지나갈 수 없는 블록이다. 물과 꽃은 넘어간다. */
