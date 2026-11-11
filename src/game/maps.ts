@@ -1,7 +1,7 @@
 import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
 import { GAMES, isGame, type GameId } from './casino';
-import { COUNTER_INFO, FLOORS, isTower, LOBBY, PANEL_INFO, TOP_FLOORS, UPPER, type TowerId } from './tower';
+import { COUNTER_INFO, FLOORS, isTower, PANEL_INFO, type TowerId } from './tower';
 
 const END = MAP_SIZE - 1;
 
@@ -18,9 +18,6 @@ type Corner = keyof typeof CORNERS;
 /** 포탈에서 나와 서는 칸. 다시 포탈을 타지 않고 포탈 그림에도 가리지 않도록 비껴 선다. */
 const LANDING_ALONG = 3;
 const LANDING_ACROSS = 1;
-
-/** 맵 전체. 작업장은 어디에나 블록을 놓을 수 있다. */
-const WHOLE_MAP: Area = [0, 0, END, END];
 
 /** 포탈 주변은 이만큼 비워 둔다. */
 export const PORTAL_MARGIN = 2;
@@ -61,13 +58,11 @@ export interface MapInfo {
   links: Partial<Record<Corner, MapId>>;
   /** 작업장이면 true. 이 맵에서 자원을 캘 수 있다. */
   work?: boolean;
-  /** true면 공격이 막힌다. 서버도 같은 맵을 막으므로 바꾸면 SQL도 함께 바꾼다. */
+  /** true면 공격이 막힌다. 서버도 같은 맵을 막으므로 바꾸면 SQL도 함께 바꾼다. 지금은 시작마을뿐이다(2026-11-11 사용자 요청). */
   safe?: boolean;
-  /** 블록을 놓을 수 있는 구역. 없으면 놓을 수 없다. 서버의 blocks 정책도 함께 바꾼다. */
-  buildZones?: Area[];
 }
 
-/** 맵 목록. 평원을 중심으로 귀퉁이가 각 맵으로 이어지고, 작업장은 노동청에서 간다. */
+/** 맵 목록. 평원을 중심으로 귀퉁이가 각 맵으로 이어지고, 작업장은 노동청에서 간다. 블록은 어느 맵이든 바닥 전체에 놓는다(2026-11-11 사용자 요청). */
 export const MAPS: Record<MapId, MapInfo> = {
   plains: {
     name: '평원',
@@ -102,7 +97,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xff6a3d,
     links: { left: 'desert' },
   },
-  // 아이티공간 건물 안. 1층 카페는 무기를 못 쓰는 비무장지대지만 블록은 놓을 수 있고, 4층부터는 블록과 무기를 마음대로 쓰는 자유 공간이다.
+  // 아이티공간 건물 안
   tower1: {
     name: '아이티공간 1층',
     floor: [],
@@ -110,8 +105,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0xd9d4ca,
     accent: 0xff7ad9,
     links: {},
-    safe: true,
-    buildZones: [LOBBY],
   },
   tower4: {
     name: '아이티공간 4층',
@@ -120,7 +113,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x6b7280,
     accent: 0xbfe6ff,
     links: {},
-    buildZones: [UPPER],
   },
   tower7: {
     name: '아이티공간 7층',
@@ -129,7 +121,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x6b7280,
     accent: 0xbfe6ff,
     links: {},
-    buildZones: [TOP_FLOORS],
   },
   tower8: {
     name: '아이티공간 8층',
@@ -138,7 +129,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x6b7280,
     accent: 0x7fe3a0,
     links: {},
-    buildZones: [TOP_FLOORS],
   },
   // 엘리베이터 안. 층 버튼을 눌러 1, 4, 7층으로 간다.
   elevator: {
@@ -158,7 +148,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0x7fe3a0,
     links: {},
   },
-  // 시작마을 주점을 고친 도박장. 공격은 막혀 있고 블록도 놓을 수 없다.
+  // 시작마을 주점을 고친 도박장
   casino: {
     name: '인생한방 도박장',
     floor: [],
@@ -166,7 +156,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x7a1824,
     accent: 0xffc34d,
     links: {},
-    safe: true,
   },
   rooftop: {
     name: '아이티공간 옥상',
@@ -175,7 +164,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     color: 0x9a9a96,
     accent: 0x8fd0ff,
     links: {},
-    buildZones: [UPPER],
   },
   forest: {
     name: '숲',
@@ -193,7 +181,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xc9c4bc,
     links: { bottom: 'plains' },
     work: true,
-    buildZones: [WHOLE_MAP],
   },
   logging: {
     name: '벌목장',
@@ -203,7 +190,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0x4fdc86,
     links: { bottom: 'plains' },
     work: true,
-    buildZones: [WHOLE_MAP],
   },
   gathering: {
     name: '채집장',
@@ -213,7 +199,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xf2a65a,
     links: { bottom: 'plains' },
     work: true,
-    buildZones: [WHOLE_MAP],
   },
   fishing: {
     name: '낚시터',
@@ -223,7 +208,6 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0x5fc8ff,
     links: { bottom: 'plains' },
     work: true,
-    buildZones: [WHOLE_MAP],
   },
 };
 

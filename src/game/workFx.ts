@@ -8,8 +8,8 @@ import type { Tile } from './world';
 const PIXEL = 'work-pixel';
 const FISH = 'work-fish';
 
-/** 한 번에 화면에 띄우는 조각 수의 상한 */
-const MAX_PARTICLES = 120;
+/** 한 번에 화면에 띄우는 조각 수의 상한. 여러 사람이 함께 일해도 버티도록 넉넉히 둔다. */
+const MAX_PARTICLES = 240;
 /** 건물이나 나무에 가리지 않도록 효과는 맵의 모든 것보다 앞에 그린다. */
 const FX_DEPTH = 5000;
 const FADE_MS = 140;
@@ -82,6 +82,10 @@ interface Particle {
 interface Job {
   place: WorkId;
   avatar: Avatar;
+  spot: Tile;
+  /** 손에 든 도구와 낚싯줄. 일하는 사람마다 따로 있다. */
+  toolImage: Phaser.GameObjects.Image;
+  line: Phaser.GameObjects.Graphics;
   center: { x: number; y: number };
   target: Phaser.GameObjects.Image | null;
   base: { x: number; y: number };
@@ -99,11 +103,12 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const easeOut = (t: number) => 1 - (1 - t) ** 2;
 const easeIn = (t: number) => t ** 2;
 
-/** 채집 동작: 도구를 휘두르고, 자원이 흔들리고, 주변 지형에서 조각이 튄다. 그림은 코드로 그린 작은 점들이다. */
+/**
+ * 채집 동작: 도구를 휘두르고, 자원이 흔들리고, 주변 지형에서 조각이 튄다. 그림은 코드로 그린 작은 점들이다.
+ * 같은 맵의 다른 사람이 일하는 모습도 같이 그린다(2026-11-11 사용자 요청). 일하는 사람은 플레이어 id로 구분한다.
+ */
 export class WorkFx {
-  private job: Job | null = null;
-  private tool: Phaser.GameObjects.Image | null = null;
-  private line: Phaser.GameObjects.Graphics | null = null;
+  private readonly jobs = new Map<string, Job>();
   private particles: Particle[] = [];
   private readonly pool: Phaser.GameObjects.Image[] = [];
 
@@ -114,8 +119,8 @@ export class WorkFx {
     return key;
   }
 
-  start(place: WorkId, avatar: Avatar, spot: Tile, target: Phaser.GameObjects.Image | null, gatherMs: number) {
-    this.stop();
+  start(id: string, place: WorkId, avatar: Avatar, spot: Tile, target: Phaser.GameObjects.Image | null, gatherMs: number) {
+    this.stop(id);
     const tool = paintTool(place);
     this.texture(PIXEL, () => {
       const canvas = document.createElement('canvas');
@@ -126,16 +131,14 @@ export class WorkFx {
       return canvas;
     });
     const key = this.texture(`work-tool-${place}`, () => tool.canvas);
-    this.tool ??= this.scene.add.image(0, 0, key);
-    this.tool
-      .setTexture(key)
-      .setOrigin(tool.grip.x / tool.canvas.width, tool.grip.y / tool.canvas.height)
-      .setVisible(true);
-    this.line ??= this.scene.add.graphics();
+    const toolImage = this.scene.add.image(0, 0, key).setOrigin(tool.grip.x / tool.canvas.width, tool.grip.y / tool.canvas.height);
 
-    this.job = {
+    this.jobs.set(id, {
       place,
       avatar,
+      spot,
+      toolImage,
+      line: this.scene.add.graphics(),
       center: tileCenter(spot.x, spot.y),
       target,
       base: target ? { x: target.x, y: target.y } : { x: 0, y: 0 },
@@ -146,38 +149,43 @@ export class WorkFx {
       shake: 0,
       nextRipple: CAST_MS + RIPPLE_MS,
       cast: false,
-    };
+    });
   }
 
-  stop() {
-    const { job } = this;
+  /** id가 일하고 있는 자원 칸. 일하지 않으면 null */
+  spotOf(id: string): Tile | null {
+    return this.jobs.get(id)?.spot ?? null;
+  }
+
+  stop(id: string) {
+    const job = this.jobs.get(id);
     if (!job) return;
-    this.job = null;
-    job.avatar.pose(0, 0, 0);
+    this.jobs.delete(id);
+    if (job.avatar.sprite.active) job.avatar.pose(0, 0, 0);
     job.target?.setPosition(job.base.x, job.base.y).setRotation(0);
-    this.tool?.setVisible(false);
-    this.line?.clear();
+    job.toolImage.destroy();
+    job.line.destroy();
   }
 
   /** 맵을 떠날 때 부른다. */
   clear() {
-    this.stop();
+    for (const id of [...this.jobs.keys()]) this.stop(id);
     for (const { image } of this.particles) this.release(image);
     this.particles = [];
   }
 
   update(delta: number) {
     this.stepParticles(delta);
-    const { job } = this;
-    if (!job) return;
-    job.elapsed += delta;
-    if (job.place === 'fishing') this.fish(job);
-    else this.strike(job, SWINGS[job.place], delta);
+    for (const job of this.jobs.values()) {
+      job.elapsed += delta;
+      if (job.place === 'fishing') this.fish(job);
+      else this.strike(job, SWINGS[job.place], delta);
+    }
   }
 
-  /** 자원을 얻었을 때 터지는 마무리 효과 */
-  finish(rare: boolean) {
-    const { job } = this;
+  /** 자원을 얻었을 때 터지는 마무리 효과. shake는 내 화면만 흔들 때 준다. */
+  finish(id: string, rare: boolean, shake = false) {
+    const job = this.jobs.get(id);
     if (!job) return;
     const { x, y } = job.place === 'fishing' ? job.base : job.center;
     const from = { x, y: y - 8 };
@@ -192,7 +200,7 @@ export class WorkFx {
     }
     if (!rare) return;
     this.burst(from.x, from.y, { colors: GOLD, count: 22, speed: 100, up: 130, gravity: 130, life: 720, size: 2 });
-    this.scene.cameras.main.shake(120, 0.004);
+    if (shake) this.scene.cameras.main.shake(120, 0.004);
   }
 
   private strike(job: Job, swing: Swing, delta: number) {
@@ -298,7 +306,7 @@ export class WorkFx {
     avatar.pose(biting ? avatar.facing * -1 : 0, 0, biting ? avatar.facing * -0.05 : 0);
 
     const tip = this.placeTool(job, angle);
-    const line = this.line!;
+    const { line } = job;
     line.clear();
     if (job.cast) {
       line.setDepth(FX_DEPTH);
@@ -307,12 +315,12 @@ export class WorkFx {
   }
 
   /** 도구를 손에 쥐어 그리고, 끝 위치를 돌려준다. */
-  private placeTool({ avatar, tool }: Job, angle: number) {
+  private placeTool({ avatar, tool, toolImage }: Job, angle: number) {
     const { sprite: body, facing } = avatar;
     const x = body.x + facing * 6;
     const y = body.y - 13;
     const rotation = facing * angle;
-    this.tool!.setPosition(x, y).setRotation(rotation).setFlipX(facing < 0).setDepth(FX_DEPTH);
+    toolImage.setPosition(x, y).setRotation(rotation).setFlipX(facing < 0).setDepth(FX_DEPTH);
     return { x: x + Math.sin(rotation) * tool.reach, y: y - Math.cos(rotation) * tool.reach };
   }
 

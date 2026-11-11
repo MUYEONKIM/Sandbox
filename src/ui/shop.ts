@@ -1,6 +1,5 @@
 import { spriteUrl } from '../art/sprites';
-import { BLOCKS, isCube } from '../blocks';
-import type { Economy, ShopItem, ShopTool, ShopWeapon } from '../game/economy';
+import type { Economy, ShopTool, ShopWeapon } from '../game/economy';
 import { paintItem, WEAPONS, type WeaponId } from '../items';
 import { element } from './dom';
 import { PLACE_ICONS } from './office';
@@ -9,11 +8,10 @@ import { PurchaseWindow } from './purchase';
 interface ShopActions {
   onBuyWeapon(id: WeaponId): Promise<void>;
   onBuyTool(tool: ShopTool): Promise<void>;
-  onBuyItem(item: ShopItem): Promise<void>;
   onSell(): void;
 }
 
-/** 상점 창: 무기, 기본 블록과 꾸미기 블록, 작업 도구를 사고 캐 온 전리품을 판다. 실제 거래는 서버가 한다. */
+/** 상점 창: 캐 온 전리품을 팔고(맨 위), 무기와 작업 도구를 산다. 블록과 꾸미기는 누구나 무제한으로 가져서 팔지 않는다. 실제 거래는 서버가 한다. */
 export class ShopWindow extends PurchaseWindow {
   private readonly weaponList: HTMLElement;
   private readonly toolList: HTMLElement;
@@ -27,29 +25,21 @@ export class ShopWindow extends PurchaseWindow {
   ) {
     super(parent, economy, '상점', '없는 것 빼고 다 팝니다. 캐 온 것도 사 드립니다. 환불은 없습니다.');
 
+    // 가장 자주 쓰는 전리품 팔기를 맨 위에 둔다(2026-11-11 사용자 요청).
+    this.sellButton = element('office-sell', this.root, 'button') as HTMLButtonElement;
+    this.sellButton.type = 'button';
+    this.sellButton.addEventListener('click', () => actions.onSell());
+    element('office-section', this.root).textContent = '가방 속 전리품';
+    this.stashList = element('office-stash', this.root);
+    this.refreshers.push(() => this.showStash());
+
     element('office-section', this.root).textContent = '무기';
     this.weaponList = element('shop-weapons', this.root);
     for (const weapon of economy.forSale) this.addWeapon(weapon);
 
-    element('office-section', this.root).textContent = '기본 블록';
-    element('shop-note', this.root).textContent = '아이티공간 1·4·7·8층, 옥상, 작업장에 놓을 수 있습니다. 기본 블록 위에는 다른 블록을 쌓을 수 있습니다.';
-    const cubeList = element('shop-items', this.root);
-    for (const item of economy.items.filter(({ id }) => isCube(id))) this.addItem(cubeList, item);
-
-    element('office-section', this.root).textContent = '꾸미기';
-    const decorList = element('shop-items', this.root);
-    for (const item of economy.items.filter(({ id }) => !isCube(id))) this.addItem(decorList, item);
-
     element('office-section', this.root).textContent = '작업 도구';
     this.toolList = element('shop-stats', this.root);
     for (const tool of economy.tools) this.addTool(tool);
-
-    element('office-section', this.root).textContent = '가방 속 전리품';
-    this.stashList = element('office-stash', this.root);
-    this.sellButton = element('office-sell', this.root, 'button') as HTMLButtonElement;
-    this.sellButton.type = 'button';
-    this.sellButton.addEventListener('click', () => actions.onSell());
-    this.refreshers.push(() => this.showStash());
 
     this.finish();
   }
@@ -72,24 +62,6 @@ export class ShopWindow extends PurchaseWindow {
       const owned = this.economy.owns(id);
       buy.textContent = owned ? '보유 중' : `${price.toLocaleString()}G`;
       buy.disabled = this.busy || owned || this.economy.gold < price;
-    });
-  }
-
-  private addItem(list: HTMLElement, item: ShopItem) {
-    const { id, price, amount } = item;
-    const block = BLOCKS[id];
-    const row = element('shop-item', list);
-    const icon = element('shop-item-icon', row, 'img') as HTMLImageElement;
-    icon.src = paintItem(id).toDataURL();
-    icon.alt = '';
-    const text = element('shop-item-text', row);
-    element('shop-item-name', text).textContent = block.name;
-    element('shop-item-blurb', text).textContent = `${amount}개${block.solid ? '' : ' · 밟고 지나감'}`;
-
-    const buy = this.buyButton(row, () => this.actions.onBuyItem(item));
-    this.refreshers.push(() => {
-      buy.textContent = `${price.toLocaleString()}G`;
-      buy.disabled = this.busy || this.economy.gold < price;
     });
   }
 

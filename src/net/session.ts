@@ -35,6 +35,8 @@ export interface PlayerMove {
   motion: Motion;
   /** 고른 캐릭터. 옛 계정은 null이다. */
   skin: number | null;
+  /** 일하고 있는 자원 칸. 일하지 않으면 null이다. 같은 맵 사람들이 작업 동작을 그리는 데 쓴다. */
+  work: { x: number; y: number } | null;
 }
 
 /** 다른 플레이어의 공격. 화면에 보여 주기만 하고 피해 판정은 공격한 쪽이 한다. */
@@ -72,6 +74,8 @@ export interface SessionEvents {
   /** 내 현재 체력과 최대 체력. 새로 들어온 플레이어에게 알릴 때 쓴다. */
   currentHp(): number;
   currentMaxHp(): number;
+  /** 내가 일하고 있는 자원 칸 */
+  currentWork(): { x: number; y: number } | null;
   /** 내 현재 레벨 */
   currentLevel(): bigint;
   onMove(move: PlayerMove): void;
@@ -80,6 +84,8 @@ export interface SessionEvents {
   onHp(id: string, hp: number, max: number | null): void;
   /** 서버가 판정한 회피 */
   onDodge(id: string): void;
+  /** 같은 맵의 다른 사람이 자원을 하나 얻었다. rare면 희귀 자원이다. */
+  onHarvest(id: string, rare: boolean): void;
   /** 서버가 알려 주는 레벨과 경험치 변화 */
   onLevel(id: string, level: bigint, exp: number): void;
   /** 지금 같은 맵에 접속 중인 플레이어 id 목록 */
@@ -117,6 +123,7 @@ function parseMove(value: unknown): PlayerMove | null {
   if (!m || typeof m.id !== 'string' || typeof m.nickname !== 'string') return null;
   if (!isTileCoord(m.x) || !isTileCoord(m.y) || typeof m.ms !== 'number') return null;
   const maxHp = isMaxHp(m.maxHp) ? m.maxHp : BASE_HP;
+  const work = m.work as { x?: unknown; y?: unknown } | null | undefined;
   return {
     id: m.id,
     nickname: m.nickname.slice(0, MAX_NAME),
@@ -128,6 +135,7 @@ function parseMove(value: unknown): PlayerMove | null {
     level: parseLevel(m.level) ?? 1n,
     motion: m.motion === 'run' || m.motion === 'jump' ? m.motion : 'walk',
     skin: isSkin(m.skin) ? m.skin : null,
+    work: work && isTileCoord(work.x) && isTileCoord(work.y) ? { x: work.x, y: work.y } : null,
   };
 }
 
@@ -153,6 +161,8 @@ function parseBlock(row: { x?: unknown; y?: unknown; z?: unknown; block?: unknow
 /** 로그인한 플레이어 한 명의 서버 연결. 멀티플레이 통신은 이 파일에만 둔다. */
 export class GameSession {
   private channel: RealtimeChannel | null = null;
+  /** 지금 맵의 채팅. 서버만 보낼 수 있는 chat:<맵> 채널이라 닉네임을 사칭할 수 없다. */
+  private mapChat: RealtimeChannel | null = null;
   private readonly chat;
   private events!: SessionEvents;
   private mapId: string;
@@ -173,12 +183,8 @@ export class GameSession {
     await supabase.realtime.setAuth();
     this.joinMap();
 
-    // 서버만 보낼 수 있는 채널이다. 채팅은 맵과 상관없이 모든 플레이어에게 전달된다.
+    // 서버만 보낼 수 있는 채널이다. 체력, 회피, 레벨 알림은 맵과 상관없이 모든 플레이어에게 전달된다.
     this.chat
-      .on('broadcast', { event: 'chat' }, ({ payload }) => {
-        const message = parseChat(payload);
-        if (message) events.onChat(message);
-      })
       .on('broadcast', { event: 'hp' }, ({ payload }) => {
         if (typeof payload?.id === 'string' && isHp(payload.hp)) events.onHp(payload.id, payload.hp, isMaxHp(payload.max) ? payload.max : null);
       })
@@ -193,9 +199,16 @@ export class GameSession {
       .subscribe();
   }
 
-  /** 지금 맵의 채널에 들어간다. 위치와 접속자는 같은 맵끼리만 주고받는다. */
+  /** 지금 맵의 채널에 들어간다. 위치, 접속자, 채팅은 같은 맵끼리만 주고받는다(채팅은 2026-11-11 사용자 요청). */
   private joinMap() {
     const { events, mapId } = this;
+    this.mapChat = supabase
+      .channel(`chat:${mapId}`, { config: { private: true } })
+      .on('broadcast', { event: 'chat' }, ({ payload }) => {
+        const message = parseChat(payload);
+        if (message) events.onChat(message);
+      })
+      .subscribe();
     const channel = supabase.channel(`world:${mapId}`, {
       config: { private: true, presence: { key: this.profile.id } },
     });
@@ -213,6 +226,9 @@ export class GameSession {
       .on('broadcast', { event: 'shot' }, ({ payload }) => {
         const shot = parseShot(payload);
         if (shot && shot.id !== this.profile.id) events.onShot(shot);
+      })
+      .on('broadcast', { event: 'harvest' }, ({ payload }) => {
+        if (typeof payload?.id === 'string' && payload.id !== this.profile.id) events.onHarvest(payload.id, payload.rare === true);
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'blocks' }, ({ new: row }) => {
         const block = parseBlock(row);
@@ -236,9 +252,12 @@ export class GameSession {
   /** 다른 맵으로 옮겨 간다. */
   async changeMap(mapId: string, x: number, y: number) {
     const previous = this.channel;
+    const previousChat = this.mapChat;
     this.channel = null;
+    this.mapChat = null;
     this.joined = false;
     this.mapId = mapId;
+    if (previousChat) void supabase.removeChannel(previousChat);
     if (previous) await supabase.removeChannel(previous);
     this.joinMap();
     this.saveLater({ map: mapId, x, y });
@@ -258,12 +277,19 @@ export class GameSession {
     const { id, nickname, skin } = this.profile;
     const hp = this.events.currentHp();
     const maxHp = this.events.currentMaxHp();
+    const work = this.events.currentWork();
     const level = this.events.currentLevel().toString();
     void this.channel.send({
       type: 'broadcast',
       event: 'move',
-      payload: { id, nickname, x, y, ms, hp, maxHp, level, motion, skin },
+      payload: { id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work },
     });
+  }
+
+  /** 자원을 하나 얻었다고 같은 맵 사람들에게 알린다. 마무리 효과를 그리는 데만 쓴다. */
+  sendHarvest(rare: boolean) {
+    if (!this.joined || !this.channel) return;
+    void this.channel.send({ type: 'broadcast', event: 'harvest', payload: { id: this.profile.id, rare } });
   }
 
   sendShot(weapon: WeaponId, fromX: number, fromY: number, toX: number, toY: number) {
@@ -294,18 +320,6 @@ export class GameSession {
   async buyTool(tool: string): Promise<number | null> {
     const { data, error } = await supabase.rpc('buy_tool', { tool });
     return error ? null : (data as number);
-  }
-
-  /** 꾸미기 블록 한 묶음을 산다. 새 골드와 받은 개수를 돌려주고, 실패하면 null이다. */
-  async buyItem(item: string): Promise<{ gold: number; amount: number } | null> {
-    const { data, error } = await supabase.rpc('buy_item', { item });
-    return error ? null : (data as { gold: number; amount: number });
-  }
-
-  /** 계정마다 한 번만 받는 선물을 받는다. 처음 받는 것이면 true이고, 이미 받았거나 서버에 아직 없으면 false다. */
-  async claimGift(gift: string) {
-    const { data, error } = await supabase.rpc('claim_gift', { gift });
-    return !error && data === true;
   }
 
   /** 레벨 순위를 위에서 size명까지 읽어 온다. 실패하면 null이다. */

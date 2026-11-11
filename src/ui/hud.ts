@@ -229,7 +229,8 @@ export class Hud {
       const dragged = this.dragFrom === i;
       icon.hidden = !stack || dragged;
       if (stack) icon.src = this.icons[stack.id];
-      count.textContent = stack && !dragged ? String(stack.count) : '';
+      // 블록은 무제한이고 무기는 하나라 개수를 쓰지 않는다.
+      count.textContent = '';
       slot.classList.toggle('selected', i === this.inventory.selected);
     });
     const selected = this.inventory.selectedStack;

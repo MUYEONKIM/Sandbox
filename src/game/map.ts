@@ -195,7 +195,7 @@ export function generateMap(id: MapId): GameMap {
   }
   for (const { x, y } of [...scenery.props, ...scenery.trees]) solid[x + y * size] = 1;
 
-  const { floor, floorTop, buildZones = [] } = MAPS[id];
+  const { floor, floorTop } = MAPS[id];
   const railings = isTower(id) ? FLOORS[id].railings : [];
   for (const { x, y } of railings) solid[x + y * size] = 1;
   const partitions: PartitionTile[] = [];
@@ -211,6 +211,8 @@ export function generateMap(id: MapId): GameMap {
   }
   const walls = MAPS[id].work ? workWalls(id as WorkId, terrain, solid) : [];
   const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, size - 1, size - 1];
+  // 블록은 어느 맵이든 바닥 전체에 놓는다. 벽, 물, 포탈 둘레처럼 놓을 수 없는 칸은 World.canPlace가 거른다.
+  const buildZones = [bounds];
   const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger] : [];
   return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved };
 }

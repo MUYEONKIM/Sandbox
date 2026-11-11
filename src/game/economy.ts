@@ -1,4 +1,3 @@
-import type { BlockId } from '../blocks';
 import type { WeaponId } from '../items';
 import type { WorkId } from './maps';
 import type { StatId } from './stats';
@@ -35,13 +34,6 @@ export interface ShopTool {
   price: number;
 }
 
-/** 상점에서 파는 꾸미기 블록: price골드에 amount개 */
-export interface ShopItem {
-  id: BlockId;
-  price: number;
-  amount: number;
-}
-
 export interface ShopStat {
   id: StatId;
   name: string;
@@ -57,7 +49,6 @@ export interface EconomyData {
   stash: { item: string; count: number }[];
   weapons: ShopWeapon[];
   tools: ShopTool[];
-  items: ShopItem[];
   stats: ShopStat[];
   myStats: Record<StatId, number>;
   owned: WeaponId[];
@@ -79,7 +70,6 @@ export class Economy {
   readonly workplaces: Workplace[];
   readonly stats: ShopStat[];
   readonly tools: ShopTool[];
-  readonly items: ShopItem[];
   private readonly weapons: ShopWeapon[];
   private readonly myStats: Record<StatId, number>;
   private readonly owned: Set<WeaponId>;
@@ -91,7 +81,6 @@ export class Economy {
   constructor(data: EconomyData) {
     this.gold = data.gold;
     this.workplaces = data.workplaces;
-    this.items = data.items;
     this.stats = data.stats;
     this.tools = data.tools;
     this.weapons = data.weapons;
@@ -190,12 +179,6 @@ export class Economy {
   setWeaponBought(id: WeaponId, gold: number) {
     this.gold = gold;
     this.owned.add(id);
-    this.changed();
-  }
-
-  /** 꾸미기 블록을 샀다. 블록은 인벤토리에 들어간다. */
-  setItemBought(gold: number) {
-    this.gold = gold;
     this.changed();
   }
 

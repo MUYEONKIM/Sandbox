@@ -54,7 +54,7 @@ import type { ShopWindow } from '../ui/shop';
 import { Avatar, TEAM_H, TEAM_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
 import { CoverFader } from './covers';
-import type { Economy, ShopItem, ShopTool } from './economy';
+import type { Economy, ShopTool } from './economy';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { formatLevel, levelNeed } from './level';
@@ -81,8 +81,12 @@ import { findPath } from './path';
 import { isGame } from './casino';
 import { CAFE_SIGN, CASINO_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type PartitionKind, type TowerId } from './tower';
 import { maxHpOf, type StatId } from './stats';
+import { startTicker } from './ticker';
 import { WorkFx } from './workFx';
 import { inReach, World, type Tile } from './world';
+
+/** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
+const WORK_TICK_MS = 250;
 
 const DEPTH_GROUND = 0;
 const DEPTH_OVERLAY = 1;
@@ -220,7 +224,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private chimneySmoke: Phaser.GameObjects.Image | null = null;
   private readonly paintedArt = new Map<string, Art>();
   /** 작업 중이면 시작 시각, 아니면 null */
+  /** 작업을 시작한(또는 마지막으로 자원을 얻은) 시각. performance.now 기준이라 탭이 숨어도 흐른다. */
   private workStartedAt: number | null = null;
+  /** 일하고 있는 자원 칸 */
+  private workSpot: Tile | null = null;
   private portalFrame = 0;
   private traveling = false;
   private down = false;
@@ -269,6 +276,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   create() {
+    startTicker(WORK_TICK_MS, () => this.updateWork());
     this.createTextures();
     this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
     this.showMap(this.mapId);
@@ -726,11 +734,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.mapId === DEFAULT_MAP ? '시작마을' : MAPS[this.mapId].name;
   }
 
-  /** 이 맵에 블록 설치 구역이 있는지 */
-  private get canBuildHere() {
-    return this.world.map.buildZones.length > 0;
-  }
-
   private advancePlayer(delta: number) {
     const wasMoving = this.me.moving;
     this.me.update(delta);
@@ -930,18 +933,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 상점에서 무기를 산다. 가격과 골드는 서버가 확인한다. */
   async buyWeapon(id: WeaponId) {
-    if (!this.inventory.canAdd(id)) {
-      this.hud.toast('가방이 꽉 찼습니다', '칸을 비우고 다시 오세요');
-      return;
-    }
     const gold = await this.session.buyWeapon(id);
     if (gold === null) {
       this.hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
       return;
     }
     this.economy.setWeaponBought(id, gold);
-    this.inventory.add(id);
-    this.hud.toast(`${WEAPONS[id].name} 구매 완료`, '가방이나 단축키 칸을 확인하세요');
+    const placed = this.inventory.addWeapon(id);
+    this.hud.toast(`${WEAPONS[id].name} 구매 완료`, placed ? '가방이나 단축키 칸을 확인하세요' : '가방에 빈칸이 없어 다음 접속 때 들어옵니다');
   }
 
   /** 상점에서 작업 도구를 산다. 효과는 서버의 harvest가 적용한다. */
@@ -953,22 +952,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     this.economy.setToolBought(id, gold);
     this.hud.toast(`${name} 구매 완료`, '가지고 있으면 자동으로 적용됩니다');
-  }
-
-  /** 상점에서 꾸미기 블록 한 묶음을 산다. 가방에 다 들어갈 때만 산다. */
-  async buyItem({ id, amount }: ShopItem) {
-    if (this.inventory.room(id) < amount) {
-      this.hud.toast('가방이 꽉 찼습니다', '칸을 비우고 다시 오세요');
-      return;
-    }
-    const bought = await this.session.buyItem(id);
-    if (!bought) {
-      this.hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
-      return;
-    }
-    this.economy.setItemBought(bought.gold);
-    for (let i = 0; i < bought.amount; i++) this.inventory.add(id);
-    this.hud.toast(`${BLOCKS[id].name} ${bought.amount}개 구매 완료`, '가방이나 단축키 칸을 확인하세요');
   }
 
   /** ITS'room 카운터에서 스텟을 1 올린다. */
@@ -1007,21 +990,39 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     this.me.face(Math.sign(spot.x - this.me.tile.x), Math.sign(spot.y - this.me.tile.y));
-    this.workStartedAt = this.time.now;
+    this.workStartedAt = performance.now();
+    this.workSpot = spot;
+    this.startWorkFx(this.session.profile.id, this.me, spot);
+    this.announceWork();
+  }
+
+  /** 작업 동작을 그린다. 다른 사람이 일을 시작했을 때도 쓴다. */
+  private startWorkFx(id: string, avatar: Avatar, spot: Tile) {
     const place = this.economy.workplace(this.mapId);
-    if (place) {
-      const image = this.spotImages.get(`${spot.x},${spot.y}`) ?? null;
-      this.workFx.start(place.id, this.me, spot, image, place.gatherMs);
-    }
+    if (!place) return;
+    const image = this.spotImages.get(`${spot.x},${spot.y}`) ?? null;
+    this.workFx.start(id, place.id, avatar, spot, image, place.gatherMs);
+  }
+
+  /** 일을 시작하거나 멈춘 것을 같은 맵 사람들에게 알린다(이동 알림에 일하는 칸이 실린다). */
+  private announceWork() {
+    const { x, y } = this.me.tile;
+    this.session.sendMove(x, y, 0);
   }
 
   private stopWork() {
     if (this.workStartedAt === null) return;
     this.workStartedAt = null;
+    this.workSpot = null;
     this.tags.setProgress(this.session.profile.id, null);
-    this.workFx.stop();
+    this.workFx.stop(this.session.profile.id);
+    this.announceWork();
   }
 
+  /**
+   * 일한 시간이 채집 시간을 넘으면 자원을 하나 얻는다. 화면 갱신(update)과 함께, 창을 내리거나 다른 탭으로 가도
+   * 멈추지 않는 시계(startTicker)에서도 부른다(2026-11-11 사용자 요청). 시각은 performance.now라 숨어 있어도 흐른다.
+   */
   private updateWork() {
     if (this.workStartedAt === null) return;
     const place = this.economy.workplace(this.mapId);
@@ -1029,10 +1030,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.stopWork();
       return;
     }
-    const progress = (this.time.now - this.workStartedAt) / place.gatherMs;
+    const now = performance.now();
+    const progress = (now - this.workStartedAt) / place.gatherMs;
     this.tags.setProgress(this.session.profile.id, progress);
     if (progress < 1) return;
-    this.workStartedAt = this.time.now;
+    this.workStartedAt = now;
     void this.collectResource();
   }
 
@@ -1040,7 +1042,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const result = await this.session.harvest();
     const info = result ? this.economy.lootItem(result.item) : undefined;
     if (!result || !info) return;
-    this.workFx.finish(this.economy.isRare(info));
+    const rare = this.economy.isRare(info);
+    this.workFx.finish(this.session.profile.id, rare, true);
+    this.session.sendHarvest(rare);
     this.economy.add(result.item, result.count);
     const name = result.count > 1 ? `${info.name} ×${result.count}` : info.name;
     this.hud.toast(`${name} 획득 (${info.price}G) · 경험치 +${result.gained}`, info.blurb, this.economy.isRare(info));
@@ -1156,8 +1160,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const weapon = this.selectedWeapon;
     if (weapon && this.isSafeMap) this.notice(`${this.safeName}은 비무장지대입니다`, '이곳에서는 무기를 쓸 수 없습니다.');
     else if (weapon) this.attack(weapon);
-    else if (this.canBuildHere) this.placeBlock();
-    else if (this.inventory.selectedStack) this.notice('블록을 놓을 수 없습니다', '정해진 구역에만 놓을 수 있습니다.');
+    else this.placeBlock();
   }
 
   private notice(title: string, detail: string) {
@@ -1330,13 +1333,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.marker.setDepth(depthOf(x, y) + 2);
       this.strokeTile(x, y, ok ? 0xffffff : 0xff6b5e, -BLOCK_HEIGHT * height);
       // 블록을 들고 벽 블록을 가리키면 그 위에 쌓일 자리를 미리 보여 준다.
-      if (stack && !isWeapon(stack.id) && this.canBuildHere && this.world.canStack(this.hoveredBlock, this.me.tile)) {
+      if (stack && !isWeapon(stack.id) && this.world.canStack(this.hoveredBlock, this.me.tile)) {
         this.dressBlock(this.ghost, stack.id, x, y, height).setAlpha(0.7).setTint(0xffffff).setVisible(true);
       }
       return;
     }
 
-    if (!this.hoveredGround || !this.canBuildHere || (stack && isWeapon(stack.id))) return;
+    if (!this.hoveredGround || (stack && isWeapon(stack.id))) return;
     const { x, y } = this.hoveredGround;
     const ok = stack !== null && this.canPlaceAt(this.hoveredGround);
     this.marker.setDepth(DEPTH_OVERLAY);
@@ -1369,7 +1372,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const pts = [gridToWorld(x0, y0), gridToWorld(x1, y0), gridToWorld(x1, y1), gridToWorld(x0, y1)];
 
     this.range.clear();
-    if (!this.canBuildHere) return;
     this.range.fillStyle(0xffffff, 0.05).lineStyle(1, 0xffffff, 0.5).beginPath();
     this.range.moveTo(pts[0].x, pts[0].y);
     for (const p of pts.slice(1)) this.range.lineTo(p.x, p.y);
@@ -1392,15 +1394,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!spot) return;
     const id = stack.id;
     const { x, y, z } = spot;
-    this.inventory.takeSelected();
 
-    // 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
+    // 블록은 무제한이라 가방에서 빼지 않는다. 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
     const { mapId } = this;
     this.spawnBlock(spot, z, id);
     void this.session.placeBlock(x, y, z, id).then((placed) => {
-      if (placed) return;
-      this.inventory.add(id);
-      if (mapId !== this.mapId) return;
+      if (placed || mapId !== this.mapId) return;
       this.removeBlockAt(x, y, z);
       void this.session.syncBlocks();
     });
@@ -1411,12 +1410,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const target = this.hoveredBlock;
     if (!target || !inReach(this.me.tile, target)) return;
     const top = this.world.topAt(target.x, target.y);
-    if (!top || !this.inventory.canAdd(top.id)) return;
+    if (!top) return;
 
+    // 블록은 무제한이라 회수해도 가방은 그대로다. 놓인 것만 치운다.
     const { mapId } = this;
     const removed = await this.session.removeBlock(target.x, target.y, top.z);
     if (!removed) return;
-    this.inventory.add(removed);
     if (mapId === this.mapId) this.removeBlockAt(target.x, target.y, top.z);
   }
 
@@ -1484,11 +1483,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.me.maxHp;
   }
 
+  currentWork() {
+    return this.workSpot;
+  }
+
   currentLevel() {
     return this.level;
   }
 
-  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin }: PlayerMove) {
+  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work }: PlayerMove) {
     let avatar = this.others.get(id);
     if (!avatar) {
       avatar = new Avatar(this, id, { x, y }, hp, skin, maxHp);
@@ -1496,12 +1499,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.tags.add(id, nickname);
       this.tags.setHp(id, hp, maxHp);
       this.showLevel(id, level);
+      this.showRemoteWork(id, avatar, work);
       return;
     }
     if (avatar.maxHp !== maxHp) {
       avatar.maxHp = maxHp;
       this.tags.setHp(id, avatar.hp, maxHp);
     }
+    this.showRemoteWork(id, avatar, work);
     const { tile } = avatar;
     const reachable = inReach(tile, { x, y }, JUMP_TILES + 1);
     if (motion === 'jump' && reachable) {
@@ -1552,6 +1557,20 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.tags.setHp(id, hp, avatar.maxHp);
   }
 
+  /** 다른 사람의 작업 동작을 알림에 맞춘다: 일하는 칸이 생기면 동작을 시작하고, 없어지면 멈춘다. */
+  private showRemoteWork(id: string, avatar: Avatar, work: Tile | null) {
+    const current = this.workFx.spotOf(id);
+    if (work && current && work.x === current.x && work.y === current.y) return;
+    this.workFx.stop(id);
+    if (!work) return;
+    avatar.face(Math.sign(work.x - avatar.tile.x), Math.sign(work.y - avatar.tile.y));
+    this.startWorkFx(id, avatar, work);
+  }
+
+  onHarvest(id: string, rare: boolean) {
+    this.workFx.finish(id, rare);
+  }
+
   onDodge(id: string) {
     if (id === this.session.profile.id || this.others.has(id)) this.tags.float(id, '회피!', 'dodge');
   }
@@ -1564,6 +1583,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   onRoster(ids: Set<string>) {
     for (const [id, avatar] of this.others) {
       if (ids.has(id)) continue;
+      this.workFx.stop(id);
       avatar.destroy();
       this.others.delete(id);
       this.tags.remove(id);

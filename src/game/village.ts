@@ -6,23 +6,21 @@ import { CASTLE, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, type Ar
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
-export const PAVING = [63, 63, 63, 63, 61];
+const PAVING = [63, 63, 63, 63, 61];
 const DIRT_ROAD = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-export const HEDGES = [27, 28];
-export const FLOWERS = [41, 44, 46, 47];
-export const WEEDS = [42, 43, 45];
-const LOGS = [48, 49, 50, 51, 52];
-const ROCKS = [64, 65, 67];
+const HEDGES = [27, 28];
+const FLOWERS = [41, 44, 46, 47];
 
 /** 시드를 고정해야 모든 플레이어에게 같은 마을이 보이고 충돌 판정도 같아진다. */
 const SEED = 7919;
 
-const TREE_COUNT = 14;
-const LOG_COUNT = 3;
-const ROCK_COUNT = 3;
-const FLOWER_COUNT = 50;
-const WEED_COUNT = 40;
-export const SLIM_TREES: SpriteName[] = ['pinetree', 'firtree'];
+/**
+ * 시작마을은 중요한 건물만 두고 장식을 최소로 한다(2026-11-11 사용자 요청 "너무 많이 꾸며져 있다").
+ * 블록과 꾸미기를 누구나 어디에나 놓을 수 있으니 빈 땅을 넉넉히 남긴다.
+ */
+const TREE_COUNT = 6;
+const FLOWER_COUNT = 18;
+const SLIM_TREES: SpriteName[] = ['pinetree', 'firtree'];
 const ALL_TREES: SpriteName[] = ['pinetree', 'firtree', 'oaktree'];
 
 /**
@@ -33,14 +31,15 @@ const OAK_LINE = 30;
 
 
 const STONE_ROADS: Area[] = [
-  // 성문 앞 광장과 시계탑으로 가는 길
+  // 성문 앞 광장
   [29, 19, 33, 28],
-  [34, 23, 37, 24],
   // 상점으로 가는 길
   [18, 12, 19, 13],
-  // 저택과 집 사이를 지나 노동청 문으로 곧게 가는 길
+  // 노동청 문으로 곧게 가는 길
   [14, 1, 15, 13],
   [5, 1, 13, 2],
+  // 도박장(오른쪽 끝 주점) 문 옆으로 가는 길
+  [34, 16, 45, 17],
   // 성을 두르는 길
   [14, 14, 33, 15],
   [14, 32, 33, 33],
@@ -58,52 +57,29 @@ const DIRT_ROADS: Area[] = [
   [1, 43, 15, 44],
 ];
 
-/** 큰 건물은 뒤쪽을 가리므로 화면 세로줄(x - y)이 겹치지 않게 놓는다. */
-const BUILDINGS: Building[] = [
-  { sprite: 'fruit', x: 38, y: 17, w: 3, d: 3 },
-  { sprite: 'tailor', x: 34, y: 26, w: 3, d: 3 },
-  { sprite: 'clock', x: 38, y: 22, w: 4, d: 4 },
-  { sprite: 'tavern', x: 41, y: 12, w: 4, d: 4 },
-  { sprite: 'thatched', x: 37, y: 35, w: 4, d: 4 },
-  { sprite: 'chapel', x: 36, y: 5, w: 5, d: 3 },
-  { sprite: 'house', x: 27, y: 6, w: 3, d: 5 },
-  { sprite: 'house', x: 10, y: 6, w: 3, d: 5 },
-  { sprite: 'house', x: 33, y: 36, w: 3, d: 5 },
-  { sprite: 'thatched', x: 9, y: 18, w: 4, d: 4 },
-  { sprite: 'fish', x: 10, y: 37, w: 3, d: 3 },
-  { sprite: 'crops', x: 18, y: 36, w: 4, d: 4 },
-  { sprite: 'crops', x: 23, y: 36, w: 4, d: 4 },
-  { sprite: 'crops', x: 28, y: 36, w: 4, d: 4 },
-];
+/** 아이티공간, 상점, 노동청 말고 남긴 건물: 도박장이 된 주점 하나 */
+const BUILDINGS: Building[] = [{ sprite: 'tavern', x: 41, y: 12, w: 4, d: 4 }];
 
 const FIXED_TREES: Tree[] = [
   // 성문 양옆
   { sprite: 'pinetree', x: 30, y: 20 },
   { sprite: 'pinetree', x: 30, y: 27 },
-  { sprite: 'treehouse', x: 4, y: 20 },
   // 광장의 명예의 전당 게시판
   { sprite: FAME.sprite, x: FAME.x, y: FAME.y },
 ];
 
-/** 울타리처럼 줄지어 심은 덤불 */
+/** 울타리처럼 줄지어 심은 덤불: 성 앞 정원. 가운데는 지나다닐 수 있게 비운다. */
 const HEDGE_ROWS: Area[] = [
-  // 성 앞 정원. 가운데는 지나다닐 수 있게 비운다.
   [18, 30, 22, 30],
   [24, 30, 28, 30],
-  // 광장 양쪽
-  [29, 18, 31, 18],
-  [29, 29, 31, 29],
 ];
 
-/** 뒤에 볼거리가 있어 나무를 심지 않는 구역: 밭 앞, 시장 앞, 상점 앞, 노동청 길 */
+/** 나무를 심지 않는 구역: 상점 앞, 노동청 길, 도박장 길 */
 const TREELESS: Area[] = [
-  [16, 40, 41, 45],
-  [34, 22, 45, 31],
   [16, 12, 31, 17],
   [4, 3, 17, 13],
+  [34, 12, 45, 19],
 ];
-
-const POND = { x: 6, y: 30, radius: 5 };
 
 
 export function eachTile([x0, y0, x1, y1]: Area, visit: (x: number, y: number) => void) {
@@ -183,14 +159,13 @@ export function makePlot(seed: number) {
   return { rng, mark, isFree, hasRoom, scatter };
 }
 
-/** 시작마을: 성을 두른 돌길, 포탈로 가는 흙길, 그 사이의 집과 나무, 꽃을 배치한다. */
+/** 시작마을: 성을 두른 돌길, 포탈로 가는 흙길, 성 앞 정원, 드문드문한 나무와 꽃 */
 export function layoutVillage(): Village {
   const { rng, mark, isFree, hasRoom, scatter } = makePlot(SEED);
   const floorTiles = new Map<number, number>();
   const decals = new Map<number, number>();
   const props: TileProp[] = [];
   const trees: Tree[] = [...FIXED_TREES];
-  const water: Tile[] = [];
 
   for (const area of STONE_ROADS) {
     eachTile(area, (x, y) => {
@@ -213,13 +188,6 @@ export function layoutVillage(): Village {
     mark(portal.landing.x, portal.landing.y);
   }
 
-  const { x: px, y: py, radius } = POND;
-  eachTile([px - radius, py - radius, px + radius, py + radius], (x, y) => {
-    if (Math.hypot(x - px, y - py) > radius) return;
-    water.push({ x, y });
-    mark(x, y);
-  });
-
   for (const { x, y } of FIXED_TREES) mark(x, y);
   for (const area of HEDGE_ROWS) {
     eachTile(area, (x, y) => {
@@ -232,10 +200,7 @@ export function layoutVillage(): Village {
   scatter(TREE_COUNT, canPlant, (x, y) => {
     trees.push({ x, y, sprite: rng.pick(x + y < OAK_LINE ? ALL_TREES : SLIM_TREES) });
   });
-  scatter(LOG_COUNT, hasRoom, (x, y) => props.push({ x, y, tile: rng.pick(LOGS) }));
-  scatter(ROCK_COUNT, hasRoom, (x, y) => props.push({ x, y, tile: rng.pick(ROCKS) }));
   scatter(FLOWER_COUNT, isFree, (x, y) => decals.set(tileIndex(x, y), rng.pick(FLOWERS)));
-  scatter(WEED_COUNT, isFree, (x, y) => decals.set(tileIndex(x, y), rng.pick(WEEDS)));
 
-  return { floorTiles, decals, props, trees, buildings: BUILDINGS, water };
+  return { floorTiles, decals, props, trees, buildings: BUILDINGS, water: [] };
 }
