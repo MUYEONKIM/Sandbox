@@ -1,5 +1,4 @@
 import { BLOCK_IDS } from '../blocks';
-import { MAX_HP } from '../config';
 import { BAG_SIZE, HOTBAR_SIZE, type Inventory } from '../game/inventory';
 import { formatLevel, levelNeed } from '../game/level';
 import { itemName, paintItem, WEAPON_IDS, type ItemId } from '../items';
@@ -113,9 +112,9 @@ export class Hud {
     this.connection.hidden = connected;
   }
 
-  setHp(hp: number) {
-    this.hpFill.style.width = `${(hp / MAX_HP) * 100}%`;
-    this.hpText.textContent = `HP ${hp} / ${MAX_HP}`;
+  setHp(hp: number, max: number) {
+    this.hpFill.style.width = `${Math.min(hp / max, 1) * 100}%`;
+    this.hpText.textContent = `HP ${hp} / ${max}`;
   }
 
   setLevel(level: bigint, exp: number, leveled = false) {

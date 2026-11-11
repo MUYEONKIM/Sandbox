@@ -36,7 +36,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     await signOut();
     location.reload();
   });
-  hud.setHp(profile.hp);
+  hud.setHp(profile.hp, profile.max_hp);
   hud.setLevel(BigInt(profile.level), profile.exp);
   void session.claimGift(BASIC_GIFT.name).then((first) => {
     if (!first) return;

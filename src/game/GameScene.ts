@@ -22,7 +22,6 @@ import {
   JUMP_MS,
   JUMP_TILES,
   MAP_SIZE,
-  MAX_HP,
   MAX_STACK,
   PLACE_RANGE,
   RUN_SPEED,
@@ -79,7 +78,7 @@ import {
 import { meleeTarget } from './melee';
 import { findPath } from './path';
 import { CAFE_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type PartitionKind, type TowerId } from './tower';
-import type { StatId } from './stats';
+import { maxHpOf, type StatId } from './stats';
 import { WorkFx } from './workFx';
 import { inReach, World, type Tile } from './world';
 
@@ -274,10 +273,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const saved = this.session.profile;
     if (this.mapId === HIDEOUT.map && isInside(HIDEOUT.area, saved.x, saved.y)) this.showHideout(false);
 
-    const { id, nickname, hp, skin } = this.session.profile;
-    this.me = new Avatar(this, id, this.startTile(), hp, skin);
+    const { id, nickname, hp, max_hp: maxHp, skin } = this.session.profile;
+    this.me = new Avatar(this, id, this.startTile(), hp, skin, maxHp);
     this.tags.add(id, nickname);
-    this.tags.setHp(id, hp);
+    this.tags.setHp(id, hp, maxHp);
     this.showLevel(id, this.level);
 
     this.bullets = new Bullets(this, {
@@ -971,6 +970,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     this.economy.setStatBought(id, bought.value, bought.gold);
+    if (id === 'hp') this.raiseMaxHp(maxHpOf(bought.value));
+  }
+
+  /** HP 스텟을 샀다. 서버처럼 지금 체력도 늘어난 만큼 채우고(쓰러져 있으면 그대로), 같은 맵 사람들에게 새 체력 막대를 알린다. */
+  private raiseMaxHp(maxHp: number) {
+    const gained = maxHp - this.me.maxHp;
+    this.me.maxHp = maxHp;
+    this.setMyHp(this.me.isDown ? 0 : this.me.hp + gained);
+    const { x, y } = this.me.tile;
+    this.session.sendMove(x, y, 0);
   }
 
   /** F로 작업을 시작하거나 멈춘다. 움직이면 멈춘다. */
@@ -1242,7 +1251,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     const tile = respawnTile(this.mapId);
     this.me.teleport(tile);
-    this.setMyHp(MAX_HP);
+    this.setMyHp(this.me.maxHp);
     this.down = false;
     this.hud.showDown(false);
     this.drawRange();
@@ -1252,8 +1261,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private setMyHp(hp: number) {
     this.me.setHp(hp);
-    this.hud.setHp(hp);
-    this.tags.setHp(this.session.profile.id, hp);
+    this.hud.setHp(hp, this.me.maxHp);
+    this.tags.setHp(this.session.profile.id, hp, this.me.maxHp);
     if (hp <= 0) this.goDown();
   }
 
@@ -1462,19 +1471,27 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.me.hp;
   }
 
+  currentMaxHp() {
+    return this.me.maxHp;
+  }
+
   currentLevel() {
     return this.level;
   }
 
-  onMove({ id, nickname, x, y, ms, hp, level, motion, skin }: PlayerMove) {
+  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin }: PlayerMove) {
     let avatar = this.others.get(id);
     if (!avatar) {
-      avatar = new Avatar(this, id, { x, y }, hp, skin);
+      avatar = new Avatar(this, id, { x, y }, hp, skin, maxHp);
       this.others.set(id, avatar);
       this.tags.add(id, nickname);
-      this.tags.setHp(id, hp);
+      this.tags.setHp(id, hp, maxHp);
       this.showLevel(id, level);
       return;
+    }
+    if (avatar.maxHp !== maxHp) {
+      avatar.maxHp = maxHp;
+      this.tags.setHp(id, avatar.hp, maxHp);
     }
     const { tile } = avatar;
     const reachable = inReach(tile, { x, y }, JUMP_TILES + 1);
@@ -1512,16 +1529,18 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
-  onHp(id: string, hp: number) {
+  onHp(id: string, hp: number, max: number | null) {
     const mine = id === this.session.profile.id;
-    const before = mine ? this.me.hp : this.others.get(id)?.hp;
-    if (before !== undefined && hp < before) this.tags.float(id, `-${before - hp}`, 'damage');
+    const avatar = mine ? this.me : this.others.get(id);
+    if (!avatar) return;
+    if (hp < avatar.hp) this.tags.float(id, `-${avatar.hp - hp}`, 'damage');
+    if (max !== null) avatar.maxHp = max;
     if (mine) {
       this.setMyHp(hp);
       return;
     }
-    this.others.get(id)?.setHp(hp);
-    this.tags.setHp(id, hp);
+    avatar.setHp(hp);
+    this.tags.setHp(id, hp, avatar.maxHp);
   }
 
   onDodge(id: string) {

@@ -1,6 +1,7 @@
 import type { AuthError, User } from '@supabase/supabase-js';
 import type { EconomyData } from '../game/economy';
 import { DEFAULT_MAP, isMapId, type WorkId } from '../game/maps';
+import { BASE_HP } from '../config';
 import { isStat } from '../game/stats';
 import { isWeapon } from '../items';
 import { BLOCKS, type BlockId } from '../blocks';
@@ -13,6 +14,8 @@ export interface Profile {
   x: number;
   y: number;
   hp: number;
+  /** 최대 체력. HP 스텟을 살 때마다 1씩 는다. */
+  max_hp: number;
   gold: number;
   /** 숫자가 아주 커질 수 있어 문자열로 받는다. */
   level: string;
@@ -84,10 +87,10 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
   ]);
   const error = workplaces.error ?? loot.error ?? stash.error ?? weapons.error ?? tools.error ?? stats.error ?? items.error;
   if (error) throw new Error(error.message);
-  const { gold, str, def, agi, luk, owned_weapons: owned, owned_tools: ownedTools } = profile;
+  const { gold, str, def, agi, luk, max_hp: maxHp, owned_weapons: owned, owned_tools: ownedTools } = profile;
   return {
     gold,
-    myStats: { str, def, agi, luk },
+    myStats: { str, def, agi, luk, hp: maxHp - BASE_HP },
     owned: owned.filter(isWeapon),
     ownedTools,
     weapons: (weapons.data ?? []).flatMap(({ id, cooldown_ms: cooldownMs, ...rest }) =>
@@ -113,7 +116,7 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
 export async function loadProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nickname, map, x, y, hp, gold, level::text, exp, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin')
+    .select('id, nickname, map, x, y, hp, max_hp, gold, level::text, exp, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(error.message);

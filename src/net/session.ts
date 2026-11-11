@@ -1,6 +1,6 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { BLOCKS, type BlockId } from '../blocks';
-import { MAX_HP, MAX_MAP_SIZE, MAX_STACK, TEAM_SIZE } from '../config';
+import { BASE_HP, MAX_MAP_SIZE, MAX_STACK, TEAM_SIZE } from '../config';
 import type { Slot } from '../game/inventory';
 import { parseLevel } from '../game/level';
 import type { StatId } from '../game/stats';
@@ -28,6 +28,8 @@ export interface PlayerMove {
   y: number;
   ms: number;
   hp: number;
+  /** 최대 체력. HP 스텟에 따라 사람마다 다르다. */
+  maxHp: number;
   level: bigint;
   motion: Motion;
   /** 고른 캐릭터. 옛 계정은 null이다. */
@@ -66,14 +68,15 @@ export interface PlacedBlock {
 export interface SessionEvents {
   /** 내 현재 칸. 새로 들어온 플레이어에게 위치를 알릴 때 쓴다. */
   currentTile(): { x: number; y: number };
-  /** 내 현재 체력. 새로 들어온 플레이어에게 알릴 때 쓴다. */
+  /** 내 현재 체력과 최대 체력. 새로 들어온 플레이어에게 알릴 때 쓴다. */
   currentHp(): number;
+  currentMaxHp(): number;
   /** 내 현재 레벨 */
   currentLevel(): bigint;
   onMove(move: PlayerMove): void;
   onShot(shot: PlayerShot): void;
-  /** 서버가 알려 주는 체력 변화 */
-  onHp(id: string, hp: number): void;
+  /** 서버가 알려 주는 체력 변화. max는 그 사람의 최대 체력이고, 옛 서버 함수는 보내지 않아 null이다. */
+  onHp(id: string, hp: number, max: number | null): void;
   /** 서버가 판정한 회피 */
   onDodge(id: string): void;
   /** 서버가 알려 주는 레벨과 경험치 변화 */
@@ -101,7 +104,8 @@ const SAVE_DELAY_MS = 2000;
 
 const isTileCoord = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < MAX_MAP_SIZE;
 const isGridCoord = (v: unknown): v is number => typeof v === 'number' && v >= -1 && v <= MAX_MAP_SIZE + 1;
-const isHp = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= MAX_HP;
+const isHp = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
+const isMaxHp = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= BASE_HP;
 const isBlockId = (v: unknown): v is BlockId => typeof v === 'string' && Object.hasOwn(BLOCKS, v);
 const isLevel = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < MAX_STACK;
 const isSkin = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < TEAM_SIZE;
@@ -111,13 +115,15 @@ function parseMove(value: unknown): PlayerMove | null {
   const m = value as (Partial<Omit<PlayerMove, 'level'>> & { level?: unknown }) | null;
   if (!m || typeof m.id !== 'string' || typeof m.nickname !== 'string') return null;
   if (!isTileCoord(m.x) || !isTileCoord(m.y) || typeof m.ms !== 'number') return null;
+  const maxHp = isMaxHp(m.maxHp) ? m.maxHp : BASE_HP;
   return {
     id: m.id,
     nickname: m.nickname.slice(0, MAX_NAME),
     x: m.x,
     y: m.y,
     ms: Math.min(Math.max(m.ms, 0), MAX_STEP_MS),
-    hp: isHp(m.hp) ? m.hp : MAX_HP,
+    hp: isHp(m.hp) ? Math.min(m.hp, maxHp) : maxHp,
+    maxHp,
     level: parseLevel(m.level) ?? 1n,
     motion: m.motion === 'run' || m.motion === 'jump' ? m.motion : 'walk',
     skin: isSkin(m.skin) ? m.skin : null,
@@ -173,7 +179,7 @@ export class GameSession {
         if (message) events.onChat(message);
       })
       .on('broadcast', { event: 'hp' }, ({ payload }) => {
-        if (typeof payload?.id === 'string' && isHp(payload.hp)) events.onHp(payload.id, payload.hp);
+        if (typeof payload?.id === 'string' && isHp(payload.hp)) events.onHp(payload.id, payload.hp, isMaxHp(payload.max) ? payload.max : null);
       })
       .on('broadcast', { event: 'dodge' }, ({ payload }) => {
         if (typeof payload?.id === 'string') events.onDodge(payload.id);
@@ -250,11 +256,12 @@ export class GameSession {
     if (!this.joined || !this.channel) return;
     const { id, nickname, skin } = this.profile;
     const hp = this.events.currentHp();
+    const maxHp = this.events.currentMaxHp();
     const level = this.events.currentLevel().toString();
     void this.channel.send({
       type: 'broadcast',
       event: 'move',
-      payload: { id, nickname, x, y, ms, hp, level, motion, skin },
+      payload: { id, nickname, x, y, ms, hp, maxHp, level, motion, skin },
     });
   }
 

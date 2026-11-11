@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { MAX_HP, TEAM_SIZE } from '../config';
+import { BASE_HP, TEAM_SIZE } from '../config';
 import { depthOf, gridToWorld } from '../iso';
 import { WEAPONS, type WeaponId } from '../items';
 import type { Tile } from './world';
@@ -82,16 +82,20 @@ export class Avatar {
   private poseY = 0;
   private poseLean = 0;
   hp: number;
+  /** 최대 체력. HP 스텟에 따라 사람마다 다르다. */
+  maxHp: number;
 
   constructor(
     private readonly scene: Phaser.Scene,
     id: string,
     public tile: Tile,
-    hp = MAX_HP,
+    hp = BASE_HP,
     skin: number | null = null,
+    maxHp = BASE_HP,
   ) {
     this.from = tile;
     this.hp = hp;
+    this.maxHp = maxHp;
     this.firstFrame = (skin ?? memberOf(id)) * TEAM_FRAMES;
     this.image = scene.add.image(0, 0, 'team', this.firstFrame).setOrigin(0.5, TEAM_FOOT_Y / TEAM_H);
     this.gun = scene.add.image(0, 0, 'pistol').setVisible(false);

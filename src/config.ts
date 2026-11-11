@@ -26,7 +26,8 @@ export const JUMP_TILES = 2;
 /** 점프 한 번에 걸리는 시간 (ms) */
 export const JUMP_MS = 340;
 
-export const MAX_HP = 100;
+/** 최대 체력의 기본값. HP 스텟 1포인트마다 1씩 늘어난다. 서버 buy_stat의 100과 같아야 한다. */
+export const BASE_HP = 100;
 
 /** 고를 수 있는 기본 캐릭터 수 */
 export const TEAM_SIZE = 7;

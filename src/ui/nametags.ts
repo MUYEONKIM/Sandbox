@@ -1,4 +1,3 @@
-import { MAX_HP } from '../config';
 import { element } from './dom';
 
 const BUBBLE_MS = 4000;
@@ -40,9 +39,9 @@ export class NameTags {
     if (label) label.textContent = text;
   }
 
-  setHp(id: string, hp: number) {
+  setHp(id: string, hp: number, max: number) {
     const bar = this.tags.get(id)?.hp;
-    if (bar) bar.style.width = `${(hp / MAX_HP) * 100}%`;
+    if (bar) bar.style.width = `${Math.min(hp / max, 1) * 100}%`;
   }
 
   /** 작업 진행도(0~1)를 표시한다. null이면 숨긴다. */

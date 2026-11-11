@@ -1,10 +1,15 @@
-export const STAT_IDS = ['str', 'def', 'agi', 'luk'] as const;
+import { BASE_HP } from '../config';
+
+export const STAT_IDS = ['str', 'def', 'agi', 'luk', 'hp'] as const;
 
 export type StatId = (typeof STAT_IDS)[number];
 
 export function isStat(id: unknown): id is StatId {
   return STAT_IDS.includes(id as StatId);
 }
+
+/** HP 스텟 포인트로 최대 체력을 구한다. 서버는 최대 체력을 profiles.max_hp에 그대로 둔다. */
+export const maxHpOf = (points: number) => BASE_HP + points;
 
 /** 1포인트의 효과는 0.1%다. DEF와 AGI는 이 값으로 점점 완만해진다. */
 const SCALE = 1000;
@@ -23,5 +28,7 @@ export function statEffect(id: StatId, value: number) {
       return `확률 ${percent(Math.min(MAX_DODGE, value / (value + SCALE)))}`;
     case 'luk':
       return `평균 +${percent(value / SCALE)}`;
+    case 'hp':
+      return `최대 HP ${maxHpOf(value)}`;
   }
 }
