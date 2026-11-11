@@ -84,6 +84,8 @@ export interface SessionEvents {
   onHp(id: string, hp: number, max: number | null): void;
   /** 서버가 판정한 회피 */
   onDodge(id: string): void;
+  /** 접속 명단에 실린 다른 사람의 위치와 상태. 맵에 들어오자마자 오며, 아직 안 보이는 사람만 그리면 된다. */
+  onPresence(move: PlayerMove): void;
   /** 같은 맵의 다른 사람이 자원을 하나 얻었다. rare면 희귀 자원이다. */
   onHarvest(id: string, rare: boolean): void;
   /** 서버가 알려 주는 레벨과 경험치 변화 */
@@ -108,6 +110,10 @@ const MAX_NAME = 12;
 const MAX_TEXT = 100;
 const MAX_STEP_MS = 1000;
 const SAVE_DELAY_MS = 2000;
+/** 움직임이 멈추고 이만큼 지나면 접속 명단에 실린 내 위치와 상태를 고친다. 걸을 때마다 고치면 명단 알림이 너무 많아진다. */
+const PRESENCE_DELAY_MS = 800;
+/** 여러 사람이 한꺼번에 들어와도 내 위치는 이 간격에 한 번만 다시 알린다. */
+const ANNOUNCE_GAP_MS = 300;
 
 const isTileCoord = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < MAX_MAP_SIZE;
 const isGridCoord = (v: unknown): v is number => typeof v === 'number' && v >= -1 && v <= MAX_MAP_SIZE + 1;
@@ -169,6 +175,8 @@ export class GameSession {
   private joined = false;
   private pending: ProfilePatch = {};
   private saveTimer = 0;
+  private presenceTimer = 0;
+  private lastAnnounce = 0;
 
   constructor(readonly profile: Profile) {
     this.mapId = profile.map;
@@ -202,47 +210,62 @@ export class GameSession {
   /** 지금 맵의 채널에 들어간다. 위치, 접속자, 채팅은 같은 맵끼리만 주고받는다(채팅은 2026-11-11 사용자 요청). */
   private joinMap() {
     const { events, mapId } = this;
-    this.mapChat = supabase
-      .channel(`chat:${mapId}`, { config: { private: true } })
-      .on('broadcast', { event: 'chat' }, ({ payload }) => {
-        const message = parseChat(payload);
-        if (message) events.onChat(message);
-      })
-      .subscribe();
+    const mapChat = supabase.channel(`chat:${mapId}`, { config: { private: true } });
+    this.mapChat = mapChat;
     const channel = supabase.channel(`world:${mapId}`, {
       config: { private: true, presence: { key: this.profile.id } },
     });
     this.channel = channel;
+    /** 맵을 옮기면 예전 채널은 나가는 중에도 알림이 올 수 있어서, 지금 맵의 채널에서 온 것만 받는다. */
+    const current = () => channel === this.channel;
+
+    mapChat
+      .on('broadcast', { event: 'chat' }, ({ payload }) => {
+        const message = parseChat(payload);
+        if (message && mapChat === this.mapChat) events.onChat(message);
+      })
+      .subscribe();
 
     channel
       .on('presence', { event: 'sync' }, () => {
-        events.onRoster(new Set(Object.keys(channel.presenceState())));
+        if (!current()) return;
+        const state = channel.presenceState();
+        events.onRoster(new Set(Object.keys(state)));
+        // 접속 명단에 각자의 위치와 상태가 실려 있어서, 들어오자마자 다른 사람의 답을 기다리지 않고 그린다.
+        for (const [key, metas] of Object.entries(state)) {
+          if (key === this.profile.id) continue;
+          const move = parseMove(metas[metas.length - 1]);
+          if (move) events.onPresence(move);
+        }
       })
-      .on('presence', { event: 'join' }, () => this.announce())
+      // 새로 들어온 사람에게는 명단보다 정확한 지금 위치를 한 번 더 보낸다. 명단 내용만 바뀐 것(currentPresences가 있음)은 넘긴다.
+      .on('presence', { event: 'join' }, ({ key, currentPresences }) => {
+        if (current() && key !== this.profile.id && currentPresences.length === 0) this.announce();
+      })
       .on('broadcast', { event: 'move' }, ({ payload }) => {
         const move = parseMove(payload);
-        if (move && move.id !== this.profile.id) events.onMove(move);
+        if (current() && move && move.id !== this.profile.id) events.onMove(move);
       })
       .on('broadcast', { event: 'shot' }, ({ payload }) => {
         const shot = parseShot(payload);
-        if (shot && shot.id !== this.profile.id) events.onShot(shot);
+        if (current() && shot && shot.id !== this.profile.id) events.onShot(shot);
       })
       .on('broadcast', { event: 'harvest' }, ({ payload }) => {
-        if (typeof payload?.id === 'string' && payload.id !== this.profile.id) events.onHarvest(payload.id, payload.rare === true);
+        if (current() && typeof payload?.id === 'string' && payload.id !== this.profile.id) events.onHarvest(payload.id, payload.rare === true);
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'blocks' }, ({ new: row }) => {
         const block = parseBlock(row);
-        if (block && row.map === mapId) events.onBlockPlaced(block);
+        if (current() && block && row.map === mapId) events.onBlockPlaced(block);
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'blocks' }, ({ old }) => {
-        if (old.map === mapId && isTileCoord(old.x) && isTileCoord(old.y) && isLevel(old.z)) events.onBlockRemoved(old.x, old.y, old.z);
+        if (current() && old.map === mapId && isTileCoord(old.x) && isTileCoord(old.y) && isLevel(old.z)) events.onBlockRemoved(old.x, old.y, old.z);
       })
       .subscribe((status) => {
-        if (channel !== this.channel) return;
+        if (!current()) return;
         this.joined = status === 'SUBSCRIBED';
         events.onConnection(this.joined);
         if (this.joined) {
-          void channel.track({});
+          void channel.track(this.myState(0, 'walk'));
           this.announce();
           void this.syncBlocks();
         }
@@ -253,12 +276,16 @@ export class GameSession {
   async changeMap(mapId: string, x: number, y: number) {
     const previous = this.channel;
     const previousChat = this.mapChat;
+    const sameMap = mapId === this.mapId;
     this.channel = null;
     this.mapChat = null;
     this.joined = false;
     this.mapId = mapId;
+    window.clearTimeout(this.presenceTimer);
+    // 예전 맵 채널을 다 나갈 때까지 기다리지 않고 새 맵 채널에 바로 든다. 같은 맵이면 채널 이름이 같아서 먼저 나간다.
     if (previousChat) void supabase.removeChannel(previousChat);
-    if (previous) await supabase.removeChannel(previous);
+    if (previous && sameMap) await supabase.removeChannel(previous);
+    else if (previous) void supabase.removeChannel(previous);
     this.joinMap();
     this.saveLater({ map: mapId, x, y });
     await this.flush();
@@ -272,18 +299,36 @@ export class GameSession {
     this.events.onBlocksLoaded(data.map(parseBlock).filter((block) => block !== null));
   }
 
+  /** 이동 알림과 접속 명단에 싣는 내 위치와 상태 */
+  private myState(ms: number, motion: Motion, tile = this.events.currentTile()) {
+    const { id, nickname, skin } = this.profile;
+    return {
+      id,
+      nickname,
+      x: tile.x,
+      y: tile.y,
+      ms,
+      hp: this.events.currentHp(),
+      maxHp: this.events.currentMaxHp(),
+      level: this.events.currentLevel().toString(),
+      motion,
+      skin,
+      work: this.events.currentWork(),
+    };
+  }
+
   sendMove(x: number, y: number, ms: number, motion: Motion = 'walk') {
     if (!this.joined || !this.channel) return;
-    const { id, nickname, skin } = this.profile;
-    const hp = this.events.currentHp();
-    const maxHp = this.events.currentMaxHp();
-    const work = this.events.currentWork();
-    const level = this.events.currentLevel().toString();
-    void this.channel.send({
-      type: 'broadcast',
-      event: 'move',
-      payload: { id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work },
-    });
+    void this.channel.send({ type: 'broadcast', event: 'move', payload: this.myState(ms, motion, { x, y }) });
+    this.refreshPresence();
+  }
+
+  /** 잠시 뒤 접속 명단에 실린 내 위치와 상태를 지금 것으로 고친다. 체력이나 레벨이 바뀌었을 때도 부른다. */
+  refreshPresence() {
+    window.clearTimeout(this.presenceTimer);
+    this.presenceTimer = window.setTimeout(() => {
+      if (this.joined && this.channel) void this.channel.track(this.myState(0, 'walk'));
+    }, PRESENCE_DELAY_MS);
   }
 
   /** 자원을 하나 얻었다고 같은 맵 사람들에게 알린다. 마무리 효과를 그리는 데만 쓴다. */
@@ -356,6 +401,9 @@ export class GameSession {
   }
 
   private announce() {
+    const now = performance.now();
+    if (now - this.lastAnnounce < ANNOUNCE_GAP_MS) return;
+    this.lastAnnounce = now;
     const { x, y } = this.events.currentTile();
     this.sendMove(x, y, 0);
   }

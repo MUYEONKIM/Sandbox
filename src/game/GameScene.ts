@@ -1059,6 +1059,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.exp = exp;
     this.hud.setLevel(level, exp, leveled);
     if (!leveled) return;
+    this.session.refreshPresence();
     this.showLevel(this.session.profile.id, level);
     this.hud.toast(`레벨 업! Lv. ${formatLevel(level)}`, `다음 레벨까지 경험치 ${levelNeed(level).toLocaleString()}`);
   }
@@ -1275,6 +1276,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.me.setHp(hp);
     this.hud.setHp(hp, this.me.maxHp);
     this.tags.setHp(this.session.profile.id, hp, this.me.maxHp);
+    this.session.refreshPresence();
     if (hp <= 0) this.goDown();
   }
 
@@ -1565,6 +1567,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!work) return;
     avatar.face(Math.sign(work.x - avatar.tile.x), Math.sign(work.y - avatar.tile.y));
     this.startWorkFx(id, avatar, work);
+  }
+
+  /** 접속 명단으로 아직 안 보이는 사람을 그린다. 이미 보이는 사람은 이동 알림이 더 새로우므로 그대로 둔다. */
+  onPresence(move: PlayerMove) {
+    if (!this.others.has(move.id)) this.onMove(move);
   }
 
   onHarvest(id: string, rare: boolean) {
