@@ -71,7 +71,8 @@ export class Keys {
   }
 
   private down(e: KeyboardEvent) {
-    if (e.target instanceof HTMLInputElement) return;
+    // 채팅, 금액, 게시판 글처럼 글자를 치는 중이면 게임 키로 쓰지 않는다.
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
 
     // Tab은 브라우저가 다른 칸으로 초점을 옮기지 않게 막고 순위표를 연다.

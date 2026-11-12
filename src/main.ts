@@ -17,6 +17,7 @@ import { Minimap } from './ui/minimap';
 import { NoticeBar } from './ui/notice';
 import { NameTags } from './ui/nametags';
 import { CasinoWindows } from './ui/casino';
+import { BoardWindow } from './ui/board';
 import { CastleWindow } from './ui/castle';
 import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
@@ -25,6 +26,8 @@ import { ShopWindow } from './ui/shop';
 
 /** 명예의 전당 창과 미니맵 밑 패널에 보여 줄 인원 */
 const FAME_SIZE = 50;
+/** 아무말 게시판에 보여 줄 최근 글 수 */
+const BOARD_SIZE = 50;
 const PANEL_SIZE = 10;
 /** Tab 킬/데스 순위표에 보여 줄 인원 */
 const KILL_BOARD_SIZE = 10;
@@ -74,6 +77,11 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   const fame = new FameWindow(root, profile.nickname, () => session.fetchRanking(FAME_SIZE));
   const notices = new NoticeBar(root);
+  const board = new BoardWindow(root, {
+    load: () => session.readBoard(BOARD_SIZE),
+    write: (body) => session.writePost(body),
+    remove: (id) => session.deletePost(id),
+  });
   const killBoard = new KillBoard(root, profile.nickname, () => session.fetchKillRanking(KILL_BOARD_SIZE));
 
   const casino = new CasinoWindows(root, economy, (game, pick, amount) => session.placeBet(game, pick, amount));
@@ -92,16 +100,17 @@ function enterGame(profile: Profile, economyData: EconomyData) {
       shop.close();
       castle.close();
       fame.close();
+      board.close();
       elevator.close();
       casino.close();
     },
     onChat: () => {
-      const windowOpen = hud.isOpen || office.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || elevator.isOpen || casino.isOpen;
+      const windowOpen = hud.isOpen || office.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || elevator.isOpen || casino.isOpen;
       if (!windowOpen) chat.open();
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board);
 
   void session.announceJoin();
 
@@ -118,7 +127,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, elevator, casino } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, board, elevator, casino } });
   }
 }
 

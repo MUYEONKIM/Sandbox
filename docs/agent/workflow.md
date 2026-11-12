@@ -62,14 +62,15 @@
 
 ## 4. 배포 (끝: 실행이 success이고 실제 사이트 번들에 새 문구가 있음)
 
-1. `npm run build`가 통과한다.
-2. `git add <경로들>` → `git status --short`로 바뀐 파일이 모두 스테이징됐는지 본다(`art-source/`는 빼고).
-3. 커밋 메시지는 영어로, 마지막 줄에 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-4. `git push origin main`
-5. `gh run list --commit <전체 SHA>`로 실행을 찾고 `gh run watch <id> --exit-status`. 짧은 SHA로는 찾지 못한다.
-6. 실제 사이트 확인: `index.html`에서 `assets/*.js`를 찾아 새 문구가 있는지 `grep`, 새 그림은 `curl`로 받아 `cmp`.
-7. `docs/agent/status.md`를 고치고(배포 커밋, 테스트 항목, 새 결정) 사용자에게 테스트 항목을 준다. 테스트 항목은 사용자가 화면에서 해 볼 수 있는 동작과 기대 결과로 쓴다.
-8. 사용량을 본다: `mcp__ccd_session_mgmt__get_usage`(지연 도구라 ToolSearch `select:mcp__ccd_session_mgmt__get_usage`로 먼저 불러옴). 대화 기억이나 주간 한도가 80%를 넘으면 사용자에게 알린다.
+1. 게시판 공지 "업데이트 내역"(`src/updates.ts`의 `UPDATES`) 맨 아래에 이번 배포 항목을 하나 더한다(사용자 요청 2026-11-12, 배포마다 빠짐없이). `date`는 배포하는 날, `items`는 플레이어가 화면에서 알아볼 변화를 한 줄씩 쓴다. 인계 문서만 고친 배포처럼 게임에 변화가 없으면 더하지 않는다.
+2. `npm run build`가 통과한다.
+3. `git add <경로들>` → `git status --short`로 바뀐 파일이 모두 스테이징됐는지 본다(`art-source/`는 빼고).
+4. 커밋 메시지는 영어로, 마지막 줄에 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+5. `git push origin main`
+6. `gh run list --commit <전체 SHA>`로 실행을 찾고 `gh run watch <id> --exit-status`. 짧은 SHA로는 찾지 못한다.
+7. 실제 사이트 확인: `index.html`에서 `assets/*.js`를 찾아 새 문구가 있는지 `grep`, 새 그림은 `curl`로 받아 `cmp`.
+8. `docs/agent/status.md`를 고치고(배포 커밋, 테스트 항목, 새 결정) 사용자에게 테스트 항목을 준다. 테스트 항목은 사용자가 화면에서 해 볼 수 있는 동작과 기대 결과로 쓴다.
+9. 사용량을 본다: `mcp__ccd_session_mgmt__get_usage`(지연 도구라 ToolSearch `select:mcp__ccd_session_mgmt__get_usage`로 먼저 불러옴). 대화 기억이나 주간 한도가 80%를 넘으면 사용자에게 알린다.
 
 GitHub Pages의 버릇:
 - 새 푸시가 진행 중인 배포를 취소한다(`cancel-in-progress`).

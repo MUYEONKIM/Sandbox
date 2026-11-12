@@ -49,6 +49,7 @@ import type { CastleWindow } from '../ui/castle';
 import type { CasinoWindows } from '../ui/casino';
 import { noticeText, type Notice, type NoticeBar } from '../ui/notice';
 import type { ElevatorWindow } from '../ui/elevator';
+import type { BoardWindow } from '../ui/board';
 import type { FameWindow } from '../ui/fame';
 import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
@@ -270,6 +271,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly elevator: ElevatorWindow,
     private readonly casino: CasinoWindows,
     private readonly notices: NoticeBar,
+    private readonly board: BoardWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -721,6 +723,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.shop.isOpen ||
       this.castle.isOpen ||
       this.fame.isOpen ||
+      this.board.isOpen ||
       this.elevator.isOpen ||
       this.casino.isOpen ||
       this.chat.isOpen;
@@ -757,6 +760,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'shop') this.shop.open();
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
+      else if (portal.to === 'board') this.board.open();
       else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor);
       else if (isGame(portal.to)) this.casino.open(portal.to);
       else this.travel(portal.to);

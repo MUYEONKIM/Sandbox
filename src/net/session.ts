@@ -7,6 +7,7 @@ import type { BetResult, GameId } from '../game/casino';
 import type { StatId } from '../game/stats';
 import { isWeapon, type WeaponId } from '../items';
 import type { Profile } from './auth';
+import type { BoardPost, WriteResult } from '../ui/board';
 import type { Notice } from '../ui/notice';
 import { supabase } from './supabase';
 
@@ -486,6 +487,32 @@ export class GameSession {
   async buyTool(tool: string): Promise<number | null> {
     const { data, error } = await supabase.rpc('buy_tool', { tool });
     return error ? null : (data as number);
+  }
+
+  /** 아무말 게시판의 최근 글을 새 글부터 읽는다. 실패하면 null이다. */
+  async readBoard(size: number): Promise<BoardPost[] | null> {
+    const { data, error } = await supabase.rpc('read_board', { how_many: size });
+    if (error) return null;
+    return (data as { id: number; nickname: string; body: string; created_at: string; mine: boolean }[]).map((row) => ({
+      id: row.id,
+      nickname: row.nickname,
+      body: row.body,
+      createdAt: new Date(row.created_at),
+      mine: row.mine,
+    }));
+  }
+
+  /** 게시판에 글을 쓴다. 서버가 10초에 한 번만 받는다. */
+  async writePost(body: string): Promise<WriteResult> {
+    const { error } = await supabase.rpc('write_post', { body });
+    if (!error) return 'ok';
+    return error.message.includes('too fast') ? 'too_fast' : 'failed';
+  }
+
+  /** 내가 쓴 글을 지운다. 지웠으면 true */
+  async deletePost(id: number) {
+    const { data, error } = await supabase.rpc('delete_post', { post_id: id });
+    return !error && data === true;
   }
 
   /** 작업장마다 지금 있는 사람(최근 2분 안에 일했거나 움직인 사람). 실패하면 null이다. */

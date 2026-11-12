@@ -2,7 +2,7 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { CASTLE, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
+import { BOARD, CASTLE, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
@@ -64,8 +64,9 @@ const FIXED_TREES: Tree[] = [
   // 성문 양옆
   { sprite: 'pinetree', x: 30, y: 20 },
   { sprite: 'pinetree', x: 30, y: 27 },
-  // 광장의 명예의 전당 게시판
+  // 광장의 명예의 전당 게시판과 아무말 게시판
   { sprite: FAME.sprite, x: FAME.x, y: FAME.y },
+  { sprite: BOARD.sprite, x: BOARD.x, y: BOARD.y },
 ];
 
 /** 울타리처럼 줄지어 심은 덤불: 성 앞 정원. 가운데는 지나다닐 수 있게 비운다. */

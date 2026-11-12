@@ -266,6 +266,20 @@ export const FAME = {
   accent: 0xfff1b8,
 };
 
+/**
+ * 아이티공간 정문 앞 광장 아래쪽의 아무말 게시판(2026-11-12 사용자 요청 "마을 중앙에 누구나 글을 쓰는 게시판").
+ * 위쪽 명예의 전당과 마주 보게 놓았다. 앞 칸이 포탈이고, 타면 게시판 창이 열린다.
+ */
+export const BOARD = {
+  sprite: 'board' as const,
+  x: 32,
+  y: 26,
+  door: { x: 33, y: 27 },
+  landing: { x: 33, y: 28 },
+  name: '아무말 게시판',
+  accent: 0x9fe0ff,
+};
+
 export function isMapId(value: unknown): value is MapId {
   return typeof value === 'string' && Object.hasOwn(MAPS, value);
 }
@@ -273,8 +287,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office', 'shop', 'counter', 'fame', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'panel' | GameId;
+  /** 'office', 'shop', 'counter', 'fame', 'board', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'board' | 'panel' | GameId;
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
@@ -294,6 +308,7 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...SHOP.door, to: 'shop', landing: SHOP.landing });
     portals.push({ ...CASTLE.door, to: 'tower1', label: CASTLE.name, landing: CASTLE.landing });
     portals.push({ ...FAME.door, to: 'fame', landing: FAME.landing });
+    portals.push({ ...BOARD.door, to: 'board', landing: BOARD.landing });
     portals.push({ ...CASINO_DOOR.door, to: 'casino', landing: CASINO_DOOR.landing });
   }
   return portals;
@@ -304,6 +319,7 @@ function portalInfo({ to }: Portal) {
   if (to === 'counter') return COUNTER_INFO;
   if (to === 'panel') return PANEL_INFO;
   if (to === 'fame') return FAME;
+  if (to === 'board') return BOARD;
   if (isGame(to)) return GAMES[to];
   return to === 'shop' ? SHOP : MAPS[to];
 }
