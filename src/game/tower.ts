@@ -7,7 +7,7 @@ import type { Tile } from './world';
  * 엘리베이터는 7층까지 가고, 8층은 7층 사무실 안 계단으로, 옥상은 8층 바깥 계단으로 올라간다.
  * 시작마을 주점을 고친 도박장(casino)과 증권거래소 안(exchange)도 같은 방식으로 그리는 건물 안이라 여기에 함께 둔다.
  */
-export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino' | 'exchange';
+export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino' | 'exchange' | 'annex';
 
 /** 1층 로비 바닥. 블록 설치 구역도 이 범위다. */
 export const LOBBY: Area = [13, 13, 32, 32];
@@ -74,7 +74,7 @@ export interface Partition {
 export interface FloorPlan {
   /** 층 번호. 옥상, 바깥 계단, 엘리베이터 안은 null */
   number: number | null;
-  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange';
+  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange' | 'annex';
   /** 바닥이 있는 칸 */
   area: Area;
   doorways: Doorway[];
@@ -314,6 +314,20 @@ export const EXCHANGE_FURNITURE: Furniture[] = [
   { sprite: 'cafe-table', x: 27, y: 25 },
 ];
 
+/**
+ * 어디와도 이어지지 않은 작은 다다미방(2026-11-13 사용자 요청 "7층과 격리된 공간"). 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
+ * 나가는 포탈은 7층으로 가고, 7층에는 이 방으로 오는 포탈이 없어 엘리베이터 앞에 선다.
+ */
+export const ANNEX: Area = [20, 20, 26, 26];
+/** 방석은 바닥 그림이라 밟고 앉을 수 있다. 스탠드와 밥상은 칸을 막는다. */
+export const ANNEX_PROPS = {
+  lamp: { x: 20, y: 20 },
+  table: { x: 25, y: 22 },
+  cushion: { x: 23, y: 22 },
+  plant: { x: 26, y: 20 },
+};
+const ANNEX_EXIT = { x: 23, y: ANNEX[3] };
+
 function wallPortal([x0, y0]: Area, { wall, at }: Doorway, to: Portal['to'], label?: string): Portal {
   return wall === 'right'
     ? { x: at, y: y0, to, label, landing: { x: at, y: y0 + 2 } }
@@ -423,6 +437,14 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
         ({ stock, name, x }): Portal => ({ x, y: EXCHANGE_HALL[1] + 2, to: 'trade', stock, label: name, landing: { x, y: EXCHANGE_HALL[1] + 4 } }),
       ),
     ],
+  },
+  annex: {
+    ...plain,
+    number: null,
+    style: 'annex',
+    area: ANNEX,
+    doorways: [],
+    portals: [{ ...ANNEX_EXIT, to: 'tower7', label: '7층', landing: { x: ANNEX_EXIT.x, y: ANNEX_EXIT.y - 2 } }],
   },
   elevator: {
     ...plain,

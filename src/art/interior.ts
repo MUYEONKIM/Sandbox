@@ -1,6 +1,7 @@
 import type { Area } from '../game/maps';
 import { SNAIL_COLORS } from '../game/casino';
 import {
+  ANNEX_PROPS,
   BULL,
   CAFE,
   EXCHANGE_BOOTHS,
@@ -282,6 +283,29 @@ function exchangeFloor(painter: Painter): FloorShader {
   };
 }
 
+const TATAMI = [0xcfc684, 0xc6bc76, 0xd6cd8e];
+const TATAMI_EDGE = 0x3f4a2e;
+
+/** 이름 없는 방 바닥: 한 장이 1×2칸인 다다미를 줄마다 반 장씩 엇갈려 깔고, 구석 스탠드 불빛이 번진다. */
+function annexFloor(painter: Painter): FloorShader {
+  const lampX = ANNEX_PROPS.lamp.x - painter.x0 + 0.5;
+  const lampY = ANNEX_PROPS.lamp.y - painter.y0 + 0.5;
+  return (gx, gy, sx, sy) => {
+    const row = Math.floor(gy);
+    const along = gx + (row & 1);
+    const mat = Math.floor(along / 2);
+    let c: Color;
+    if (frac(gy) < 0.07 || frac(gy) > 0.93) c = TATAMI_EDGE;
+    else if (frac(along / 2) < 0.02) c = 0xa89c5a;
+    else {
+      const base = TATAMI[Math.floor(hash2(mat, row) * TATAMI.length)];
+      c = (sx + 2 * sy) % 4 === 0 ? shade(base, 0.92) : base;
+    }
+    const glow = Math.max(0, 1 - Math.hypot(gx - lampX, gy - lampY) / 3.4);
+    return glow > 0 ? mix(shade(c, 1 + glow * 0.2), LAMP_LIGHT, glow * 0.28) : c;
+  };
+}
+
 const FLOOR_SHADERS = {
   lobby: lobbyFloor,
   office: officeFloor,
@@ -290,6 +314,7 @@ const FLOOR_SHADERS = {
   cabin: cabinFloor,
   casino: casinoFloor,
   exchange: exchangeFloor,
+  annex: annexFloor,
 };
 
 /** 건물 바깥 유리벽. 바깥 계단 뒤에 보인다. */
@@ -452,6 +477,69 @@ function paintExchangeWalls(painter: Painter) {
   }
 }
 
+/** 이름 없는 방 벽: 장지문(창호지와 나무 살), 오른쪽 벽 가운데 족자(먹으로 그린 원), 왼쪽 벽 가운데 달과 대나무가 보이는 둥근 창 */
+function paintAnnexWalls(painter: Painter) {
+  for (const wall of ['left', 'right'] as Wall[]) {
+    painter.wallRect(wall, 0, painter.length(wall), 0, WALL_H, (u, v) => {
+      if (v < 5) return 0x4a3020;
+      if (v >= WALL_H - 4) return 0x6a4a30;
+      if (u % 32 < 2) return 0x7a5a3a;
+      if (v < 15) return v === 14 ? 0x6a4a30 : 0x8a6a48;
+      if (u % 8 === 0 || (v - 15) % 10 === 0) return 0xa8865c;
+      return 0xf2ede0;
+    });
+  }
+
+  const center = (wall: Wall, at: number) => (at - (wall === 'right' ? painter.x0 : painter.y0)) * U + U / 2;
+  const scroll = center('right', ANNEX_PROPS.cushion.x);
+  painter.wallRect('right', scroll - 12, scroll + 12, 14, 70, (u, v) => {
+    const du = u - scroll;
+    if (v < 17 || v >= 67) return Math.abs(du) < 12 ? 0x3a2a1a : null;
+    if (Math.abs(du) >= 10 || v < 21 || v >= 63) return 0x6a7f6a;
+    const r = Math.hypot(du, (v - 44) * 0.8);
+    if (r > 5 && r < 7.5 && !(du > 2 && v > 47)) return 0x1d1a18;
+    return 0xf6f0de;
+  });
+
+  const window = center('left', ANNEX_PROPS.cushion.y + 1);
+  painter.wallRect('left', window - 18, window + 18, 24, 64, (u, v) => {
+    const r = Math.hypot(u - window, v - 44);
+    if (r >= 17) return null;
+    if (r >= 15) return 0x6a4a30;
+    if (Math.hypot(u - window - 6, v - 51) < 3.2) return 0xfff4cf;
+    for (const [at, lean] of [
+      [window - 8, 0.08],
+      [window + 2, -0.05],
+    ]) {
+      const x = at + (v - 30) * lean;
+      if (Math.abs(u - x) < 1.2) return (v + Math.round(at)) % 9 === 0 ? 0x2c3a26 : 0x1a2a1a;
+      if (v > 40 && v < 56 && Math.abs(u - x - 3) < 3 && Math.abs(v - 48 - (u - x)) < 1) return 0x1a2a1a;
+    }
+    return ramp([0x1d2440, 0x26305a, 0x2c3a66], (v - 28) / 32, u, v);
+  });
+}
+
+/** 방석: 바닥에서 조금 솟은 보라색 네모 방석, 가운데 매듭 */
+function paintCushion(painter: Painter) {
+  const { p } = painter;
+  const { x, y } = ANNEX_PROPS.cushion;
+  const g0 = x - painter.x0 + 0.12;
+  const g1 = x - painter.x0 + 0.88;
+  const h0 = y - painter.y0 + 0.12;
+  const h1 = y - painter.y0 + 0.88;
+  const lift = 3;
+  const at = (gx: number, gy: number, z: number): [number, number] => [...painter.screen(gx, gy, z)];
+  const minus = (a: [number, number], b: [number, number]): [number, number] => [a[0] - b[0], a[1] - b[1]];
+  p.parallelogram(at(g0, h1, -lift), minus(at(g1, h1, -lift), at(g0, h1, -lift)), [0, lift], () => 0x4e3468);
+  p.parallelogram(at(g1, h0, -lift), minus(at(g1, h1, -lift), at(g1, h0, -lift)), [0, lift], () => 0x3e2856);
+  const top = at(g0, h0, -lift);
+  p.parallelogram(top, minus(at(g1, h0, -lift), top), minus(at(g0, h1, -lift), top), (u, v) => {
+    if (Math.abs(u - 0.5) < 0.08 && Math.abs(v - 0.5) < 0.08) return 0xf2cf6a;
+    if (u < 0.08 || v < 0.08) return 0x8a66b0;
+    return (Math.floor(u * 4) + Math.floor(v * 4)) & 1 ? 0x6a4a8a : 0x72519a;
+  });
+}
+
 /** 달팽이 경주로: 왼쪽 벽을 따라 놓인 낮은 상자. 세 줄 잔디 레인, 뒤쪽 끝 결승선, 앞쪽 출발선에 선 달팽이 셋 */
 function paintSnailTrack(painter: Painter) {
   const { p } = painter;
@@ -494,6 +582,10 @@ function paintWalls(painter: Painter, plan: FloorPlan) {
   }
   if (style === 'exchange') {
     paintExchangeWalls(painter);
+    return;
+  }
+  if (style === 'annex') {
+    paintAnnexWalls(painter);
     return;
   }
   if (style === 'stairs') {
@@ -655,6 +747,7 @@ const EDGE_COLORS = {
   cabin: [0x5b626c, 0x4a505a],
   casino: [0x3a1418, 0x2a0e12],
   exchange: [0x232a36, 0x1a1f29],
+  annex: [0x5a4428, 0x4a3820],
 };
 
 /** 바닥 윗면과 앞쪽 두께를 칠한다. */
@@ -700,6 +793,7 @@ export function paintInterior(id: TowerId): HTMLCanvasElement {
   paintWalls(painter, plan);
   for (const door of plan.doorways) paintDoor(painter, door, plan.number);
   if (plan.style === 'casino') paintSnailTrack(painter);
+  if (plan.style === 'annex') paintCushion(painter);
   p.outlineOuter(OUTLINE);
   return p.toCanvas();
 }

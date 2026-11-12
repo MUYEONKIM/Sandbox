@@ -54,6 +54,7 @@ export class Hud {
   private readonly gold: HTMLElement;
   private readonly toastBox: HTMLElement;
   private readonly announceBox: HTMLElement;
+  private popupBox: HTMLElement | null = null;
   private drag: Drag | null = null;
 
   constructor(
@@ -188,6 +189,23 @@ export class Hud {
     this.announceBox.classList.remove('show');
     void this.announceBox.offsetWidth;
     this.announceBox.classList.add('show');
+  }
+
+  /** 화면 가운데 작은 팝업창. 누르거나 8초가 지나면 닫힌다. 숨은 방에 들어간 사람에게만 띄운다. */
+  popup(text: string) {
+    this.popupBox?.remove();
+    const box = element('popup', this.announceBox.parentElement!);
+    element('popup-text', box).textContent = text;
+    const close = element('popup-close', box, 'button') as HTMLButtonElement;
+    close.type = 'button';
+    close.textContent = '확인';
+    const dismiss = () => {
+      box.remove();
+      if (this.popupBox === box) this.popupBox = null;
+    };
+    box.addEventListener('click', dismiss);
+    window.setTimeout(dismiss, 8000);
+    this.popupBox = box;
   }
 
   showDown(down: boolean) {

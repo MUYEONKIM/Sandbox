@@ -157,6 +157,15 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xffc34d,
     links: {},
   },
+  // 이름 없는 방(src/game/hush.ts)
+  annex: {
+    name: '???',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0xc9bf7a,
+    accent: 0xc9b8ff,
+    links: {},
+  },
   // 증권거래소 안
   exchange: {
     name: '증권거래소',

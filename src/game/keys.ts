@@ -49,6 +49,8 @@ export class Keys {
   private readonly held = new Set<string>();
   /** 프레임 사이에 눌렀다 뗀 키도 한 칸은 움직이도록 남겨 둔다. */
   private readonly tapped = new Set<string>();
+  /** 이동 키를 누른 시각. 같은 칸에서 오래 누르고 있는지 볼 때 쓴다(src/game/hush.ts). */
+  private readonly pressedAt = new Map<string, number>();
   private shiftHeld = false;
   private jumpPressed = false;
   private workPressed = false;
@@ -62,9 +64,11 @@ export class Keys {
       if (isShift(e)) this.shiftHeld = false;
       if (e.code === 'Tab') this.actions.onScoreboard(false);
       this.held.delete(e.code);
+      this.pressedAt.delete(e.code);
     });
     window.addEventListener('blur', () => {
       this.held.clear();
+      this.pressedAt.clear();
       this.shiftHeld = false;
       this.actions.onScoreboard(false);
     });
@@ -87,6 +91,7 @@ export class Keys {
       if (e.repeat) return;
       this.held.add(e.code);
       this.tapped.add(e.code);
+      this.pressedAt.set(e.code, performance.now());
       return;
     }
     if (e.repeat) return;
@@ -123,6 +128,12 @@ export class Keys {
   releaseDirections() {
     this.held.clear();
     this.tapped.clear();
+    this.pressedAt.clear();
+  }
+
+  /** 이동 키를 딱 하나만 누르고 있으면 그 키의 code. 둘 이상이거나 없으면 null */
+  heldMoveKey(): string | null {
+    return this.pressedAt.size === 1 ? [...this.pressedAt.keys()][0] : null;
   }
 
   /** 지금 움직일 방향을 돌려준다. */

@@ -87,6 +87,7 @@ import { findPath } from './path';
 import { isGame } from './casino';
 import { priceChange, STOCK_INFO, type Market } from './market';
 import {
+  ANNEX_PROPS,
   CAFE_SIGN,
   CASINO_SIGN,
   EXCHANGE_BOOTHS,
@@ -104,6 +105,7 @@ import { maxHpOf, type StatId } from './stats';
 import { startTicker } from './ticker';
 import { WorkFx } from './workFx';
 import { inBuildReach, inReach, World, type Tile } from './world';
+import { HUSH_HOLD_MS, openHush } from './hush';
 
 /** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
 const WORK_TICK_MS = 250;
@@ -223,6 +225,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private level: bigint;
   /** 숨은 방이 보이는지. 그 칸들을 밟고 있는 동안에만 보인다. */
   private hideoutShown = false;
+  /** 이동 키 하나를 같은 칸에서 누르고 있는 중: "맵:x:y:키 코드", 그 칸에서 누르기 시작한 시각, 이미 열어 봤는지 */
+  private hush: { place: string; since: number; tried: boolean } | null = null;
   /** 숨은 방 그림. 사라지는 중에도 여기 남아 있다가 다 사라지면 지운다. */
   private hideoutImages: Phaser.GameObjects.Image[] = [];
   /** 지금 레벨에서 모은 경험치 */
@@ -579,6 +583,30 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.addSign(MAPS.casino.name, sign.x, sign.y - CASINO_SIGN.lift);
     }
     if (id === 'exchange') this.showTickers();
+    if (id === 'annex') {
+      this.addMapArt('hideout-lamp', paintLamp, ANNEX_PROPS.lamp.x, ANNEX_PROPS.lamp.y);
+      this.addMapArt('hideout-table', paintLowTable, ANNEX_PROPS.table.x, ANNEX_PROPS.table.y);
+    }
+  }
+
+  /**
+   * 이동 키 하나를 같은 칸에서 HUSH_HOLD_MS 동안 누르고 있으면 그 자리와 키로 암호문을 풀어 본다(src/game/hush.ts).
+   * 맞는 자리면 그 사람만 숨은 방으로 옮기고 팝업을 띄운다. 아닌 곳에서는 아무 일도 없다.
+   */
+  private checkHush(time: number) {
+    const code = this.keys.heldMoveKey();
+    const still = code !== null && !this.traveling && !this.down && !this.me.moving;
+    const place = still ? `${this.mapId}:${this.me.tile.x}:${this.me.tile.y}:${code}` : null;
+    if (place !== this.hush?.place) {
+      this.hush = place ? { place, since: time, tried: false } : null;
+      return;
+    }
+    if (!this.hush || this.hush.tried || time - this.hush.since < HUSH_HOLD_MS) return;
+    this.hush.tried = true;
+    void openHush(this.hush.place).then((found) => {
+      if (!found || !isMapId(found.map) || this.traveling || place !== this.hush?.place) return;
+      this.travel(found.map, () => this.hud.popup(found.popup));
+    });
   }
 
   /** 증권거래소 안: 간판과 종목 시세판. 시세판 숫자는 이름표처럼 화면 위 글씨라 가격이 바뀌면 바로 고친다. */
@@ -763,6 +791,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const delta = Math.min(this.game.loop.rawDelta, MAX_FRAME_MS);
     this.advancePlayer(delta);
     this.checkHideout();
+    this.checkHush(time);
     for (const avatar of this.others.values()) avatar.update(delta);
     this.bullets.update(delta);
     this.updateWork();
@@ -1139,7 +1168,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /** 포탈을 타면 화면을 어둡게 한 사이에 맵을 바꾼다. */
-  private travel(to: MapId) {
+  private travel(to: MapId, onArrive?: () => void) {
     this.clearRoute();
     if (to === 'elevator' && isTower(this.mapId)) this.elevatorFloor = this.mapId;
     this.traveling = true;
@@ -1155,6 +1184,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       void this.session.changeMap(to, tile.x, tile.y);
       cam.fadeIn(FADE_MS);
       this.traveling = false;
+      onArrive?.();
     });
     cam.fadeOut(FADE_MS);
   }
