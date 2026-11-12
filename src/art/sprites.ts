@@ -5,6 +5,7 @@ const NAMES = [
   'Smoke0002',
   'block-textures',
   'board',
+  'bull',
   'cafe-table',
   'castle',
   'chapel',

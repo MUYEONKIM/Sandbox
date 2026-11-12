@@ -148,7 +148,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market);
 
   void session.announceJoin();
   watchNewVersion(root);

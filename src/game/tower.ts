@@ -5,9 +5,9 @@ import type { Tile } from './world';
 /**
  * 아이티공간 건물 안. 9층과 옥상이 있지만 들어갈 수 있는 곳은 1, 4, 7, 8층과 옥상뿐이다.
  * 엘리베이터는 7층까지 가고, 8층은 7층 사무실 안 계단으로, 옥상은 8층 바깥 계단으로 올라간다.
- * 시작마을 주점을 고친 도박장(casino)도 같은 방식으로 그리는 건물 안이라 여기에 함께 둔다.
+ * 시작마을 주점을 고친 도박장(casino)과 증권거래소 안(exchange)도 같은 방식으로 그리는 건물 안이라 여기에 함께 둔다.
  */
-export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino';
+export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino' | 'exchange';
 
 /** 1층 로비 바닥. 블록 설치 구역도 이 범위다. */
 export const LOBBY: Area = [13, 13, 32, 32];
@@ -74,7 +74,7 @@ export interface Partition {
 export interface FloorPlan {
   /** 층 번호. 옥상, 바깥 계단, 엘리베이터 안은 null */
   number: number | null;
-  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino';
+  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange';
   /** 바닥이 있는 칸 */
   area: Area;
   doorways: Doorway[];
@@ -283,6 +283,37 @@ export const CASINO_FURNITURE: Furniture[] = [
   { sprite: 'cafe-table', x: 25, y: 27 },
 ];
 
+/**
+ * 증권거래소 안(2026-11-12 사용자 요청 "도박장처럼 증권거래소 안에 들어가서 거래"). 바닥은 도박장과 같은 18×18칸이다.
+ * 마을 건물의 정문이 왼쪽 면이라 앞-왼쪽 변 가운데로 시작마을에 나간다.
+ */
+export const EXCHANGE_HALL: Area = [13, 13, 30, 30];
+/**
+ * 오른쪽 벽에 건 종목 시세판의 가운데 칸(x). 판 앞 두 칸이 그 종목 창구 포탈이고, 타면 그 종목이 고른 채로 거래 창이 열린다.
+ * 시세판의 숫자는 그림이 아니라 화면 위 글씨라서 가격이 바뀌면 바로 바뀐다. 종목 id는 SQL stocks 표와 같다.
+ */
+export const EXCHANGE_BOOTHS: { stock: string; name: string; x: number; color: number }[] = [
+  { stock: 'samsung', name: '삼성전자', x: 16, color: 0x1428a0 },
+  { stock: 'hynix', name: 'SK하이닉스', x: 20, color: 0xe8102a },
+  { stock: 'hanwha', name: '한화', x: 24, color: 0xee6a10 },
+  { stock: 'itspace', name: '아이티공간', x: 28, color: 0x1f5cff },
+];
+/** 시세판 글씨를 띄우는 높이 (아트 픽셀, 바닥에서) */
+export const TICKER_LIFT = 32;
+/** 홀 가운데 황소 동상. 나가는 문에서 들어오면 바로 보인다. */
+export const BULL = { sprite: 'bull' as const, x: 21, y: 21, w: 2, d: 2 };
+/** 거래소 간판을 다는 벽 위치와 높이 (아트 픽셀) */
+export const EXCHANGE_HALL_SIGN = { x: 22, y: EXCHANGE_HALL[1], lift: 70 };
+const EXCHANGE_EXIT = { x: 22, y: EXCHANGE_HALL[3] };
+
+export const EXCHANGE_FURNITURE: Furniture[] = [
+  { sprite: 'plant', x: 13, y: 13 },
+  { sprite: 'plant', x: 13, y: 30 },
+  { sprite: 'plant', x: 30, y: 30 },
+  { sprite: 'cafe-table', x: 16, y: 25 },
+  { sprite: 'cafe-table', x: 27, y: 25 },
+];
+
 function wallPortal([x0, y0]: Area, { wall, at }: Doorway, to: Portal['to'], label?: string): Portal {
   return wall === 'right'
     ? { x: at, y: y0, to, label, landing: { x: at, y: y0 + 2 } }
@@ -378,6 +409,19 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
       { x: LADDER_BOARD_X, y: CASINO_HALL[1] + 2, to: 'ladder', landing: { x: LADDER_BOARD_X, y: CASINO_HALL[1] + 4 } },
       { x: ODDEVEN_BOARD_X, y: CASINO_HALL[1] + 2, to: 'oddeven', landing: { x: ODDEVEN_BOARD_X, y: CASINO_HALL[1] + 4 } },
       { x: SNAIL_TRACK[2] + 2, y: 22, to: 'snail', landing: { x: SNAIL_TRACK[2] + 4, y: 22 } },
+    ],
+  },
+  exchange: {
+    ...plain,
+    number: null,
+    style: 'exchange',
+    area: EXCHANGE_HALL,
+    doorways: [],
+    portals: [
+      { ...EXCHANGE_EXIT, to: 'plains', label: '시작마을', landing: { x: EXCHANGE_EXIT.x, y: EXCHANGE_EXIT.y - 2 } },
+      ...EXCHANGE_BOOTHS.map(
+        ({ stock, name, x }): Portal => ({ x, y: EXCHANGE_HALL[1] + 2, to: 'trade', stock, label: name, landing: { x, y: EXCHANGE_HALL[1] + 4 } }),
+      ),
     ],
   },
   elevator: {

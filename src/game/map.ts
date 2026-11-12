@@ -3,7 +3,18 @@ import type { BlockId } from '../blocks';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
-import { CASINO_FURNITURE, COUNTER, FLOORS, HIDEOUT, isTower, LOBBY_FURNITURE, SNAIL_TRACK, type PartitionKind } from './tower';
+import {
+  BULL,
+  CASINO_FURNITURE,
+  COUNTER,
+  EXCHANGE_FURNITURE,
+  FLOORS,
+  HIDEOUT,
+  isTower,
+  LOBBY_FURNITURE,
+  SNAIL_TRACK,
+  type PartitionKind,
+} from './tower';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -178,6 +189,10 @@ export function generateMap(id: MapId): GameMap {
       for (let y = ty0; y <= ty1; y++) {
         for (let x = tx0; x <= tx1; x++) solid[x + y * size] = 1;
       }
+    }
+    if (id === 'exchange') {
+      buildings.push({ ...BULL });
+      scenery.trees.push(...EXCHANGE_FURNITURE);
     }
   } else if (id === 'fishing') {
     spots = digPond(terrain);

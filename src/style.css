@@ -940,6 +940,12 @@ canvas {
   border: 2px solid var(--slot-sunken);
 }
 
+/* 거래소 안 종목 창구로 열면 그 종목 줄을 강조한다. */
+.stock-focus {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+
 .stock-icon {
   flex: none;
   width: 48px;
@@ -1275,6 +1281,36 @@ canvas {
 
 .portal-name {
   color: #5fe3ff;
+}
+
+/* 거래소 안 시세판 글씨. 검은 전광판은 벽 그림에 있고, 글씨만 띄운다. */
+.ticker-name {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  background: none;
+  font-family: Consolas, 'Courier New', monospace;
+  line-height: 1.1;
+  text-shadow: 0 0 4px rgb(0 0 0 / 80%);
+}
+
+.ticker-price {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #ffd36b;
+  font-size: 15px;
+}
+
+.ticker-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.ticker-change {
+  font-size: 11px;
 }
 
 .sign-name {

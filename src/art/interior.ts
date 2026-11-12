@@ -1,7 +1,9 @@
 import type { Area } from '../game/maps';
 import { SNAIL_COLORS } from '../game/casino';
 import {
+  BULL,
   CAFE,
+  EXCHANGE_BOOTHS,
   FLOORS,
   HIDEOUT,
   LADDER_BOARD_X,
@@ -48,7 +50,12 @@ const GLYPHS: Record<string, string[]> = {
   '7': ['111', '001', '010', '010', '010'],
   '8': ['111', '101', '111', '101', '111'],
   F: ['111', '100', '110', '100', '100'],
+  I: ['111', '010', '010', '010', '111'],
+  K: ['101', '101', '110', '101', '101'],
+  O: ['111', '101', '101', '101', '111'],
+  P: ['111', '101', '111', '100', '100'],
   R: ['110', '101', '110', '101', '101'],
+  S: ['111', '100', '111', '001', '111'],
 };
 
 /** 바닥 크기에 맞춘 도화지. 바닥은 W×D칸이고 오른쪽 벽이 W칸, 왼쪽 벽이 D칸이다. */
@@ -240,6 +247,41 @@ function casinoFloor(painter: Painter): FloorShader {
   };
 }
 
+const EXCHANGE_GOLD = 0xd2a84a;
+const EXCHANGE_GOLD_DIM = 0x9c7a34;
+const GRANITE_TILES = [0x2b3342, 0x323b4c];
+const RUNNER = [0x8e1f28, 0x7a1820];
+/** 시세판과 차트의 오름(빨강), 내림(파랑). 우리나라 증권 색이다. */
+const MARKET_UP = 0xff4b3e;
+const MARKET_DOWN = 0x4d8dff;
+
+/** 증권거래소 바닥: 짙은 남색 돌 타일, 종목 창구 앞 매트, 나가는 문에서 황소까지 붉은 카펫, 황소 둘레 금빛 원 */
+function exchangeFloor(painter: Painter): FloorShader {
+  const bull = { gx: BULL.x - painter.x0 + BULL.w / 2, gy: BULL.y - painter.y0 + BULL.d / 2 };
+  const booths = EXCHANGE_BOOTHS.map((booth) => ({ gx: booth.x - painter.x0 + 0.5, color: booth.color }));
+  return (gx, gy, sx, sy) => {
+    for (const booth of booths) {
+      const du = Math.abs(gx - booth.gx);
+      if (du < 1.9 && gy > 0.3 && gy < 3.4) {
+        if (du > 1.72 || gy < 0.48 || gy > 3.22) return EXCHANGE_GOLD_DIM;
+        if (gy < 0.75) return booth.color;
+        return hash2(sx, sy) < 0.12 ? 0x1b2333 : 0x202a3d;
+      }
+    }
+    const r = Math.hypot(gx - bull.gx, gy - bull.gy);
+    if (r > 1.9 && r < 2.12) return EXCHANGE_GOLD;
+    const dx = Math.abs(gx - bull.gx);
+    if (gy > bull.gy + 2 && dx < 0.96) {
+      if (dx > 0.8) return EXCHANGE_GOLD_DIM;
+      return RUNNER[hash2(sx >> 1, sy) > 0.93 ? 1 : 0];
+    }
+    if (r <= 1.9) return (sx + sy) % 5 === 0 ? 0x4a5468 : 0x3e475a;
+    if (frac(gx) < 0.04 || frac(gy) < 0.04) return 0x1e2531;
+    const base = GRANITE_TILES[(Math.floor(gx) + Math.floor(gy)) & 1];
+    return (Math.floor(sx / 2) + sy) % 29 === 0 ? shade(base, 1.25) : base;
+  };
+}
+
 const FLOOR_SHADERS = {
   lobby: lobbyFloor,
   office: officeFloor,
@@ -247,6 +289,7 @@ const FLOOR_SHADERS = {
   stairs: stairsFloor,
   cabin: cabinFloor,
   casino: casinoFloor,
+  exchange: exchangeFloor,
 };
 
 /** 건물 바깥 유리벽. 바깥 계단 뒤에 보인다. */
@@ -356,6 +399,59 @@ function paintCasinoWalls(painter: Painter) {
   });
 }
 
+/**
+ * 증권거래소 벽: 아래는 짙은 호두나무 판, 위는 남색 벽, 금빛 띠와 천장 조명.
+ * 오른쪽 벽에 종목 시세판 넷(숫자는 화면 위 글씨로 따로 띄운다), 왼쪽 벽에 큰 KOSPI 차트 화면을 건다.
+ */
+function paintExchangeWalls(painter: Painter) {
+  for (const wall of ['left', 'right'] as Wall[]) {
+    painter.wallRect(wall, 0, painter.length(wall), 0, WALL_H, (u, v) => {
+      if (v < 5) return 0x1a120c;
+      if (v >= WALL_H - 3) return EXCHANGE_GOLD;
+      if (v === 22 || v === 23) return EXCHANGE_GOLD_DIM;
+      if (v < 22) return u % 16 === 0 ? 0x24160c : v === 13 ? 0x4a3020 : 0x3a2616;
+      if (u % 32 === 0) return 0x18233a;
+      return 0x1f2c47;
+    });
+    for (let u = 8; u < painter.length(wall) - 4; u += 24) painter.wallRect(wall, u, u + 4, WALL_H - 7, WALL_H - 5, () => 0xfff4d0);
+  }
+
+  // 종목 시세판: 쇠 테두리, 검은 전광판, 아래 띠는 회사 색
+  for (const { x, color } of EXCHANGE_BOOTHS) {
+    const c = (x - painter.x0) * U + U / 2;
+    painter.wallRect('right', c - 28, c + 28, 10, 64, (u, v) => {
+      const du = u - c;
+      if (Math.abs(du) >= 26 || v < 12 || v >= 62) return 0x3a414c;
+      if (v < 18) return v === 17 ? shade(color, 1.35) : color;
+      return u % 3 === 0 && v % 3 === 0 ? 0x1a212b : 0x0b0e13;
+    });
+  }
+
+  // KOSPI 차트 화면. 왼쪽 벽은 u가 커질수록 화면 왼쪽이라 시간은 u가 줄어드는 쪽으로 흐른다.
+  const u0 = 40;
+  const u1 = 248;
+  painter.wallRect('left', u0, u1, 16, 70, (u, v) => {
+    if (u < u0 + 2 || u >= u1 - 2 || v < 18 || v >= 68) return 0x3a414c;
+    if (v >= 56) return v === 56 ? 0x2a3140 : 0x10151d;
+    return (u - u0) % 26 === 0 || v % 9 === 0 ? 0x18202c : 0x0b0e13;
+  });
+  painter.text('left', 'KOSPI', u1 - 6 - 19 * 2, 58, 2, 0xffc34d);
+  const candles = 15;
+  const step = Math.floor((u1 - u0 - 16) / candles);
+  let close = 26;
+  for (let i = 0; i < candles; i++) {
+    const open = close;
+    // 대체로 오르는 장. 정해진 씨앗이라 늘 같은 모양이다.
+    close = Math.max(22, Math.min(50, open + Math.round((hash2(i, 41) - 0.38) * 9)));
+    const high = Math.max(open, close) + 1 + Math.floor(hash2(i, 7) * 3);
+    const low = Math.min(open, close) - 1 - Math.floor(hash2(i, 13) * 3);
+    const color = close >= open ? MARKET_UP : MARKET_DOWN;
+    const at = u1 - 10 - i * step;
+    painter.wallRect('left', at - 1, at, low, Math.min(high, 54), () => color);
+    painter.wallRect('left', at - 4, at + 3, Math.min(open, close), Math.max(open, close) + 1, () => color);
+  }
+}
+
 /** 달팽이 경주로: 왼쪽 벽을 따라 놓인 낮은 상자. 세 줄 잔디 레인, 뒤쪽 끝 결승선, 앞쪽 출발선에 선 달팽이 셋 */
 function paintSnailTrack(painter: Painter) {
   const { p } = painter;
@@ -394,6 +490,10 @@ function paintWalls(painter: Painter, plan: FloorPlan) {
   const { style } = plan;
   if (style === 'casino') {
     paintCasinoWalls(painter);
+    return;
+  }
+  if (style === 'exchange') {
+    paintExchangeWalls(painter);
     return;
   }
   if (style === 'stairs') {
@@ -554,6 +654,7 @@ const EDGE_COLORS = {
   stairs: [0x3e4248, 0x2f3338],
   cabin: [0x5b626c, 0x4a505a],
   casino: [0x3a1418, 0x2a0e12],
+  exchange: [0x232a36, 0x1a1f29],
 };
 
 /** 바닥 윗면과 앞쪽 두께를 칠한다. */
@@ -587,11 +688,13 @@ export function paintInterior(id: TowerId): HTMLCanvasElement {
   const { p } = painter;
   paintSlab(painter, FLOOR_SHADERS[plan.style](painter, plan), EDGE_COLORS[plan.style]);
 
-  // 1층 출입문 앞 발판
+  // 시작마을로 나가는 문 앞 발판. 앞-오른쪽 변(x 끝)의 문이면 y로 길고, 앞-왼쪽 변(y 끝)의 문이면 x로 길다.
   const exit = plan.portals.find((portal) => portal.to === 'plains');
   if (exit) {
     const o = painter.screen(exit.x - painter.x0 - 1, exit.y - painter.y0 - 1);
-    p.parallelogram(o, [32, 16], [-48, 24], (u, v) => (u < 0.06 || u > 0.94 || v < 0.04 || v > 0.96 ? 0x2a2c31 : 0x43464d));
+    const frontLeft = exit.y === plan.area[3];
+    const [along, across]: [number, number][] = frontLeft ? [[48, 24], [-32, 16]] : [[32, 16], [-48, 24]];
+    p.parallelogram(o, along, across, (u, v) => (u < 0.06 || u > 0.94 || v < 0.04 || v > 0.96 ? 0x2a2c31 : 0x43464d));
   }
 
   paintWalls(painter, plan);

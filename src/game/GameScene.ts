@@ -85,7 +85,21 @@ import {
 import { meleeTarget } from './melee';
 import { findPath } from './path';
 import { isGame } from './casino';
-import { CAFE_SIGN, CASINO_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type PartitionKind, type TowerId } from './tower';
+import { priceChange, STOCK_INFO, type Market } from './market';
+import {
+  CAFE_SIGN,
+  CASINO_SIGN,
+  EXCHANGE_BOOTHS,
+  EXCHANGE_HALL,
+  EXCHANGE_HALL_SIGN,
+  FLOORS,
+  HIDEOUT,
+  hideoutSolid,
+  isTower,
+  TICKER_LIFT,
+  type PartitionKind,
+  type TowerId,
+} from './tower';
 import { maxHpOf, type StatId } from './stats';
 import { startTicker } from './ticker';
 import { WorkFx } from './workFx';
@@ -280,6 +294,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly board: BoardWindow,
     private readonly wanted: WantedPanel,
     private readonly exchange: ExchangeWindow,
+    private readonly market: Market,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -292,6 +307,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.createTextures();
     this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
     this.showMap(this.mapId);
+    this.market.onChange(() => this.paintTickers());
     // 숨은 방 안에서 접속을 끊었다면 방이 열린 채로 시작한다.
     const saved = this.session.profile;
     if (this.mapId === HIDEOUT.map && isInside(HIDEOUT.area, saved.x, saved.y)) this.showHideout(false);
@@ -532,7 +548,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         .image(c.x, c.y, this.portalTexture(portal, 0))
         .setOrigin(0.5, PORTAL_ORIGIN_Y)
         .setDepth(depthOf(portal.x, portal.y));
-      const tag = `portal-${portal.to}`;
+      const tag = `portal-${portal.to}-${portal.x}-${portal.y}`;
       this.tags.add(tag, `→ ${portalName(portal)}`, 'portal');
       return { portal, image, tag };
     });
@@ -561,6 +577,41 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (id === 'casino') {
       const sign = gridToWorld(CASINO_SIGN.x, CASINO_SIGN.y);
       this.addSign(MAPS.casino.name, sign.x, sign.y - CASINO_SIGN.lift);
+    }
+    if (id === 'exchange') this.showTickers();
+  }
+
+  /** 증권거래소 안: 간판과 종목 시세판. 시세판 숫자는 이름표처럼 화면 위 글씨라 가격이 바뀌면 바로 고친다. */
+  private showTickers() {
+    const sign = gridToWorld(EXCHANGE_HALL_SIGN.x, EXCHANGE_HALL_SIGN.y);
+    this.addSign(MAPS.exchange.name, sign.x, sign.y - EXCHANGE_HALL_SIGN.lift);
+    for (const { stock, x } of EXCHANGE_BOOTHS) {
+      const tag = `ticker-${stock}`;
+      this.tags.add(tag, '', 'ticker');
+      const at = gridToWorld(x + 0.5, EXCHANGE_HALL[1]);
+      this.signs.push({ tag, x: at.x, y: at.y - TICKER_LIFT });
+    }
+    this.paintTickers();
+    void this.market.refresh();
+  }
+
+  private paintTickers() {
+    if (this.mapId !== 'exchange') return;
+    for (const { stock } of EXCHANGE_BOOTHS) {
+      const quote = this.market.quote(stock);
+      const head = document.createElement('span');
+      head.className = 'ticker-price';
+      const icon = document.createElement('img');
+      icon.className = 'ticker-icon';
+      icon.alt = '';
+      icon.src = STOCK_INFO[stock]?.icon ?? '';
+      head.append(icon, quote ? `${quote.price.toLocaleString()}` : '-');
+      // 시세판은 좁아서 등락률만 쓴다. 금액까지 보이는 건 거래 창이다.
+      const change = document.createElement('span');
+      const moved = quote ? priceChange(quote.price, quote.prevPrice) : null;
+      change.className = `ticker-change tone-${moved?.tone ?? 'flat'}`;
+      change.textContent = moved ? moved.short : '시세 받는 중';
+      this.tags.setLabel(`ticker-${stock}`, head, change);
     }
   }
 
@@ -723,6 +774,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.updateHover();
     this.placeNameTags();
     this.updateMinimap(time);
+    // 거래소 안에 있으면 시세판을 1분마다 새로 받는다(Market.refresh가 1분 안에는 건너뛴다).
+    if (this.mapId === 'exchange') void this.market.refresh();
   }
 
   private get canAct() {
@@ -771,7 +824,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
       else if (portal.to === 'board') this.board.open();
-      else if (portal.to === 'exchange') this.exchange.open();
+      else if (portal.to === 'trade') this.exchange.open(portal.stock);
       else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor);
       else if (isGame(portal.to)) this.casino.open(portal.to);
       else this.travel(portal.to);

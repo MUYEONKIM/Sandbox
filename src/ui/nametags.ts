@@ -2,10 +2,12 @@ import { element } from './dom';
 
 const BUBBLE_MS = 4000;
 
-export type TagKind = 'player' | 'portal' | 'sign';
+export type TagKind = 'player' | 'portal' | 'sign' | 'ticker';
 
 interface Tag {
   root: HTMLElement;
+  /** 이름 줄 */
+  label: HTMLElement;
   /** 플레이어 이름표의 이름 줄. 악업에 따라 빨개진다. */
   name: HTMLElement | null;
   wanted: HTMLElement | null;
@@ -38,7 +40,7 @@ export class NameTags {
     const hp = isPlayer ? element('player-hp-fill', element('player-hp', root)) : null;
     const progress = isPlayer ? element('player-work-fill', element('player-work', root)) : null;
     if (progress) progress.parentElement!.hidden = true;
-    const tag = { root, name: isPlayer ? name : null, wanted, bubble, level, hp, progress, timer: 0 };
+    const tag = { root, label: name, name: isPlayer ? name : null, wanted, bubble, level, hp, progress, timer: 0 };
     this.tags.set(id, tag);
     this.paintKarma(id, tag);
   }
@@ -54,6 +56,11 @@ export class NameTags {
     const karma = this.karma.get(id) ?? 0;
     for (let k = 1; k <= 5; k++) name.classList.toggle(`karma-${k}`, k === karma);
     wanted.hidden = karma === 0;
+  }
+
+  /** 이름 줄 내용을 바꾼다. 거래소 시세판이 가격이 바뀔 때 쓴다. */
+  setLabel(id: string, ...nodes: (Node | string)[]) {
+    this.tags.get(id)?.label.replaceChildren(...nodes);
   }
 
   setLevel(id: string, text: string) {

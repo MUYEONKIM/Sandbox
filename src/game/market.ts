@@ -109,7 +109,9 @@ export function priceChange(now: number, before: number) {
   const tone = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
   const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '-';
   const text = diff === 0 ? '변동 없음' : `${arrow} ${Math.abs(diff).toLocaleString()} (${diff > 0 ? '+' : '-'}${Math.abs(rate).toFixed(2)}%)`;
-  return { tone, text } as const;
+  /** 거래소 안 시세판처럼 좁은 곳에 쓰는 등락률만 */
+  const short = diff === 0 ? '변동 없음' : `${arrow} ${Math.abs(rate).toFixed(2)}%`;
+  return { tone, text, short } as const;
 }
 
 /** 평가손익: 지금 값 - 산 값. "+12,000G (+3.20%)" */

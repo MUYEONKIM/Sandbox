@@ -25,7 +25,9 @@ export class ExchangeWindow extends PurchaseWindow {
   private readonly input: HTMLInputElement;
   private amount = AMOUNTS[1];
   private refreshTimer = 0;
-  private readonly rows = new Map<string, () => void>();
+  private readonly rows = new Map<string, { row: HTMLElement; refresh: () => void }>();
+  /** 거래소 안 종목 창구로 열었으면 그 종목. 줄을 강조하고 보이게 내린다. */
+  private focus: string | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -90,8 +92,10 @@ export class ExchangeWindow extends PurchaseWindow {
     market.onChange(() => this.render());
   }
 
-  open() {
+  open(focus?: string) {
+    this.focus = focus ?? null;
     super.open();
+    this.rows.get(this.focus ?? '')?.row.scrollIntoView({ block: 'nearest' });
     void this.market.refresh();
     window.clearInterval(this.refreshTimer);
     this.refreshTimer = window.setInterval(() => void this.market.refresh(), REFRESH_MS);
@@ -122,7 +126,7 @@ export class ExchangeWindow extends PurchaseWindow {
       this.rows.clear();
       for (const quote of quotes) this.rows.set(quote.id, this.addRow(quote));
     }
-    for (const refresh of this.rows.values()) refresh();
+    for (const { refresh } of this.rows.values()) refresh();
 
     const listed = quotes.filter((q) => STOCK_INFO[q.id]?.listed);
     const latest = new Date(Math.max(...listed.map((q) => q.updatedAt.getTime())));
@@ -151,7 +155,8 @@ export class ExchangeWindow extends PurchaseWindow {
     const sell = this.buyButton(actions, () => this.actions.onTrade(id, -this.amount));
     sell.classList.add('stock-sell');
 
-    return () => {
+    const refresh = () => {
+      row.classList.toggle('stock-focus', this.focus === id);
       const quote = this.market.quote(id);
       if (!quote) return;
       const held = this.market.holding(id);
@@ -175,5 +180,6 @@ export class ExchangeWindow extends PurchaseWindow {
       buy.disabled = this.busy || this.amount < 1 || this.economy.gold < total;
       sell.disabled = this.busy || this.amount < 1 || held.shares < this.amount;
     };
+    return { row, refresh };
   }
 }
