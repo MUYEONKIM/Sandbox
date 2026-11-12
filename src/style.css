@@ -624,6 +624,9 @@ canvas {
 
 .bag {
   grid-template-columns: repeat(9, var(--slot-size));
+  /* 화면이 낮으면 가방 칸을 스크롤한다. 아래 단축키 줄과 위 제목을 뺀 높이 */
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
   box-shadow: none;
   border: 0;
   padding: 0;
@@ -1130,6 +1133,15 @@ canvas {
   .slot-icon {
     width: 28px;
     height: 28px;
+  }
+
+  /* 가방 9칸 줄이 휴대폰 폭(375px)에 들어가게 여백을 줄인다. */
+  .slots {
+    gap: 3px;
+  }
+
+  .panel {
+    padding: 10px 8px 12px;
   }
 }
 

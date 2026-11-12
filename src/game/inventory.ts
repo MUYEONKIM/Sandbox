@@ -2,7 +2,8 @@ import { BLOCKS, type BlockId } from '../blocks';
 import { isItem, isWeapon, type ItemId, type WeaponId } from '../items';
 
 export const HOTBAR_SIZE = 9;
-export const BAG_SIZE = 27;
+/** 가방 칸. 블록이 늘어 2026-11-12에 27칸(3줄)에서 63칸(7줄)으로 늘렸다. 블록과 무기를 합친 수보다 커야 모두 들어간다. */
+export const BAG_SIZE = 63;
 /** 예전 저장 형식의 한 칸 최대 개수. 지금은 개수를 세지 않지만 저장된 칸을 읽을 때 검사한다. */
 const STACK_SIZE = 64;
 
@@ -20,8 +21,9 @@ function isSlot(value: unknown): value is Slot {
   return isItem(stack.id) && Number.isInteger(stack.count) && stack.count! >= 1 && stack.count! <= STACK_SIZE;
 }
 
+/** 가방이 작던 때 저장한 목록(칸 수가 더 적음)도 받는다. 모자란 칸은 arrange가 빈칸으로 채운다. */
 function isSlotList(value: unknown): value is Slot[] {
-  return Array.isArray(value) && value.length === HOTBAR_SIZE + BAG_SIZE && value.every(isSlot);
+  return Array.isArray(value) && value.length <= HOTBAR_SIZE + BAG_SIZE && value.every(isSlot);
 }
 
 /** 처음 단축키 칸에 놓는 블록. 나머지 블록은 가방에 들어간다. */
@@ -33,9 +35,8 @@ const HOTBAR_BLOCKS: readonly BlockId[] = ['stone', 'brick', 'wood', 'hedge', 'g
  * 무기는 서버가 아는 보유 목록에 맞춘다(저장된 인벤토리는 위조할 수 있으므로).
  */
 function arrange(saved: unknown, owned: readonly WeaponId[]): Slot[] {
-  const slots: Slot[] = isSlotList(saved)
-    ? saved.map((slot) => (slot ? { id: slot.id, count: 1 } : null))
-    : Array.from({ length: HOTBAR_SIZE + BAG_SIZE }, () => null);
+  const slots: Slot[] = Array.from({ length: HOTBAR_SIZE + BAG_SIZE }, () => null);
+  if (isSlotList(saved)) saved.forEach((slot, i) => (slots[i] = slot ? { id: slot.id, count: 1 } : null));
   const seen = new Set<ItemId>();
   slots.forEach((slot, i) => {
     if (!slot) return;
