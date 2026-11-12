@@ -87,7 +87,7 @@ import { CAFE_SIGN, CASINO_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type Pa
 import { maxHpOf, type StatId } from './stats';
 import { startTicker } from './ticker';
 import { WorkFx } from './workFx';
-import { BUILD_REACH_EXTRA, inBuildReach, inReach, World, type Tile } from './world';
+import { inBuildReach, inReach, World, type Tile } from './world';
 
 /** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
 const WORK_TICK_MS = 250;
@@ -1372,26 +1372,49 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.marker.closePath().strokePath();
   }
 
-  /** 블록을 놓을 수 있는 범위: 둘레 8칸의 마름모와, 그 네 변의 가운데 바깥에 붙은 한 칸씩 */
+  /**
+   * 블록을 놓을 수 있는 범위: 둘레 8칸의 마름모와, 그 네 변의 가운데 바깥에 붙은 한 칸씩.
+   * 칸마다 옅게 칠하고, 테두리는 범위 밖 칸과 맞닿은 변에만 긋는다. 그래야 마름모와 더 닿는 칸 사이에 금이 생기지 않는다.
+   */
   private drawRange() {
     const size = this.world.map.size;
-    const clamp = (v: number) => Math.max(0, Math.min(size, v));
-    const { x, y } = this.me.tile;
+    const me = this.me.tile;
+    const far = PLACE_RANGE + 1;
+    const reach = new Set<string>();
+    for (let dy = -far; dy <= far; dy++) {
+      for (let dx = -far; dx <= far; dx++) {
+        const tile = { x: me.x + dx, y: me.y + dy };
+        if (tile.x < 0 || tile.y < 0 || tile.x >= size || tile.y >= size) continue;
+        if (inBuildReach(me, tile)) reach.add(`${tile.x},${tile.y}`);
+      }
+    }
+    const inside = (x: number, y: number) => reach.has(`${x},${y}`);
+
     this.range.clear();
-    const area = (x0: number, y0: number, x1: number, y1: number) => {
-      const pts = [gridToWorld(x0, y0), gridToWorld(x1, y0), gridToWorld(x1, y1), gridToWorld(x0, y1)];
-      this.range.fillStyle(0xffffff, 0.05).lineStyle(1, 0xffffff, 0.5).beginPath();
-      this.range.moveTo(pts[0].x, pts[0].y);
-      for (const p of pts.slice(1)) this.range.lineTo(p.x, p.y);
-      this.range.closePath().fillPath().strokePath();
-    };
-    area(clamp(x - PLACE_RANGE), clamp(y - PLACE_RANGE), clamp(x + PLACE_RANGE + 1), clamp(y + PLACE_RANGE + 1));
-    for (const d of BUILD_REACH_EXTRA) {
-      const tx = x + d.x;
-      const ty = y + d.y;
-      if (tx >= 0 && ty >= 0 && tx < size && ty < size) area(tx, ty, tx + 1, ty + 1);
+    this.range.fillStyle(0xffffff, 0.05).lineStyle(1, 0xffffff, 0.5);
+    for (const key of reach) {
+      const [x, y] = key.split(',').map(Number);
+      const corners = [gridToWorld(x, y), gridToWorld(x + 1, y), gridToWorld(x + 1, y + 1), gridToWorld(x, y + 1)];
+      this.range.beginPath();
+      this.range.moveTo(corners[0].x, corners[0].y);
+      for (const p of corners.slice(1)) this.range.lineTo(p.x, p.y);
+      this.range.closePath().fillPath();
+      // 변마다 바깥 이웃: 위쪽 변은 (x, y-1), 오른쪽은 (x+1, y), 아래쪽은 (x, y+1), 왼쪽은 (x-1, y)
+      const neighbors = [
+        [x, y - 1],
+        [x + 1, y],
+        [x, y + 1],
+        [x - 1, y],
+      ];
+      neighbors.forEach(([nx, ny], i) => {
+        if (inside(nx, ny)) return;
+        const a = corners[i];
+        const b = corners[(i + 1) % 4];
+        this.range.lineBetween(a.x, a.y, b.x, b.y);
+      });
     }
   }
+
 
   /** 지금 가리키는 곳에 놓을 자리. 벽 블록을 가리키면 그 위, 빈 바닥을 가리키면 바닥이다. */
   private placementSpot(): (Tile & { z: number }) | null {

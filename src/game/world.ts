@@ -24,14 +24,6 @@ export function inBuildReach(from: Tile, to: Tile) {
   return Math.max(dx, dy) <= PLACE_RANGE || (dx + dy === PLACE_RANGE + 1 && Math.min(dx, dy) === 0);
 }
 
-/** 블록 범위에서 둘레 8칸 밖으로 더 닿는 네 칸의 방향 */
-export const BUILD_REACH_EXTRA = [
-  { x: 0, y: -(PLACE_RANGE + 1) },
-  { x: PLACE_RANGE + 1, y: 0 },
-  { x: 0, y: PLACE_RANGE + 1 },
-  { x: -(PLACE_RANGE + 1), y: 0 },
-];
-
 /** 맵 위 상태(지형, 고정 장애물, 설치된 블록)와 그에 대한 규칙 */
 export class World {
   /** 칸마다 쌓인 블록. 배열 번호가 높이(z)이고 0이 바닥이다. */
