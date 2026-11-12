@@ -1372,7 +1372,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.marker.closePath().strokePath();
   }
 
-  /** 블록을 놓을 수 있는 범위: 둘레 8칸의 마름모와, 그 위·아래·왼쪽·오른쪽 끝에 붙은 한 칸씩 */
+  /** 블록을 놓을 수 있는 범위: 둘레 8칸의 마름모와, 그 네 변의 가운데 바깥에 붙은 한 칸씩 */
   private drawRange() {
     const size = this.world.map.size;
     const clamp = (v: number) => Math.max(0, Math.min(size, v));

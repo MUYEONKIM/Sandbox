@@ -14,21 +14,22 @@ export function inReach(from: Tile, to: Tile, range = PLACE_RANGE) {
 }
 
 /**
- * 블록을 놓고 치울 수 있는 칸: 둘레 8칸에 더해, 캐릭터 기준 화면 위·아래·왼쪽·오른쪽으로 한 칸 더(2026-11-12 사용자 요청).
- * 화면 위쪽은 격자로 (-1, -1) 방향이라, 더 닿는 네 칸은 격자 대각선으로 두 칸 떨어진 칸이다.
+ * 블록을 놓고 치울 수 있는 칸: 둘레 8칸(화면에서 마름모)에 더해, 마름모 네 변의 가운데에서 바깥으로 한 칸씩 더
+ * (2026-11-12 사용자 요청 "상하좌우 한 칸씩 더", 같은 날 "마름모 꼭짓점이 아니라 변마다 가운데 한 칸"으로 바로잡음).
+ * 변의 가운데는 격자로 곧은 방향이라, 더 닿는 네 칸은 격자로 곧게 두 칸 떨어진 칸이다.
  */
 export function inBuildReach(from: Tile, to: Tile) {
   const dx = Math.abs(from.x - to.x);
   const dy = Math.abs(from.y - to.y);
-  return Math.max(dx, dy) <= PLACE_RANGE || (dx === PLACE_RANGE + 1 && dy === PLACE_RANGE + 1);
+  return Math.max(dx, dy) <= PLACE_RANGE || (dx + dy === PLACE_RANGE + 1 && Math.min(dx, dy) === 0);
 }
 
 /** 블록 범위에서 둘레 8칸 밖으로 더 닿는 네 칸의 방향 */
 export const BUILD_REACH_EXTRA = [
-  { x: -(PLACE_RANGE + 1), y: -(PLACE_RANGE + 1) },
-  { x: PLACE_RANGE + 1, y: -(PLACE_RANGE + 1) },
-  { x: PLACE_RANGE + 1, y: PLACE_RANGE + 1 },
-  { x: -(PLACE_RANGE + 1), y: PLACE_RANGE + 1 },
+  { x: 0, y: -(PLACE_RANGE + 1) },
+  { x: PLACE_RANGE + 1, y: 0 },
+  { x: 0, y: PLACE_RANGE + 1 },
+  { x: -(PLACE_RANGE + 1), y: 0 },
 ];
 
 /** 맵 위 상태(지형, 고정 장애물, 설치된 블록)와 그에 대한 규칙 */
