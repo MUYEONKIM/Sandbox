@@ -13,6 +13,24 @@ export function inReach(from: Tile, to: Tile, range = PLACE_RANGE) {
   return Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) <= range;
 }
 
+/**
+ * 블록을 놓고 치울 수 있는 칸: 둘레 8칸에 더해, 캐릭터 기준 화면 위·아래·왼쪽·오른쪽으로 한 칸 더(2026-11-12 사용자 요청).
+ * 화면 위쪽은 격자로 (-1, -1) 방향이라, 더 닿는 네 칸은 격자 대각선으로 두 칸 떨어진 칸이다.
+ */
+export function inBuildReach(from: Tile, to: Tile) {
+  const dx = Math.abs(from.x - to.x);
+  const dy = Math.abs(from.y - to.y);
+  return Math.max(dx, dy) <= PLACE_RANGE || (dx === PLACE_RANGE + 1 && dy === PLACE_RANGE + 1);
+}
+
+/** 블록 범위에서 둘레 8칸 밖으로 더 닿는 네 칸의 방향 */
+export const BUILD_REACH_EXTRA = [
+  { x: -(PLACE_RANGE + 1), y: -(PLACE_RANGE + 1) },
+  { x: PLACE_RANGE + 1, y: -(PLACE_RANGE + 1) },
+  { x: PLACE_RANGE + 1, y: PLACE_RANGE + 1 },
+  { x: -(PLACE_RANGE + 1), y: PLACE_RANGE + 1 },
+];
+
 /** 맵 위 상태(지형, 고정 장애물, 설치된 블록)와 그에 대한 규칙 */
 export class World {
   /** 칸마다 쌓인 블록. 배열 번호가 높이(z)이고 0이 바닥이다. */
@@ -110,7 +128,7 @@ export class World {
   }
 
   canPlace(target: Tile, player: Tile) {
-    if (!inReach(player, target)) return false;
+    if (!inBuildReach(player, target)) return false;
     if (target.x === player.x && target.y === player.y) return false;
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     if (this.isPortalArea(target.x, target.y)) return false;
@@ -120,7 +138,7 @@ export class World {
 
   /** 칸의 블록 위에 하나 더 쌓을 수 있는지. 기본 블록(상자) 위에만, MAX_STACK개까지 쌓는다. */
   canStack(target: Tile, player: Tile) {
-    if (!inReach(player, target)) return false;
+    if (!inBuildReach(player, target)) return false;
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     const top = this.topAt(target.x, target.y);
     return top !== undefined && top.z + 1 < MAX_STACK && isCube(top.id);

@@ -8,6 +8,9 @@ const MODES = {
   all: { label: '전체', placeholder: '모든 맵에 보입니다 (Tab: 일반)', everyone: true },
 } as const;
 type Mode = keyof typeof MODES;
+
+/** 새로고침해도 남기는 채팅 기록 한 줄(2026-11-12 사용자 요청). 브라우저에 계정별로 저장한다. */
+type Saved = { author: string; text: string; everyone: boolean } | { system: string };
 const MAX_LENGTH = 100;
 /** 맨 아래에서 이만큼 안이면 맨 아래를 보고 있는 것으로 친다. */
 const BOTTOM_SLACK = 24;
@@ -21,10 +24,13 @@ export class ChatBox {
   /** 마지막에 쓴 모드를 기억해 다음에 열 때도 그대로 쓴다. */
   private mode: Mode = 'map';
   private stuckToBottom = true;
+  private history: Saved[] = [];
 
+  /** storageKey는 계정마다 다른 이름이라 같은 브라우저에서 다른 계정의 기록이 섞이지 않는다. */
   constructor(
     root: HTMLElement,
     private readonly send: (text: string, everyone: boolean) => void,
+    private readonly storageKey: string,
   ) {
     const box = element('chat', root);
     this.log = element('chat-log', box);
@@ -43,6 +49,7 @@ export class ChatBox {
     window.addEventListener('pointerdown', (e) => {
       if (e.target !== this.input && e.target !== this.modeBadge) this.close();
     });
+    this.restore();
   }
 
   get isOpen() {
@@ -91,18 +98,57 @@ export class ChatBox {
     }
   }
 
-  show(message: ChatMessage) {
-    const line = this.addLine(message.everyone ? 'chat-line chat-all' : 'chat-line');
-    if (message.everyone) element('chat-tag', line, 'span').textContent = '[전체]';
-    element('chat-author', line, 'span').textContent = message.author;
-    element('chat-text', line, 'span').textContent = message.text;
-    this.settle();
+  show({ author, text, everyone }: ChatMessage) {
+    this.draw({ author, text, everyone });
+    this.remember({ author, text, everyone });
   }
 
   /** 입장, 처치 같은 전체 알림을 채팅 기록에도 남긴다. */
   system(text: string) {
-    this.addLine('chat-line chat-system').textContent = text;
+    this.draw({ system: text });
+    this.remember({ system: text });
+  }
+
+  private draw(entry: Saved) {
+    if ('system' in entry) {
+      this.addLine('chat-line chat-system').textContent = entry.system;
+    } else {
+      const line = this.addLine(entry.everyone ? 'chat-line chat-all' : 'chat-line');
+      if (entry.everyone) element('chat-tag', line, 'span').textContent = '[전체]';
+      element('chat-author', line, 'span').textContent = entry.author;
+      element('chat-text', line, 'span').textContent = entry.text;
+    }
     this.settle();
+  }
+
+  private remember(entry: Saved) {
+    this.history.push(entry);
+    if (this.history.length > MAX_MESSAGES) this.history.shift();
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify(this.history));
+    } catch {
+      // 저장소를 못 쓰는 브라우저(사생활 보호 모드 등)면 기록만 안 남는다.
+    }
+  }
+
+  /** 지난번에 남긴 기록을 다시 그린다. 이상한 값은 건너뛴다. */
+  private restore() {
+    let saved: unknown = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(this.storageKey) ?? 'null');
+    } catch {
+      return;
+    }
+    if (!Array.isArray(saved)) return;
+    const isText = (v: unknown) => typeof v === 'string' && v.length <= 200;
+    for (const entry of saved.slice(-MAX_MESSAGES)) {
+      const e = entry as Partial<{ author: unknown; text: unknown; everyone: unknown; system: unknown }> | null;
+      if (e && isText(e.system)) this.history.push({ system: e.system as string });
+      else if (e && isText(e.author) && isText(e.text)) {
+        this.history.push({ author: e.author as string, text: e.text as string, everyone: e.everyone === true });
+      }
+    }
+    for (const entry of this.history) this.draw(entry);
   }
 
   /** 줄을 붙이기 전에 맨 아래를 보고 있었는지 기억한다. 위로 올려 읽는 중이면 끌어내리지 않는다. */

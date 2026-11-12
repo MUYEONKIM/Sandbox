@@ -7,8 +7,9 @@ import type { BetResult, GameId } from '../game/casino';
 import type { StatId } from '../game/stats';
 import { isWeapon, type WeaponId } from '../items';
 import type { Profile } from './auth';
-import type { BoardPost, WriteResult } from '../ui/board';
+import type { BoardPost, PostCategory, WriteResult } from '../ui/board';
 import type { Notice } from '../ui/notice';
+import type { WantedEntry } from '../ui/wanted';
 import { supabase } from './supabase';
 
 export type Motion = 'walk' | 'run' | 'jump';
@@ -59,6 +60,14 @@ export interface ChatMessage {
   everyone: boolean;
 }
 
+/** 현상범이 잡혀 넘어간 현상금 */
+export interface Bounty {
+  killer: string;
+  victim: string;
+  gold: number;
+  items: { item: string; count: number }[];
+}
+
 export interface KillEntry {
   nickname: string;
   kills: number;
@@ -96,6 +105,8 @@ export interface SessionEvents {
   onDodge(id: string): void;
   /** 서버가 모두에게 보내는 알림(입장, 처치) */
   onNotice(notice: Notice): void;
+  /** 현상금이 넘어갔다. 잡은 사람과 잡힌 사람의 화면이 골드와 자원을 맞춘다. */
+  onBounty(bounty: Bounty): void;
   /** 접속 명단에 실린 다른 사람의 위치와 상태. 맵에 들어오자마자 오며, 아직 안 보이는 사람만 그리면 된다. */
   onPresence(move: PlayerMove): void;
   /** 같은 맵의 다른 사람이 자원을 하나 얻었다. rare면 희귀 자원이다. */
@@ -211,9 +222,26 @@ function parseNotice(value: unknown): Notice | null {
   const n = value as { kind?: unknown; name?: unknown; killer?: unknown; victim?: unknown } | null;
   if (n?.kind === 'join' && isName(n.name)) return { kind: 'join', name: n.name.slice(0, MAX_NAME) };
   if (n?.kind === 'kill' && isName(n.killer) && isName(n.victim)) {
-    return { kind: 'kill', killer: n.killer.slice(0, MAX_NAME), victim: n.victim.slice(0, MAX_NAME) };
+    const wanted = (n as { wanted?: unknown }).wanted;
+    return {
+      kind: 'kill',
+      killer: n.killer.slice(0, MAX_NAME),
+      victim: n.victim.slice(0, MAX_NAME),
+      wanted: typeof wanted === 'number' && wanted >= 0 && wanted <= 5 ? wanted : 0,
+    };
   }
   return null;
+}
+
+function parseBounty(value: unknown): Bounty | null {
+  const b = value as Partial<Bounty> | null;
+  if (!b || typeof b.killer !== 'string' || typeof b.victim !== 'string' || typeof b.gold !== 'number' || !Array.isArray(b.items)) {
+    return null;
+  }
+  const items = b.items.filter(
+    (i): i is { item: string; count: number } => typeof i?.item === 'string' && Number.isInteger(i?.count) && i.count > 0,
+  );
+  return { killer: b.killer, victim: b.victim, gold: Math.max(0, Math.floor(b.gold)), items };
 }
 
 function parseChat(value: unknown, everyone: boolean): ChatMessage | null {
@@ -274,6 +302,10 @@ export class GameSession {
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
         const message = parseChat(payload, true);
         if (message) events.onChat(message);
+      })
+      .on('broadcast', { event: 'bounty' }, ({ payload }) => {
+        const bounty = parseBounty(payload);
+        if (bounty) events.onBounty(bounty);
       })
       .on('broadcast', { event: 'level' }, ({ payload }) => {
         const level = parseLevel(payload?.level);
@@ -495,22 +527,30 @@ export class GameSession {
     return error ? null : (data as number);
   }
 
+  /** 현상범 명단(지금 악업 1 이상). 실패하면 null이다. */
+  async fetchWanted(): Promise<WantedEntry[] | null> {
+    const { data, error } = await supabase.rpc('wanted_list');
+    return error ? null : (data as WantedEntry[]);
+  }
+
   /** 게시판의 최근 글을 새 글부터 읽는다. 실패하면 null이다. */
-  async readBoard(size: number): Promise<BoardPost[] | null> {
-    const { data, error } = await supabase.rpc('read_board', { how_many: size });
+  async readBoard(size: number, kind: PostCategory | null): Promise<BoardPost[] | null> {
+    const { data, error } = await supabase.rpc('read_board', { how_many: size, kind });
     if (error) return null;
-    return (data as { id: number; nickname: string; body: string; created_at: string; mine: boolean }[]).map((row) => ({
+    type Row = { id: number; nickname: string; body: string; created_at: string; mine: boolean; category: string };
+    return (data as Row[]).map((row) => ({
       id: row.id,
       nickname: row.nickname,
       body: row.body,
       createdAt: new Date(row.created_at),
       mine: row.mine,
+      category: row.category === 'suggestion' ? 'suggestion' : 'general',
     }));
   }
 
   /** 게시판에 글을 쓴다. 서버가 10초에 한 번만 받는다. */
-  async writePost(body: string): Promise<WriteResult> {
-    const { error } = await supabase.rpc('write_post', { body });
+  async writePost(body: string, category: PostCategory): Promise<WriteResult> {
+    const { error } = await supabase.rpc('write_post', { body, category });
     if (!error) return 'ok';
     return error.message.includes('too fast') ? 'too_fast' : 'failed';
   }

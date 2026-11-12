@@ -19,6 +19,7 @@ import { watchNewVersion } from './ui/newVersion';
 import { NameTags } from './ui/nametags';
 import { CasinoWindows } from './ui/casino';
 import { BoardWindow } from './ui/board';
+import { WantedPanel } from './ui/wanted';
 import { CastleWindow } from './ui/castle';
 import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
@@ -58,8 +59,10 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   const minimap = new Minimap(side);
   new RankPanel(side, profile.nickname, () => session.fetchRanking(PANEL_SIZE));
-  const chat = new ChatBox(root, (text, everyone) => void session.sendChat(text, everyone));
+  const chat = new ChatBox(root, (text, everyone) => void session.sendChat(text, everyone), `chat-log:${profile.id}`);
   const tags = new NameTags(root);
+  const wanted = new WantedPanel(hud.topLeft, profile.id, () => session.fetchWanted());
+  wanted.onChange((karma) => tags.setKarma(karma));
 
   const office = new OfficeWindow(root, economy, {
     onGo: (place) => scene.goToWork(place),
@@ -79,8 +82,8 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   const fame = new FameWindow(root, profile.nickname, () => session.fetchRanking(FAME_SIZE));
   const notices = new NoticeBar(root);
   const board = new BoardWindow(root, {
-    load: () => session.readBoard(BOARD_SIZE),
-    write: (body) => session.writePost(body),
+    load: (kind) => session.readBoard(BOARD_SIZE, kind),
+    write: (body, category) => session.writePost(body, category),
     remove: (id) => session.deletePost(id),
   });
   const killBoard = new KillBoard(root, profile.nickname, () => session.fetchKillRanking(KILL_BOARD_SIZE));
@@ -111,7 +114,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted);
 
   void session.announceJoin();
   watchNewVersion(root);

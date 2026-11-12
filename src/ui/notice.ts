@@ -1,7 +1,10 @@
 import { element } from './dom';
 
 /** 서버가 모두에게 보내는 알림 */
-export type Notice = { kind: 'join'; name: string } | { kind: 'kill'; killer: string; victim: string };
+export type Notice =
+  | { kind: 'join'; name: string }
+  /** wanted는 잡힌 사람의 악업(0이면 현상범이 아니었음) */
+  | { kind: 'kill'; killer: string; victim: string; wanted: number };
 
 /** 한 번에 화면에 남겨 두는 알림 수와 보이는 시간 */
 const MAX_NOTICES = 3;
@@ -29,6 +32,7 @@ function josa(word: string, withBatchim: string, without: string) {
 
 export function noticeText(notice: Notice) {
   if (notice.kind === 'join') return `${notice.name}님이 입장했습니다`;
+  if (notice.wanted > 0) return `${josa(notice.killer, '이', '가')} 현상범 ${josa(notice.victim, '을', '를')} 잡았습니다`;
   return `${josa(notice.killer, '이', '가')} ${josa(notice.victim, '을', '를')} 죽였습니다`;
 }
 

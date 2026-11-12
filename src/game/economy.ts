@@ -124,6 +124,14 @@ export class Economy {
     this.changed();
   }
 
+  /** 현상금으로 빼앗긴 자원을 뺀다. */
+  take(item: string, count: number) {
+    const left = (this.stash.get(item) ?? 0) - count;
+    if (left > 0) this.stash.set(item, left);
+    else this.stash.delete(item);
+    this.changed();
+  }
+
   /** 가진 자원 목록. 비싼 것부터 보여 준다. */
   entries() {
     return [...this.stash.entries()]

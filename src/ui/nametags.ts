@@ -6,6 +6,9 @@ export type TagKind = 'player' | 'portal' | 'sign';
 
 interface Tag {
   root: HTMLElement;
+  /** 플레이어 이름표의 이름 줄. 악업에 따라 빨개진다. */
+  name: HTMLElement | null;
+  wanted: HTMLElement | null;
   bubble: HTMLElement;
   level: HTMLElement | null;
   hp: HTMLElement | null;
@@ -16,6 +19,8 @@ interface Tag {
 /** 캐릭터 머리 위에 뜨는 닉네임과 말풍선, 포탈과 건물의 이름표 */
 export class NameTags {
   private readonly tags = new Map<string, Tag>();
+  /** 플레이어 id → 악업(현상범 명단). 이름표를 새로 만들 때도 쓴다. */
+  private karma: ReadonlyMap<string, number> = new Map();
 
   constructor(private readonly parent: HTMLElement) {}
 
@@ -28,10 +33,27 @@ export class NameTags {
     const name = element(isPlayer ? 'player-name' : `player-name ${kind}-name`, root);
     const level = isPlayer ? element('player-level', name, 'span') : null;
     name.append(nickname);
+    const wanted = isPlayer ? element('player-wanted', name, 'span') : null;
+    if (wanted) wanted.textContent = ' (현상범)';
     const hp = isPlayer ? element('player-hp-fill', element('player-hp', root)) : null;
     const progress = isPlayer ? element('player-work-fill', element('player-work', root)) : null;
     if (progress) progress.parentElement!.hidden = true;
-    this.tags.set(id, { root, bubble, level, hp, progress, timer: 0 });
+    const tag = { root, name: isPlayer ? name : null, wanted, bubble, level, hp, progress, timer: 0 };
+    this.tags.set(id, tag);
+    this.paintKarma(id, tag);
+  }
+
+  /** 현상범 명단이 바뀌면 이름 색과 "(현상범)"을 다시 칠한다(2026-11-12 사용자 요청). */
+  setKarma(karma: ReadonlyMap<string, number>) {
+    this.karma = karma;
+    for (const [id, tag] of this.tags) this.paintKarma(id, tag);
+  }
+
+  private paintKarma(id: string, { name, wanted }: Tag) {
+    if (!name || !wanted) return;
+    const karma = this.karma.get(id) ?? 0;
+    for (let k = 1; k <= 5; k++) name.classList.toggle(`karma-${k}`, k === karma);
+    wanted.hidden = karma === 0;
   }
 
   setLevel(id: string, text: string) {

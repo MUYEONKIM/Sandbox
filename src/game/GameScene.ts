@@ -33,6 +33,7 @@ import {
 import { depthOf, gridToWorld, tileCenter, worldToGrid } from '../iso';
 import { isWeapon, WEAPON_IDS, WEAPONS, type WeaponId } from '../items';
 import type {
+  Bounty,
   ChatMessage,
   GameSession,
   Motion,
@@ -50,6 +51,7 @@ import type { CasinoWindows } from '../ui/casino';
 import { noticeText, type Notice, type NoticeBar } from '../ui/notice';
 import type { ElevatorWindow } from '../ui/elevator';
 import type { BoardWindow } from '../ui/board';
+import type { WantedPanel } from '../ui/wanted';
 import type { FameWindow } from '../ui/fame';
 import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
@@ -85,7 +87,7 @@ import { CAFE_SIGN, CASINO_SIGN, FLOORS, HIDEOUT, hideoutSolid, isTower, type Pa
 import { maxHpOf, type StatId } from './stats';
 import { startTicker } from './ticker';
 import { WorkFx } from './workFx';
-import { inReach, World, type Tile } from './world';
+import { BUILD_REACH_EXTRA, inBuildReach, inReach, World, type Tile } from './world';
 
 /** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
 const WORK_TICK_MS = 250;
@@ -272,6 +274,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly casino: CasinoWindows,
     private readonly notices: NoticeBar,
     private readonly board: BoardWindow,
+    private readonly wanted: WantedPanel,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -1337,7 +1340,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.hoveredBlock) {
       const { x, y } = this.hoveredBlock;
       const height = this.world.heightAt(x, y);
-      const ok = inReach(this.me.tile, this.hoveredBlock);
+      const ok = inBuildReach(this.me.tile, this.hoveredBlock);
       this.marker.setDepth(depthOf(x, y) + 2);
       this.strokeTile(x, y, ok ? 0xffffff : 0xff6b5e, -BLOCK_HEIGHT * height);
       // 블록을 들고 벽 블록을 가리키면 그 위에 쌓일 자리를 미리 보여 준다.
@@ -1369,21 +1372,25 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.marker.closePath().strokePath();
   }
 
-  /** 블록을 놓을 수 있는 범위를 마름모로 표시한다. */
+  /** 블록을 놓을 수 있는 범위: 둘레 8칸의 마름모와, 그 위·아래·왼쪽·오른쪽 끝에 붙은 한 칸씩 */
   private drawRange() {
-    const clamp = (v: number) => Math.max(0, Math.min(this.world.map.size, v));
+    const size = this.world.map.size;
+    const clamp = (v: number) => Math.max(0, Math.min(size, v));
     const { x, y } = this.me.tile;
-    const x0 = clamp(x - PLACE_RANGE);
-    const y0 = clamp(y - PLACE_RANGE);
-    const x1 = clamp(x + PLACE_RANGE + 1);
-    const y1 = clamp(y + PLACE_RANGE + 1);
-    const pts = [gridToWorld(x0, y0), gridToWorld(x1, y0), gridToWorld(x1, y1), gridToWorld(x0, y1)];
-
     this.range.clear();
-    this.range.fillStyle(0xffffff, 0.05).lineStyle(1, 0xffffff, 0.5).beginPath();
-    this.range.moveTo(pts[0].x, pts[0].y);
-    for (const p of pts.slice(1)) this.range.lineTo(p.x, p.y);
-    this.range.closePath().fillPath().strokePath();
+    const area = (x0: number, y0: number, x1: number, y1: number) => {
+      const pts = [gridToWorld(x0, y0), gridToWorld(x1, y0), gridToWorld(x1, y1), gridToWorld(x0, y1)];
+      this.range.fillStyle(0xffffff, 0.05).lineStyle(1, 0xffffff, 0.5).beginPath();
+      this.range.moveTo(pts[0].x, pts[0].y);
+      for (const p of pts.slice(1)) this.range.lineTo(p.x, p.y);
+      this.range.closePath().fillPath().strokePath();
+    };
+    area(clamp(x - PLACE_RANGE), clamp(y - PLACE_RANGE), clamp(x + PLACE_RANGE + 1), clamp(y + PLACE_RANGE + 1));
+    for (const d of BUILD_REACH_EXTRA) {
+      const tx = x + d.x;
+      const ty = y + d.y;
+      if (tx >= 0 && ty >= 0 && tx < size && ty < size) area(tx, ty, tx + 1, ty + 1);
+    }
   }
 
   /** 지금 가리키는 곳에 놓을 자리. 벽 블록을 가리키면 그 위, 빈 바닥을 가리키면 바닥이다. */
@@ -1416,7 +1423,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 가리킨 칸의 맨 위 블록을 회수한다. */
   private async collectBlock() {
     const target = this.hoveredBlock;
-    if (!target || !inReach(this.me.tile, target)) return;
+    if (!target || !inBuildReach(this.me.tile, target)) return;
     const top = this.world.topAt(target.x, target.y);
     if (!top) return;
 
@@ -1587,6 +1594,27 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   onNotice(notice: Notice) {
     this.notices.show(notice);
     this.chat.system(noticeText(notice));
+    // 누가 쓰러지면 악업이 바뀌므로 현상범 명단을 다시 읽는다.
+    if (notice.kind === 'kill') void this.wanted.refresh();
+  }
+
+  /** 현상범이 잡혔다. 내가 잡았거나 잡혔으면 골드와 자원을 서버와 같게 맞추고 알려 준다. */
+  onBounty({ killer, victim, gold, items }: Bounty) {
+    const me = this.session.profile.id;
+    if (killer !== me && victim !== me) return;
+    const count = items.reduce((sum, { count }) => sum + count, 0);
+    const what = [gold > 0 ? `${gold.toLocaleString()}G` : '', count > 0 ? `자원 ${count.toLocaleString()}개` : '']
+      .filter(Boolean)
+      .join('와 ');
+    if (killer === me) {
+      for (const { item, count } of items) this.economy.add(item, count);
+      this.economy.setGold(this.economy.gold + gold);
+      this.hud.toast('현상금 획득!', what ? `${what}를 받았습니다` : '현상범 주머니가 텅 비어 있었습니다', true);
+    } else {
+      for (const { item, count } of items) this.economy.take(item, count);
+      this.economy.setGold(Math.max(0, this.economy.gold - gold));
+      this.hud.toast('현상금을 빼앗겼습니다', what ? `${what}를 잃었습니다` : '다행히 빼앗길 것이 없었습니다');
+    }
   }
 
   onDodge(id: string) {

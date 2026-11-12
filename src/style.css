@@ -42,10 +42,18 @@ canvas {
   display: none;
 }
 
-.help {
+/* 왼쪽 위: 조작 안내와 그 아래 현상범 명단 */
+.top-left {
   position: absolute;
   top: 16px;
   left: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.help {
   padding: 8px 12px;
   background: rgb(31 21 16 / 72%);
   border: 2px solid var(--panel-edge);
@@ -1556,6 +1564,78 @@ canvas {
   width: min(600px, calc(100% - 32px));
 }
 
+.board-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.board-tab {
+  flex: 1;
+  padding: 6px 4px;
+  color: var(--text-dim);
+  background: var(--slot-sunken);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.board-tab.chosen {
+  color: #2a1d16;
+  background: var(--gold);
+  border-color: var(--panel-edge);
+}
+
+.board-notice[hidden],
+.board-form[hidden],
+.board-category[hidden],
+.board-message[hidden],
+.board-posts[hidden],
+.office-section[hidden] {
+  display: none;
+}
+
+/* 공지 탭에서는 공지만 보이므로 길게 편다. */
+.board-notice.full .board-notice-body {
+  max-height: min(460px, calc(100vh - 260px));
+}
+
+.board-category {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.board-category-label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.board-category-button {
+  padding: 2px 10px;
+  color: var(--text-dim);
+  background: var(--slot-sunken);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.board-category-button.chosen {
+  color: var(--text);
+  border-color: var(--gold);
+}
+
+.board-post-category {
+  padding: 0 5px;
+  color: #10283a;
+  background: #7fd4ff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .board-notice {
   margin-bottom: 12px;
   background: #3d2c1f;
@@ -1768,4 +1848,69 @@ canvas {
   border: 2px solid var(--panel-edge);
   font: inherit;
   cursor: pointer;
+}
+
+/* 현상범 명단과 이름 색(악업 1~5단계로 점점 빨개짐) */
+.wanted {
+  min-width: 180px;
+  padding: 6px 10px 8px;
+  background: rgb(40 10 10 / 82%);
+  border: 2px solid #8a1f1f;
+  pointer-events: auto;
+}
+
+.wanted[hidden] {
+  display: none;
+}
+
+.wanted-title {
+  margin-bottom: 2px;
+  color: #ff8a80;
+  font-weight: 700;
+}
+
+.wanted-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.wanted-name {
+  font-weight: 700;
+}
+
+.wanted-row.mine .wanted-name::after {
+  content: ' (나)';
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.wanted-level {
+  color: var(--text-dim);
+}
+
+.karma-1 { color: #ffc4c4; }
+.karma-2 { color: #ff9c9c; }
+.karma-3 { color: #ff7070; }
+.karma-4 { color: #ff4646; }
+.karma-5 { color: #ff1f1f; }
+
+.wanted-row.karma-1 .wanted-name { color: #ffc4c4; }
+.wanted-row.karma-2 .wanted-name { color: #ff9c9c; }
+.wanted-row.karma-3 .wanted-name { color: #ff7070; }
+.wanted-row.karma-4 .wanted-name { color: #ff4646; }
+.wanted-row.karma-5 .wanted-name { color: #ff1f1f; }
+
+.player-name.karma-4,
+.player-name.karma-5 {
+  text-shadow: 0 0 4px rgb(255 0 0 / 60%);
+}
+
+.player-wanted {
+  font-size: 11px;
+}
+
+.player-wanted[hidden] {
+  display: none;
 }
