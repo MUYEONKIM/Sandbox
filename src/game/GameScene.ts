@@ -52,6 +52,7 @@ import { noticeText, type Notice, type NoticeBar } from '../ui/notice';
 import type { ElevatorWindow } from '../ui/elevator';
 import type { BoardWindow } from '../ui/board';
 import type { WantedPanel } from '../ui/wanted';
+import type { ExchangeWindow } from '../ui/exchange';
 import type { FameWindow } from '../ui/fame';
 import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
@@ -67,6 +68,7 @@ import {
   arrivalFor,
   CASTLE,
   DEFAULT_MAP,
+  EXCHANGE,
   isInside,
   isMapId,
   MAPS,
@@ -111,6 +113,8 @@ const NOTICE_MS = 2000;
 const CASTLE_SIGN = { x: 176, y: 205 };
 /** 상점 간판을 다는 위치 (건물 그림 기준 픽셀) */
 const SHOP_SIGN = { x: 115, y: 40 };
+/** 증권거래소 간판을 다는 위치: 정면 기둥 위 세모 박공 (건물 그림 기준 픽셀) */
+const EXCHANGE_SIGN = { x: 48, y: 118 };
 /** 층 그림은 바닥보다 위, 블록 설치 범위 표시보다 아래에 그린다. */
 const DEPTH_INTERIOR = 0.5;
 /** 밟고 지나가는 꽃과 풀 블록은 바닥 바로 위에 그려 캐릭터를 가리지 않는다. */
@@ -275,6 +279,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly notices: NoticeBar,
     private readonly board: BoardWindow,
     private readonly wanted: WantedPanel,
+    private readonly exchange: ExchangeWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -514,6 +519,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (building.sprite === OFFICE.sprite) this.showChimneySmoke(left, top);
       if (building.sprite === CASTLE.sprite) this.addSign(CASTLE.name, left + CASTLE_SIGN.x, top + CASTLE_SIGN.y);
       if (building.sprite === SHOP.sprite) this.addSign(SHOP.name, left + SHOP_SIGN.x, top + SHOP_SIGN.y);
+      if (building.sprite === EXCHANGE.sprite) this.addSign(EXCHANGE.name, left + EXCHANGE_SIGN.x, top + EXCHANGE_SIGN.y);
     }
     this.showSpots(id);
     this.showWalls();
@@ -727,6 +733,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.castle.isOpen ||
       this.fame.isOpen ||
       this.board.isOpen ||
+      this.exchange.isOpen ||
       this.elevator.isOpen ||
       this.casino.isOpen ||
       this.chat.isOpen;
@@ -764,6 +771,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
       else if (portal.to === 'board') this.board.open();
+      else if (portal.to === 'exchange') this.exchange.open();
       else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor);
       else if (isGame(portal.to)) this.casino.open(portal.to);
       else this.travel(portal.to);

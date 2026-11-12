@@ -4,7 +4,7 @@ import { Economy, type EconomyData } from './game/economy';
 import { GameScene } from './game/GameScene';
 import { Inventory } from './game/inventory';
 import { Keys } from './game/keys';
-import { STAT_IDS } from './game/stats';
+import { Market } from './game/market';
 import { currentUser, loadEconomy, loadProfile, signOut, type Profile } from './net/auth';
 import { GameSession } from './net/session';
 import { isConfigured } from './net/supabase';
@@ -20,6 +20,8 @@ import { NameTags } from './ui/nametags';
 import { CasinoWindows } from './ui/casino';
 import { BoardWindow } from './ui/board';
 import { WantedPanel } from './ui/wanted';
+import { ExchangeWindow } from './ui/exchange';
+import { InfoView } from './ui/info';
 import { CastleWindow } from './ui/castle';
 import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
@@ -52,10 +54,16 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   const economy = new Economy(economyData);
   const showEconomy = () => {
     hud.setGold(economy.gold);
-    hud.setStats(STAT_IDS.map((id) => `${id.toUpperCase()} ${economy.stat(id)}`).join('  ·  '));
+    hud.refreshInfo();
   };
   showEconomy();
   economy.onChange(showEconomy);
+
+  const market = new Market({ quotes: () => session.fetchQuotes(), holdings: () => session.fetchHoldings() });
+  market.onChange(() => hud.refreshInfo());
+  const info = new InfoView(hud.infoPane, profile.nickname, economy, market, () => hud.status);
+  hud.setInfoRenderer(() => info.render());
+  void market.refresh();
 
   const minimap = new Minimap(side);
   new RankPanel(side, profile.nickname, () => session.fetchRanking(PANEL_SIZE));
@@ -86,6 +94,30 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     write: (body, category) => session.writePost(body, category),
     remove: (id) => session.deletePost(id),
   });
+  const exchange = new ExchangeWindow(root, economy, market, {
+    onTrade: async (stock, amount) => {
+      const name = market.quote(stock)?.name ?? '주식';
+      const result = await session.tradeStock(stock, amount);
+      if (!result.ok) {
+        const [title, detail] = {
+          gold: ['골드가 모자랍니다', '가격이 막 바뀌었을 수도 있습니다'],
+          shares: ['가진 주식이 모자랍니다', '없는 주식은 팔 수 없습니다'],
+          overflow: ['골드 주머니가 넘칩니다', '골드는 21억 G까지만 들 수 있습니다'],
+          failed: ['거래하지 못했습니다', '잠시 후 다시 시도해 주세요'],
+        }[result.reason];
+        hud.toast(title, detail);
+        return;
+      }
+      economy.setGold(result.gold);
+      market.setTraded(stock, result.shares, result.cost, result.price);
+      const count = Math.abs(amount).toLocaleString();
+      const total = (Math.abs(amount) * result.price).toLocaleString();
+      hud.toast(
+        amount > 0 ? `${name} ${count}주를 샀습니다` : `${name} ${count}주를 팔았습니다`,
+        `주당 ${result.price.toLocaleString()}원 · ${amount > 0 ? '-' : '+'}${total}G`,
+      );
+    },
+  });
   const killBoard = new KillBoard(root, profile.nickname, () => session.fetchKillRanking(KILL_BOARD_SIZE));
 
   const casino = new CasinoWindows(root, economy, (game, pick, amount) => session.placeBet(game, pick, amount));
@@ -105,16 +137,18 @@ function enterGame(profile: Profile, economyData: EconomyData) {
       castle.close();
       fame.close();
       board.close();
+      exchange.close();
       elevator.close();
       casino.close();
     },
     onChat: () => {
-      const windowOpen = hud.isOpen || office.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || elevator.isOpen || casino.isOpen;
+      const windowOpen =
+        hud.isOpen || office.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen;
       if (!windowOpen) chat.open();
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange);
 
   void session.announceJoin();
   watchNewVersion(root);
@@ -132,7 +166,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, board, elevator, casino } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, board, exchange, market, elevator, casino } });
   }
 }
 

@@ -3,6 +3,7 @@ import { HOTBAR_SIZE, TABS, type Inventory, type TabId } from '../game/inventory
 import { formatLevel, levelNeed } from '../game/level';
 import { itemName, paintItem, WEAPON_IDS, type ItemId } from '../items';
 import { element } from './dom';
+import type { MyStatus } from './info';
 
 /** 이미지를 읽은 뒤에 그릴 수 있어서 Hud를 만들 때 준비한다. */
 function paintIcons() {
@@ -18,12 +19,23 @@ const TOAST_MS = 3500;
 type Drag = { from: number } | { item: ItemId };
 const TOAST_LIMIT = 4;
 
+/** I 창의 탭(2026-11-12 사용자 요청 "정보창, 인벤토리 탭으로 나뉜다"). 처음엔 정보창, 그 뒤로는 마지막에 본 탭이 열린다. */
+const VIEWS = { info: '정보창', bag: '인벤토리' } as const;
+type View = keyof typeof VIEWS;
+
 /** 화면 위 UI: 단축키 칸, 인벤토리 창, 조작 안내 */
 export class Hud {
   private readonly panel: HTMLElement;
   /** 화면 왼쪽 위에 세로로 쌓는 칸(조작 안내, 현상범 명단) */
   readonly topLeft: HTMLElement;
-  private readonly panelStats: HTMLElement;
+  /** 정보창 탭의 내용이 들어가는 칸. 그리는 것은 InfoView다. */
+  readonly infoPane: HTMLElement;
+  private readonly bagPane: HTMLElement;
+  private readonly viewButtons = new Map<View, HTMLButtonElement>();
+  private view: View = 'info';
+  private renderInfo: (() => void) | null = null;
+  /** 정보창에 보일 레벨, 경험치, 체력. setLevel, setHp가 고친다. */
+  readonly status: MyStatus = { level: 1n, exp: 0, hp: 0, maxHp: 0 };
   private readonly pickedName: HTMLElement;
   private readonly pickedIcon: HTMLImageElement;
   private readonly levelText: HTMLElement;
@@ -73,9 +85,20 @@ export class Hud {
 
     this.panel = element('panel', root);
     this.panel.hidden = true;
-    element('panel-title', this.panel).textContent = '인벤토리';
-    this.panelStats = element('panel-stats', this.panel);
-    const tabs = element('bag-tabs', this.panel);
+    const views = element('panel-views', this.panel);
+    for (const [id, label] of Object.entries(VIEWS) as [View, string][]) {
+      const button = element('panel-view', views, 'button') as HTMLButtonElement;
+      button.type = 'button';
+      button.textContent = label;
+      button.addEventListener('click', () => {
+        this.view = id;
+        this.render();
+      });
+      this.viewButtons.set(id, button);
+    }
+    this.infoPane = element('panel-pane', this.panel);
+    this.bagPane = element('panel-pane', this.panel);
+    const tabs = element('bag-tabs', this.bagPane);
     for (const [id, label] of Object.entries(TABS) as [TabId, string][]) {
       const button = element('bag-tab', tabs, 'button') as HTMLButtonElement;
       button.type = 'button';
@@ -86,8 +109,8 @@ export class Hud {
       });
       this.tabButtons.set(id, button);
     }
-    this.bag = element('slots bag', this.panel);
-    element('bag-hint', this.panel).textContent =
+    this.bag = element('slots bag', this.bagPane);
+    element('bag-hint', this.bagPane).textContent =
       '아래 단축키 칸으로 끌어다 놓거나, 누르면 지금 고른 칸에 들어갑니다. 단축키 칸에서 이 창으로 끌면 칸이 비워집니다.';
 
     this.downNotice = element('down-notice', root);
@@ -136,11 +159,17 @@ export class Hud {
   }
 
   setHp(hp: number, max: number) {
+    this.status.hp = hp;
+    this.status.maxHp = max;
+    this.refreshInfo();
     this.hpFill.style.width = `${Math.min(hp / max, 1) * 100}%`;
     this.hpText.textContent = `HP ${hp} / ${max}`;
   }
 
   setLevel(level: bigint, exp: number, leveled = false) {
+    this.status.level = level;
+    this.status.exp = exp;
+    this.refreshInfo();
     this.levelText.textContent = `Lv. ${formatLevel(level)}`;
     const need = levelNeed(level);
     this.expFill.style.width = `${Math.min(exp / need, 1) * 100}%`;
@@ -169,8 +198,15 @@ export class Hud {
     this.gold.textContent = `${gold.toLocaleString()}G`;
   }
 
-  setStats(text: string) {
-    this.panelStats.textContent = text;
+  /** 정보창 탭을 그리는 함수를 받는다. */
+  setInfoRenderer(render: () => void) {
+    this.renderInfo = render;
+    this.refreshInfo();
+  }
+
+  /** 정보창이 보이고 있으면 다시 그린다. 골드, 자원, 주식이 바뀔 때 부른다. */
+  refreshInfo() {
+    if (this.isOpen && this.view === 'info') this.renderInfo?.();
   }
 
   /** 화면 아래쪽에 잠깐 뜨는 알림 */
@@ -287,7 +323,11 @@ export class Hud {
   }
 
   private render() {
-    if (this.isOpen) this.renderBag();
+    for (const [id, button] of this.viewButtons) button.classList.toggle('chosen', id === this.view);
+    this.infoPane.hidden = this.view !== 'info';
+    this.bagPane.hidden = this.view !== 'bag';
+    if (this.isOpen && this.view === 'bag') this.renderBag();
+    this.refreshInfo();
     this.slots.forEach((slot, i) => {
       const stack = this.inventory.slots[i];
       const icon = slot.querySelector<HTMLImageElement>('.slot-icon')!;

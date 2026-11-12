@@ -10,6 +10,7 @@ import type { Profile } from './auth';
 import type { BoardPost, PostCategory, WriteResult } from '../ui/board';
 import type { Notice } from '../ui/notice';
 import type { WantedEntry } from '../ui/wanted';
+import type { Quote } from '../game/market';
 import { supabase } from './supabase';
 
 export type Motion = 'walk' | 'run' | 'jump';
@@ -67,6 +68,10 @@ export interface Bounty {
   gold: number;
   items: { item: string; count: number }[];
 }
+
+export type TradeResult =
+  | { ok: true; gold: number; shares: number; cost: number; price: number }
+  | { ok: false; reason: 'gold' | 'shares' | 'overflow' | 'failed' };
 
 export interface KillEntry {
   nickname: string;
@@ -134,6 +139,8 @@ const MAX_NAME = 12;
 const MAX_TEXT = 100;
 const MAX_STEP_MS = 1000;
 const SAVE_DELAY_MS = 2000;
+/** 블록을 한 번에 읽는 줄 수. Supabase API가 한 번에 돌려주는 최대(max_rows)와 같다. */
+const BLOCK_PAGE = 1000;
 /** 내 위치나 상태가 바뀌면 이만큼 뒤에 접속 명단을 고친다. */
 const PRESENCE_DELAY_MS = 800;
 /**
@@ -442,12 +449,29 @@ export class GameSession {
     await this.flush();
   }
 
-  /** 지금 맵의 블록을 서버 기준으로 다시 맞춘다. */
+  /**
+   * 지금 맵의 블록을 서버 기준으로 다시 맞춘다.
+   * Supabase API는 한 번에 1,000줄(max_rows)까지만 돌려주므로 1,000줄보다 적게 올 때까지 나눠 읽는다.
+   * 예전에 한 번만 읽어서 블록이 1,000개 넘는 맵은 나머지가 안 보였고, 그 자리에 다시 놓으면 서버에 이미 있어 409로 실패했다(2026-11-12 사용자 보고).
+   */
   async syncBlocks() {
     const { mapId } = this;
-    const { data } = await supabase.from('blocks').select('x, y, z, block').eq('map', mapId);
-    if (!data || mapId !== this.mapId) return;
-    this.events.onBlocksLoaded(data.map(parseBlock).filter((block) => block !== null));
+    const rows: Parameters<typeof parseBlock>[0][] = [];
+    for (;;) {
+      // 기본 키 순서로 읽어야 쪽이 겹치거나 빠지지 않는다.
+      const { data, error } = await supabase
+        .from('blocks')
+        .select('x, y, z, block')
+        .eq('map', mapId)
+        .order('x')
+        .order('y')
+        .order('z')
+        .range(rows.length, rows.length + BLOCK_PAGE - 1);
+      if (error || !data || mapId !== this.mapId) return;
+      rows.push(...data);
+      if (data.length < BLOCK_PAGE) break;
+    }
+    this.events.onBlocksLoaded(rows.map(parseBlock).filter((block) => block !== null));
   }
 
   /** 이동 알림과 접속 명단에 싣는 내 위치와 상태 */
@@ -592,6 +616,47 @@ export class GameSession {
   async buyStat(stat: StatId, amount: number): Promise<{ gold: number; value: number } | null> {
     const { data, error } = await supabase.rpc('buy_stat', { stat, amount });
     return error ? null : (data as { gold: number; value: number });
+  }
+
+  /** 증권거래소 종목과 지금 가격. 실패하면 null이다. */
+  async fetchQuotes(): Promise<Quote[] | null> {
+    const { data, error } = await supabase.rpc('stock_quotes');
+    if (error) return null;
+    return (data as { id: string; name: string; price: number; prev_price: number; updated_at: string }[]).map((q) => ({
+      id: q.id,
+      name: q.name,
+      price: Number(q.price),
+      prevPrice: Number(q.prev_price),
+      updatedAt: new Date(q.updated_at),
+    }));
+  }
+
+  /** 내가 가진 주식. 실패하면 null이다. */
+  async fetchHoldings(): Promise<{ stock: string; shares: number; cost: number }[] | null> {
+    const { data, error } = await supabase.rpc('my_holdings');
+    if (error) return null;
+    return (data as { stock: string; shares: number; cost: number }[]).map(({ stock, shares, cost }) => ({
+      stock,
+      shares: Number(shares),
+      cost: Number(cost),
+    }));
+  }
+
+  /** 주식을 지금 가격에 산다(amount > 0) 또는 판다(amount < 0). 체결 가격과 수는 서버가 정한다. */
+  async tradeStock(stock: string, amount: number): Promise<TradeResult> {
+    const { data, error } = await supabase.rpc('trade_stock', { stock, amount });
+    if (error) {
+      const reason = error.message.includes('not enough gold')
+        ? 'gold'
+        : error.message.includes('not enough shares')
+          ? 'shares'
+          : error.message.includes('too much gold')
+            ? 'overflow'
+            : 'failed';
+      return { ok: false, reason };
+    }
+    const d = data as { gold: number; shares: number; cost: number; price: number };
+    return { ok: true, gold: Number(d.gold), shares: Number(d.shares), cost: Number(d.cost), price: Number(d.price) };
   }
 
   /** 도박장에서 골드를 건다. 결과와 배당은 서버가 정한다. 실패하면 null이다. */

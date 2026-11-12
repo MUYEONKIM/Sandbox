@@ -743,16 +743,294 @@ canvas {
   pointer-events: auto;
 }
 
-.panel-title {
+/* I 창의 탭: 정보창, 인벤토리 */
+.panel-views {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--slot-sunken);
+}
+
+.panel-view {
+  flex: 1;
+  padding: 6px 8px;
+  color: var(--text-dim);
+  background: var(--slot-sunken);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.panel-view.chosen {
+  color: #2a1d16;
+  background: var(--gold);
+  border-color: var(--panel-edge);
+}
+
+.panel-pane[hidden] {
+  display: none;
+}
+
+/* 정보창 탭: 인벤토리 탭과 같은 크기로 두어 탭을 바꿔도 창이 들썩이지 않게 한다. */
+.info {
+  width: calc(var(--slot-size) * 9 + 32px);
+  max-width: calc(100vw - 56px);
+  height: calc(var(--slot-size) * 6 + 102px);
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.info-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.info-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.info-level {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 14px;
+}
+
+.info-label {
+  color: var(--text-dim);
+}
+
+.info-value {
+  font-weight: 700;
+}
+
+.info-section {
+  margin: 12px 0 4px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.info-stats {
+  display: grid;
+  gap: 2px;
+}
+
+.info-stat {
+  display: grid;
+  grid-template-columns: 40px 64px 1fr;
+  gap: 8px;
+}
+
+.info-stat-id {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.info-stat-value {
+  font-weight: 700;
+  text-align: right;
+}
+
+.info-stat-effect {
+  color: var(--text-dim);
+}
+
+.info-list {
+  padding: 4px 8px;
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+}
+
+.info-row {
+  display: grid;
+  grid-template-columns: 1fr max-content max-content;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.info-stock {
+  grid-template-columns: 24px 1fr max-content max-content;
+  gap: 8px;
+}
+
+.info-stock-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.info-row-count {
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.info-row-value {
+  color: var(--gold);
+  text-align: right;
+}
+
+.info-empty {
+  padding: 2px 0;
+  color: var(--text-dim);
+}
+
+/* 주가와 손익: 한국 시장처럼 오르면 빨강, 내리면 파랑 */
+.tone-up {
+  color: #ff7b6e !important;
+}
+
+.tone-down {
+  color: #7fb2ff !important;
+}
+
+.tone-flat {
+  color: var(--text-dim) !important;
+}
+
+/* 증권거래소 창 */
+.exchange {
+  width: min(600px, calc(100% - 32px));
+}
+
+.exchange-note {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.exchange-amount {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.exchange-amount .shop-amount {
+  flex: 0 0 64px;
+}
+
+.exchange-field {
+  flex: 1 1 180px;
+  flex-basis: 180px;
+}
+
+.exchange-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stock {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.stock-icon {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  border: 2px solid var(--panel-edge);
+}
+
+.stock-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.stock-head,
+.stock-sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.stock-name {
   font-size: 15px;
   font-weight: 700;
 }
 
-.panel-stats {
-  margin-bottom: 8px;
-  color: var(--gold);
+.stock-price {
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.stock-blurb {
+  min-width: 0;
+  color: var(--text-dim);
   font-size: 12px;
-  white-space: pre-wrap;
+}
+
+.stock-change {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.stock-mine {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.stock-profit {
+  font-weight: 700;
+}
+
+.stock-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.stock-actions .shop-buy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stock-buy {
+  color: #fff !important;
+  background: #c8483c !important;
+}
+
+.stock-sell {
+  color: #fff !important;
+  background: #3f6fc4 !important;
+}
+
+@media (max-width: 620px) {
+  .stock-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .stock-sub {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .info-stat {
+    grid-template-columns: 36px 52px 1fr;
+  }
 }
 
 .chat {

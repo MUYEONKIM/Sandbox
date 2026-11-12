@@ -11,6 +11,7 @@ const NAMES = [
   'clock',
   'counter',
   'crops',
+  'exchange',
   'firtree',
   'fish',
   'fruit',

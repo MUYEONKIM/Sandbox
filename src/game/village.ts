@@ -2,7 +2,7 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { BOARD, CASTLE, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
+import { BOARD, CASTLE, EXCHANGE, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
@@ -40,6 +40,9 @@ const STONE_ROADS: Area[] = [
   [5, 1, 13, 2],
   // 도박장(오른쪽 끝 주점) 문 옆으로 가는 길
   [34, 16, 45, 17],
+  // 증권거래소 정문으로 가는 길: 성을 두르는 길 오른쪽 아래 귀퉁이에서 내려가 오른쪽으로
+  [32, 34, 33, 40],
+  [34, 39, 41, 40],
   // 성을 두르는 길
   [14, 14, 33, 15],
   [14, 32, 33, 33],
@@ -57,8 +60,11 @@ const DIRT_ROADS: Area[] = [
   [1, 43, 15, 44],
 ];
 
-/** 아이티공간, 상점, 노동청 말고 남긴 건물: 도박장이 된 주점 하나 */
-const BUILDINGS: Building[] = [{ sprite: 'tavern', x: 41, y: 12, w: 4, d: 4 }];
+/** 아이티공간, 상점, 노동청 말고 세운 건물: 도박장이 된 주점, 증권거래소 */
+const BUILDINGS: Building[] = [
+  { sprite: 'tavern', x: 41, y: 12, w: 4, d: 4 },
+  { sprite: EXCHANGE.sprite, x: EXCHANGE.x, y: EXCHANGE.y, w: EXCHANGE.w, d: EXCHANGE.d },
+];
 
 const FIXED_TREES: Tree[] = [
   // 성문 양옆
@@ -75,11 +81,12 @@ const HEDGE_ROWS: Area[] = [
   [24, 30, 28, 30],
 ];
 
-/** 나무를 심지 않는 구역: 상점 앞, 노동청 길, 도박장 길 */
+/** 나무를 심지 않는 구역: 상점 앞, 노동청 길, 도박장 길, 증권거래소 앞 */
 const TREELESS: Area[] = [
   [16, 12, 31, 17],
   [4, 3, 17, 13],
   [34, 12, 45, 19],
+  [34, 31, 45, 42],
 ];
 
 
