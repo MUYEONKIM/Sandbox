@@ -515,9 +515,9 @@ export class GameSession {
     }));
   }
 
-  /** 스텟을 1 올리고 새 골드와 스텟 값을 돌려준다. 실패하면 null이다. */
-  async buyStat(stat: StatId): Promise<{ gold: number; value: number } | null> {
-    const { data, error } = await supabase.rpc('buy_stat', { stat });
+  /** 스텟을 amount만큼 올리고 새 골드와 스텟 값을 돌려준다. 실패하면 null이다. */
+  async buyStat(stat: StatId, amount: number): Promise<{ gold: number; value: number } | null> {
+    const { data, error } = await supabase.rpc('buy_stat', { stat, amount });
     return error ? null : (data as { gold: number; value: number });
   }
 

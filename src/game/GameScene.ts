@@ -956,9 +956,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.hud.toast(`${name} 구매 완료`, '가지고 있으면 자동으로 적용됩니다');
   }
 
-  /** ITS'room 카운터에서 스텟을 1 올린다. */
-  async buyStat(id: StatId) {
-    const bought = await this.session.buyStat(id);
+  /** ITS'room 카운터에서 스텟을 amount만큼 올린다. */
+  async buyStat(id: StatId, amount: number) {
+    const bought = await this.session.buyStat(id, amount);
     if (!bought) {
       this.hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
       return;

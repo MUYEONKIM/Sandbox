@@ -95,15 +95,40 @@ export abstract class BetWindow extends PurchaseWindow {
 
     element('office-section', this.root).textContent = `거는 돈 (${BET_MIN}G ~ ${BET_MAX.toLocaleString()}G)`;
     const row = element('casino-amount', this.root);
-    this.input = element('casino-input', row, 'input') as HTMLInputElement;
-    this.input.type = 'number';
-    this.input.min = String(BET_MIN);
-    this.input.max = String(BET_MAX);
-    this.input.step = '10';
+    // 금액은 직접 쳐서 넣는다. 숫자 말고는 지우고, 누르면 지금 금액이 모두 골라져 바로 새로 칠 수 있다. Enter를 치면 건다.
+    const field = element('casino-field', row, 'label');
+    element('casino-field-label', field, 'span').textContent = '직접 입력';
+    this.input = element('casino-input', field, 'input') as HTMLInputElement;
+    this.input.type = 'text';
+    this.input.inputMode = 'numeric';
+    this.input.autocomplete = 'off';
+    this.input.maxLength = String(BET_MAX).length;
+    this.input.placeholder = '금액';
     this.input.value = String(this.amount);
+    element('casino-unit', field, 'span').textContent = 'G';
+    // 마우스로 누르면 손을 뗄 때 브라우저가 고른 것을 풀어 버리므로, 처음 누른 그 한 번만 막는다.
+    let justFocused = false;
+    this.input.addEventListener('focus', () => {
+      this.input.select();
+      justFocused = true;
+    });
+    this.input.addEventListener('mouseup', (e) => {
+      if (justFocused) e.preventDefault();
+      justFocused = false;
+    });
+    this.input.addEventListener('blur', () => {
+      justFocused = false;
+    });
     this.input.addEventListener('input', () => {
-      this.amount = Math.floor(Number(this.input.value)) || 0;
+      const digits = this.input.value.replace(/\D/g, '');
+      if (digits !== this.input.value) this.input.value = digits;
+      this.amount = Number(digits) || 0;
       this.render();
+    });
+    this.input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      void this.bet();
     });
     const chip = (label: string, next: () => number) => {
       const button = element('casino-chip', row, 'button') as HTMLButtonElement;

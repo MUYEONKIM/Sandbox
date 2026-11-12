@@ -69,7 +69,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   });
 
   const castle = new CastleWindow(root, economy, {
-    onBuyStat: (id) => scene.buyStat(id),
+    onBuyStat: (id, amount) => scene.buyStat(id, amount),
   });
 
   const fame = new FameWindow(root, profile.nickname, () => session.fetchRanking(FAME_SIZE));

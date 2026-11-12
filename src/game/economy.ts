@@ -171,9 +171,13 @@ export class Economy {
     return this.myStats[id];
   }
 
-  /** 스텟은 살수록 비싸진다. 서버의 buy_stat과 같은 계산이다. */
-  statPrice({ id, basePrice, priceStep }: ShopStat) {
-    return basePrice + priceStep * this.myStats[id];
+  /**
+   * 스텟을 count포인트 한 번에 살 때의 값. 1포인트마다 priceStep씩 비싸지므로 그 합이다.
+   * 서버의 buy_stat과 같은 계산이다.
+   */
+  statPrice({ id, basePrice, priceStep }: ShopStat, count = 1) {
+    const owned = this.myStats[id];
+    return count * basePrice + priceStep * (count * owned + (count * (count - 1)) / 2);
   }
 
   setWeaponBought(id: WeaponId, gold: number) {
