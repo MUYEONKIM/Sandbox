@@ -15,6 +15,7 @@ import { showLogin } from './ui/login';
 import { KillBoard } from './ui/killboard';
 import { Minimap } from './ui/minimap';
 import { NoticeBar } from './ui/notice';
+import { watchNewVersion } from './ui/newVersion';
 import { NameTags } from './ui/nametags';
 import { CasinoWindows } from './ui/casino';
 import { BoardWindow } from './ui/board';
@@ -26,7 +27,7 @@ import { ShopWindow } from './ui/shop';
 
 /** 명예의 전당 창과 미니맵 밑 패널에 보여 줄 인원 */
 const FAME_SIZE = 50;
-/** 아무말 게시판에 보여 줄 최근 글 수 */
+/** 게시판에 보여 줄 최근 글 수 */
 const BOARD_SIZE = 50;
 const PANEL_SIZE = 10;
 /** Tab 킬/데스 순위표에 보여 줄 인원 */
@@ -57,7 +58,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   const minimap = new Minimap(side);
   new RankPanel(side, profile.nickname, () => session.fetchRanking(PANEL_SIZE));
-  const chat = new ChatBox(root, (text) => void session.sendChat(text));
+  const chat = new ChatBox(root, (text, everyone) => void session.sendChat(text, everyone));
   const tags = new NameTags(root);
 
   const office = new OfficeWindow(root, economy, {
@@ -113,6 +114,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board);
 
   void session.announceJoin();
+  watchNewVersion(root);
 
   new Phaser.Game({
     type: Phaser.AUTO,

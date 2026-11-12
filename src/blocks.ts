@@ -90,6 +90,12 @@ export const BLOCKS = {
   red_rock: { name: '붉은 바위', solid: true, art: { kind: 'tile', tiles: [53, 54, 55, 56, 57, 58, 59, 60] } },
   rubble: { name: '돌무더기', solid: true, art: { kind: 'tile', tiles: [62] } },
   spire_rock: { name: '뾰족 바위', solid: true, art: { kind: 'tile', tiles: [66] } },
+  // 2026-11-12 사용자 요청 "장식품 에셋 더 있으면 추가": 남은 한 칸짜리 그림
+  signboard: { name: '나무 간판', solid: true, art: { kind: 'sprite', sprite: 'board' } },
+  water_rock: { name: '물가 바위', solid: true, art: { kind: 'tile', tiles: [70, 71, 72, 77, 79] } },
+  stepping_stone: { name: '징검돌', solid: false, art: { kind: 'tile', tiles: [68, 69] } },
+  gravel_mound: { name: '자갈 흙더미', solid: true, art: { kind: 'tile', tiles: [12, 13] } },
+  vine_mound: { name: '덩굴 흙더미', solid: true, art: { kind: 'tile', tiles: [19, 20] } },
   cafe_table: { name: '카페 테이블', solid: true, art: { kind: 'sprite', sprite: 'cafe-table' } },
   plant: { name: '화분', solid: true, art: { kind: 'sprite', sprite: 'plant' } },
 } as const satisfies Record<string, BlockInfo>;

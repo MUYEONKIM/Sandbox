@@ -2,6 +2,12 @@ import type { ChatMessage } from '../net/session';
 import { element } from './dom';
 
 const MAX_MESSAGES = 50;
+/** 입력창에서 Tab으로 바꾸는 채팅 모드. 일반은 같은 맵, 전체는 모든 맵이다(2026-11-12 사용자 요청). */
+const MODES = {
+  map: { label: '일반', placeholder: '같은 맵에만 보입니다 (Tab: 전체)', everyone: false },
+  all: { label: '전체', placeholder: '모든 맵에 보입니다 (Tab: 일반)', everyone: true },
+} as const;
+type Mode = keyof typeof MODES;
 const MAX_LENGTH = 100;
 /** 맨 아래에서 이만큼 안이면 맨 아래를 보고 있는 것으로 친다. */
 const BOTTOM_SLACK = 24;
@@ -10,22 +16,32 @@ const BOTTOM_SLACK = 24;
 export class ChatBox {
   private readonly log: HTMLElement;
   private readonly input: HTMLInputElement;
+  private readonly entry: HTMLElement;
+  private readonly modeBadge: HTMLElement;
+  /** 마지막에 쓴 모드를 기억해 다음에 열 때도 그대로 쓴다. */
+  private mode: Mode = 'map';
   private stuckToBottom = true;
 
   constructor(
     root: HTMLElement,
-    private readonly send: (text: string) => void,
+    private readonly send: (text: string, everyone: boolean) => void,
   ) {
     const box = element('chat', root);
     this.log = element('chat-log', box);
-    this.input = element('chat-input', box, 'input') as HTMLInputElement;
+    this.entry = element('chat-entry', box);
+    this.entry.hidden = true;
+    this.modeBadge = element('chat-mode', this.entry, 'button');
+    (this.modeBadge as HTMLButtonElement).type = 'button';
+    this.modeBadge.addEventListener('pointerdown', (e) => e.preventDefault());
+    this.modeBadge.addEventListener('click', () => this.toggleMode());
+    this.input = element('chat-input', this.entry, 'input') as HTMLInputElement;
     this.input.maxLength = MAX_LENGTH;
-    this.input.placeholder = '메시지를 입력하고 Enter';
     this.input.hidden = true;
+    this.renderMode();
 
     this.input.addEventListener('keydown', (e) => this.onKey(e));
     window.addEventListener('pointerdown', (e) => {
-      if (e.target !== this.input) this.close();
+      if (e.target !== this.input && e.target !== this.modeBadge) this.close();
     });
   }
 
@@ -34,14 +50,29 @@ export class ChatBox {
   }
 
   open() {
+    this.entry.hidden = false;
     this.input.hidden = false;
     this.input.focus();
   }
 
   close() {
     this.input.value = '';
+    this.entry.hidden = true;
     this.input.hidden = true;
     this.input.blur();
+  }
+
+  private toggleMode() {
+    this.mode = this.mode === 'map' ? 'all' : 'map';
+    this.renderMode();
+  }
+
+  private renderMode() {
+    const mode = MODES[this.mode];
+    this.modeBadge.textContent = mode.label;
+    this.modeBadge.className = `chat-mode ${this.mode}`;
+    this.input.placeholder = mode.placeholder;
+    this.entry.classList.toggle('all', this.mode === 'all');
   }
 
   private onKey(e: KeyboardEvent) {
@@ -49,15 +80,20 @@ export class ChatBox {
     if (e.isComposing) return;
     if (e.code === 'Escape') {
       this.close();
+    } else if (e.code === 'Tab') {
+      // 브라우저가 다른 칸으로 초점을 옮기지 않게 막고 모드만 바꾼다.
+      e.preventDefault();
+      this.toggleMode();
     } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
       const text = this.input.value.trim();
-      if (text) this.send(text);
+      if (text) this.send(text, MODES[this.mode].everyone);
       this.close();
     }
   }
 
   show(message: ChatMessage) {
-    const line = this.addLine('chat-line');
+    const line = this.addLine(message.everyone ? 'chat-line chat-all' : 'chat-line');
+    if (message.everyone) element('chat-tag', line, 'span').textContent = '[전체]';
     element('chat-author', line, 'span').textContent = message.author;
     element('chat-text', line, 'span').textContent = message.text;
     this.settle();

@@ -622,10 +622,53 @@ canvas {
   box-shadow: none;
 }
 
+/* 인벤토리 탭: 타일, 장식품, 무기 */
+.bag-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.bag-tab {
+  flex: 1;
+  padding: 5px 8px;
+  color: var(--text-dim);
+  background: var(--slot-sunken);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bag-tab.chosen {
+  color: #2a1d16;
+  background: var(--gold);
+  border-color: var(--panel-edge);
+}
+
+.bag-hint {
+  max-width: calc(var(--slot-size) * 9 + 32px);
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* 단축키 칸에 이미 들어 있는 것: 칸 번호를 붙이고 테두리를 금색으로 */
+.bag .slot.in-hotbar {
+  border-color: #8a6a3a;
+}
+
+.bag .slot.in-hotbar .slot-key {
+  color: var(--gold);
+  font-weight: 700;
+}
+
 .bag {
   grid-template-columns: repeat(9, var(--slot-size));
-  /* 화면이 낮으면 가방 칸을 스크롤한다. 아래 단축키 줄과 위 제목을 뺀 높이 */
-  max-height: calc(100vh - 220px);
+  align-content: start;
+  /* 같은 높이로 두어 탭을 바꿔도 창이 들썩이지 않게 하고, 화면이 낮으면 스크롤한다. */
+  height: calc(var(--slot-size) * 6 + 20px);
+  max-height: calc(100vh - 290px);
   overflow-y: auto;
   box-shadow: none;
   border: 0;
@@ -731,8 +774,41 @@ canvas {
   font-weight: 700;
 }
 
+.chat-entry {
+  display: flex;
+  pointer-events: auto;
+}
+
+.chat-entry[hidden] {
+  display: none;
+}
+
+/* 입력창 왼쪽의 채팅 모드 표시. 누르거나 Tab을 치면 바뀐다. */
+.chat-mode {
+  flex: none;
+  padding: 0 8px;
+  color: #2a1d16;
+  background: var(--gold);
+  border: 2px solid var(--gold);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chat-mode.all {
+  color: #10283a;
+  background: #7fd4ff;
+  border-color: #7fd4ff;
+}
+
+.chat-entry.all .chat-input {
+  border-color: #7fd4ff;
+}
+
 .chat-input {
   display: block;
+  flex: 1;
+  min-width: 0;
   width: 100%;
   padding: 6px 10px;
   color: var(--text);
@@ -1356,6 +1432,17 @@ canvas {
   font-weight: 700;
 }
 
+/* 모든 맵에 보낸 전체 채팅 */
+.chat-all .chat-tag {
+  margin-right: 4px;
+  color: #7fd4ff;
+  font-weight: 700;
+}
+
+.chat-all .chat-text {
+  color: #d9f1ff;
+}
+
 /* 화면 위쪽 가운데의 전체 알림(입장, 처치) */
 .notices {
   position: absolute;
@@ -1647,4 +1734,38 @@ canvas {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
+}
+
+/* 새 버전이 배포되면 화면 위 가운데에 뜨는 새로고침 안내 */
+.new-version {
+  position: absolute;
+  z-index: 20;
+  top: 56px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 32px);
+  padding: 8px 12px;
+  color: var(--text);
+  background: rgb(31 21 16 / 94%);
+  border: 2px solid #7fd4ff;
+  box-shadow: 0 0 0 2px var(--panel-edge);
+  font-weight: 700;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.new-version[hidden] {
+  display: none;
+}
+
+.new-version-button {
+  flex: none;
+  padding: 4px 12px;
+  color: #10283a;
+  background: #7fd4ff;
+  border: 2px solid var(--panel-edge);
+  font: inherit;
+  cursor: pointer;
 }

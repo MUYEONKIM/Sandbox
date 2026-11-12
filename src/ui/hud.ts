@@ -1,5 +1,5 @@
 import { BLOCK_IDS } from '../blocks';
-import { BAG_SIZE, HOTBAR_SIZE, type Inventory } from '../game/inventory';
+import { HOTBAR_SIZE, TABS, type Inventory, type TabId } from '../game/inventory';
 import { formatLevel, levelNeed } from '../game/level';
 import { itemName, paintItem, WEAPON_IDS, type ItemId } from '../items';
 import { element } from './dom';
@@ -13,6 +13,9 @@ function paintIcons() {
 }
 
 const TOAST_MS = 3500;
+
+/** 끌고 있는 것: 단축키 칸에서 집었으면 칸 번호, 인벤토리 목록에서 집었으면 그 물건 */
+type Drag = { from: number } | { item: ItemId };
 const TOAST_LIMIT = 4;
 
 /** 화면 위 UI: 단축키 칸, 인벤토리 창, 조작 안내 */
@@ -26,6 +29,9 @@ export class Hud {
   private readonly expText: HTMLElement;
   private readonly dragIcon: HTMLImageElement;
   private readonly slots: HTMLElement[] = [];
+  private readonly bag: HTMLElement;
+  private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
+  private tab: TabId = 'tile';
   private readonly icons = paintIcons();
   private readonly connection: HTMLElement;
   private readonly hpFill: HTMLElement;
@@ -34,7 +40,7 @@ export class Hud {
   private readonly gold: HTMLElement;
   private readonly toastBox: HTMLElement;
   private readonly announceBox: HTMLElement;
-  private dragFrom: number | null = null;
+  private drag: Drag | null = null;
 
   constructor(
     root: HTMLElement,
@@ -65,7 +71,20 @@ export class Hud {
     this.panel.hidden = true;
     element('panel-title', this.panel).textContent = '인벤토리';
     this.panelStats = element('panel-stats', this.panel);
-    const bag = element('slots bag', this.panel);
+    const tabs = element('bag-tabs', this.panel);
+    for (const [id, label] of Object.entries(TABS) as [TabId, string][]) {
+      const button = element('bag-tab', tabs, 'button') as HTMLButtonElement;
+      button.type = 'button';
+      button.textContent = label;
+      button.addEventListener('click', () => {
+        this.tab = id;
+        this.render();
+      });
+      this.tabButtons.set(id, button);
+    }
+    this.bag = element('slots bag', this.panel);
+    element('bag-hint', this.panel).textContent =
+      '아래 단축키 칸으로 끌어다 놓거나, 누르면 지금 고른 칸에 들어갑니다. 단축키 칸에서 이 창으로 끌면 칸이 비워집니다.';
 
     this.downNotice = element('down-notice', root);
     this.downNotice.textContent = '쓰러졌습니다. 잠시 후 포탈 앞에서 다시 시작합니다.';
@@ -89,9 +108,7 @@ export class Hud {
 
     const hotbar = element('slots hotbar', bottom);
 
-    for (let i = 0; i < HOTBAR_SIZE + BAG_SIZE; i++) {
-      this.slots.push(this.createSlot(i, i < HOTBAR_SIZE ? hotbar : bag));
-    }
+    for (let i = 0; i < HOTBAR_SIZE; i++) this.slots.push(this.createSlot(i, hotbar));
 
     this.dragIcon = element('drag-icon', root, 'img') as HTMLImageElement;
     this.dragIcon.hidden = true;
@@ -164,6 +181,7 @@ export class Hud {
   toggle() {
     this.panel.hidden = !this.panel.hidden;
     this.cancelDrag();
+    this.render();
   }
 
   close() {
@@ -177,58 +195,100 @@ export class Hud {
     const icon = element('slot-icon', slot, 'img') as HTMLImageElement;
     icon.draggable = false;
     icon.alt = '';
-    if (index < HOTBAR_SIZE) element('slot-key', slot).textContent = String(index + 1);
+    element('slot-key', slot).textContent = String(index + 1);
     element('slot-count', slot);
     return slot;
   }
 
+  /** 단축키 칸 번호. 단축키 칸이 아니면 null */
   private slotFrom(target: EventTarget | null) {
-    const el = target instanceof Element ? target.closest<HTMLElement>('.slot') : null;
+    const el = target instanceof Element ? target.closest<HTMLElement>('.slot[data-slot]') : null;
     return el ? Number(el.dataset.slot) : null;
+  }
+
+  /** 인벤토리 목록의 물건. 목록이 아니면 null */
+  private itemFrom(target: EventTarget | null) {
+    const el = target instanceof Element ? target.closest<HTMLElement>('.slot[data-item]') : null;
+    return el ? (el.dataset.item as ItemId) : null;
   }
 
   private onPointerDown(e: PointerEvent) {
     const index = this.slotFrom(e.target);
-    if (index === null) return;
-    const stack = this.inventory.slots[index];
-    if (this.isOpen && stack) {
-      this.dragFrom = index;
-      this.dragIcon.src = this.icons[stack.id];
-      this.dragIcon.hidden = false;
-      this.moveDragIcon(e);
-      this.render();
-    } else if (index < HOTBAR_SIZE) {
-      this.inventory.select(index);
+    const item = this.itemFrom(e.target);
+    if (index !== null) {
+      const stack = this.inventory.slots[index];
+      if (this.isOpen && stack) this.startDrag({ from: index }, stack.id, e);
+      else this.inventory.select(index);
+    } else if (item && this.isOpen) {
+      this.startDrag({ item }, item, e);
     }
   }
 
+  private startDrag(drag: Drag, id: ItemId, e: PointerEvent) {
+    this.drag = drag;
+    this.dragIcon.src = this.icons[id];
+    this.dragIcon.hidden = false;
+    this.moveDragIcon(e);
+    this.render();
+  }
+
   private moveDragIcon(e: PointerEvent) {
-    if (this.dragFrom === null) return;
+    if (this.drag === null) return;
     this.dragIcon.style.left = `${e.clientX}px`;
     this.dragIcon.style.top = `${e.clientY}px`;
   }
 
   private onPointerUp(e: PointerEvent) {
-    if (this.dragFrom === null) return;
-    const from = this.dragFrom;
-    const to = this.slotFrom(document.elementFromPoint(e.clientX, e.clientY));
+    const drag = this.drag;
+    if (drag === null) return;
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    const to = this.slotFrom(target);
     this.cancelDrag();
-    if (to !== null && to !== from) this.inventory.move(from, to);
-    else if (to === from && from < HOTBAR_SIZE) this.inventory.select(from);
+    if ('from' in drag) {
+      if (to !== null && to !== drag.from) this.inventory.move(drag.from, to);
+      else if (to === drag.from) this.inventory.select(drag.from);
+      else if (target?.closest('.panel')) this.inventory.clear(drag.from);
+    } else if (to !== null) {
+      this.inventory.put(to, drag.item);
+    } else if (this.itemFrom(target) === drag.item) {
+      // 끌지 않고 누르기만 했으면 지금 고른 단축키 칸에 넣는다.
+      this.inventory.put(this.inventory.selected, drag.item);
+    }
     this.render();
   }
 
   private cancelDrag() {
-    this.dragFrom = null;
+    this.drag = null;
     this.dragIcon.hidden = true;
   }
 
+  /** 지금 탭의 목록. 단축키 칸에 들어 있는 것은 칸 번호를 붙인다. */
+  private renderBag() {
+    for (const [id, button] of this.tabButtons) button.classList.toggle('chosen', id === this.tab);
+    this.bag.replaceChildren();
+    for (const id of this.inventory.catalog(this.tab)) {
+      const cell = element('slot', this.bag);
+      cell.dataset.item = id;
+      cell.title = itemName(id);
+      const icon = element('slot-icon', cell, 'img') as HTMLImageElement;
+      icon.draggable = false;
+      icon.alt = '';
+      icon.src = this.icons[id];
+      const at = this.inventory.hotbarIndexOf(id);
+      if (at >= 0) {
+        cell.classList.add('in-hotbar');
+        element('slot-key', cell).textContent = String(at + 1);
+      }
+    }
+  }
+
   private render() {
+    if (this.isOpen) this.renderBag();
     this.slots.forEach((slot, i) => {
       const stack = this.inventory.slots[i];
       const icon = slot.querySelector<HTMLImageElement>('.slot-icon')!;
       const count = slot.querySelector<HTMLElement>('.slot-count')!;
-      const dragged = this.dragFrom === i;
+      const dragged = this.drag !== null && 'from' in this.drag && this.drag.from === i;
       icon.hidden = !stack || dragged;
       if (stack) icon.src = this.icons[stack.id];
       // 블록은 무제한이고 무기는 하나라 개수를 쓰지 않는다.

@@ -55,6 +55,8 @@ export interface ChatMessage {
   id: string;
   author: string;
   text: string;
+  /** true면 모든 맵에 보낸 전체 채팅, false면 같은 맵의 일반 채팅 */
+  everyone: boolean;
 }
 
 export interface KillEntry {
@@ -214,10 +216,10 @@ function parseNotice(value: unknown): Notice | null {
   return null;
 }
 
-function parseChat(value: unknown): ChatMessage | null {
+function parseChat(value: unknown, everyone: boolean): ChatMessage | null {
   const m = value as Partial<ChatMessage> | null;
   if (!m || typeof m.id !== 'string' || typeof m.author !== 'string' || typeof m.text !== 'string') return null;
-  return { id: m.id, author: m.author.slice(0, MAX_NAME), text: m.text.slice(0, MAX_TEXT) };
+  return { id: m.id, author: m.author.slice(0, MAX_NAME), text: m.text.slice(0, MAX_TEXT), everyone };
 }
 
 function parseBlock(row: { x?: unknown; y?: unknown; z?: unknown; block?: unknown }): PlacedBlock | null {
@@ -269,6 +271,10 @@ export class GameSession {
         const notice = parseNotice(payload);
         if (notice) events.onNotice(notice);
       })
+      .on('broadcast', { event: 'chat' }, ({ payload }) => {
+        const message = parseChat(payload, true);
+        if (message) events.onChat(message);
+      })
       .on('broadcast', { event: 'level' }, ({ payload }) => {
         const level = parseLevel(payload?.level);
         const exp = typeof payload?.exp === 'number' && payload.exp >= 0 ? payload.exp : 0;
@@ -294,7 +300,7 @@ export class GameSession {
 
     mapChat
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
-        const message = parseChat(payload);
+        const message = parseChat(payload, false);
         if (message && mapChat === this.mapChat) events.onChat(message);
       })
       .subscribe();
@@ -489,7 +495,7 @@ export class GameSession {
     return error ? null : (data as number);
   }
 
-  /** 아무말 게시판의 최근 글을 새 글부터 읽는다. 실패하면 null이다. */
+  /** 게시판의 최근 글을 새 글부터 읽는다. 실패하면 null이다. */
   async readBoard(size: number): Promise<BoardPost[] | null> {
     const { data, error } = await supabase.rpc('read_board', { how_many: size });
     if (error) return null;
@@ -573,8 +579,9 @@ export class GameSession {
     this.sendMove(x, y, 0);
   }
 
-  async sendChat(text: string) {
-    await supabase.rpc('send_chat', { message: text });
+  /** everyone이면 모든 맵에(전체 채팅), 아니면 같은 맵에만(일반 채팅) 보낸다. */
+  async sendChat(text: string, everyone: boolean) {
+    await supabase.rpc('send_chat', { message: text, everyone });
   }
 
   /** 다른 사람이 먼저 같은 자리에 놓았거나 아래 블록이 빠졌으면 false를 돌려준다. */

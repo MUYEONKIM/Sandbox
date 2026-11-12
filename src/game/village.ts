@@ -64,7 +64,7 @@ const FIXED_TREES: Tree[] = [
   // 성문 양옆
   { sprite: 'pinetree', x: 30, y: 20 },
   { sprite: 'pinetree', x: 30, y: 27 },
-  // 광장의 명예의 전당 게시판과 아무말 게시판
+  // 광장 오른쪽 잔디밭의 명예의 전당 간판과 게시판
   { sprite: FAME.sprite, x: FAME.x, y: FAME.y },
   { sprite: BOARD.sprite, x: BOARD.x, y: BOARD.y },
 ];

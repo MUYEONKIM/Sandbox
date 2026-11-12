@@ -37,7 +37,7 @@ function timeAgo(date: Date) {
 const dotDate = (date: string) => date.replaceAll('-', '.');
 
 /**
- * 시작마을 아무말 게시판 창. 맨 위에 공지(업데이트 내역, src/updates.ts) 한 개가 고정되고,
+ * 시작마을 게시판 창. 맨 위에 공지(업데이트 내역, src/updates.ts) 한 개가 고정되고,
  * 그 아래 누구나 쓴 글이 새 글부터 보인다. 글쓰기, 길이, 간격 검사는 서버 함수가 한다.
  */
 export class BoardWindow {
@@ -57,7 +57,7 @@ export class BoardWindow {
   ) {
     this.root = element('office board', parent);
     this.root.hidden = true;
-    element('office-title', this.root).textContent = '아무말 게시판';
+    element('office-title', this.root).textContent = '게시판';
     element('office-subtitle', this.root).textContent = '아무 말이나 남기세요. 아무도 책임지지 않습니다.';
 
     this.noticeBody = this.addNotice();

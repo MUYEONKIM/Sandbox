@@ -946,7 +946,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     this.economy.setWeaponBought(id, gold);
     const placed = this.inventory.addWeapon(id);
-    this.hud.toast(`${WEAPONS[id].name} 구매 완료`, placed ? '가방이나 단축키 칸을 확인하세요' : '가방에 빈칸이 없어 다음 접속 때 들어옵니다');
+    this.hud.toast(`${WEAPONS[id].name} 구매 완료`, placed ? '단축키 칸에 넣었습니다' : '인벤토리(I)의 무기 탭에 있습니다');
   }
 
   /** 상점에서 작업 도구를 산다. 효과는 서버의 harvest가 적용한다. */
@@ -1608,9 +1608,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
-  onChat({ id, author, text }: ChatMessage) {
-    this.chat.show({ id, author, text });
-    this.tags.say(id, text);
+  onChat(message: ChatMessage) {
+    this.chat.show(message);
+    // 말풍선은 같은 맵에 보이는 사람에게만 뜬다(다른 맵에서 온 전체 채팅은 기록에만 남음).
+    this.tags.say(message.id, message.text);
   }
 
   onBlocksLoaded(blocks: PlacedBlock[]) {
