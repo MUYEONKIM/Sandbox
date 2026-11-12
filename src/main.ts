@@ -27,6 +27,9 @@ import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
 import { OfficeWindow } from './ui/office';
 import { ShopWindow } from './ui/shop';
+import { GroundUi } from './ui/ground';
+import { anyModalOpen, closeTopModal } from './ui/modal';
+import { showWhatsNew } from './ui/whatsNew';
 
 /** 명예의 전당 창과 미니맵 밑 패널에 보여 줄 인원 */
 const FAME_SIZE = 50;
@@ -131,6 +134,10 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     onSlot: (index) => inventory.select(index),
     onInventory: () => hud.toggle(),
     onEscape: () => {
+      if (anyModalOpen()) {
+        closeTopModal();
+        return;
+      }
       hud.close();
       office.close();
       shop.close();
@@ -143,15 +150,23 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     },
     onChat: () => {
       const windowOpen =
-        hud.isOpen || office.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen;
+        hud.isOpen || office.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
       if (!windowOpen) chat.open();
     },
   });
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market);
+  // 땅에 놓는 메모와 골드(2026-11-13 사용자 요청)
+  const groundUi = new GroundUi(root);
+  hud.setMemoRenderer((pane) => groundUi.renderBag(pane));
+  groundUi.onChange(() => hud.refreshMemos());
+  hud.onDropGold = () => groundUi.openGoldDrop(economy.gold, (amount) => scene.dropGold(amount));
+  void session.myMemos().then((memos) => groundUi.setHeld(memos));
+
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi);
 
   void session.announceJoin();
   watchNewVersion(root);
+  showWhatsNew(root, profile.id);
 
   new Phaser.Game({
     type: Phaser.AUTO,
@@ -166,7 +181,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, board, exchange, market, elevator, casino } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, board, exchange, market, elevator, casino, groundUi } });
   }
 }
 

@@ -289,10 +289,11 @@ export const CASINO_FURNITURE: Furniture[] = [
  */
 export const EXCHANGE_HALL: Area = [13, 13, 30, 30];
 /**
- * 오른쪽 벽에 건 종목 시세판의 가운데 칸(x). 판 앞 두 칸이 그 종목 창구 포탈이고, 타면 그 종목이 고른 채로 거래 창이 열린다.
- * 시세판의 숫자는 그림이 아니라 화면 위 글씨라서 가격이 바뀌면 바로 바뀐다. 종목 id는 SQL stocks 표와 같다.
+ * 오른쪽 벽에 건 큰 시세 전광판 하나(2026-11-13 사용자 요청 "전광판이 하나 띄워져 있고, 들어가면 모달창이 뜨면서 거래").
+ * 전광판은 종목마다 한 칸씩 나뉘고 x는 그 칸의 가운데다. 숫자는 그림이 아니라 화면 위 글씨라서 가격이 바뀌면 바로 바뀐다.
+ * 종목 id는 SQL stocks 표와 같다.
  */
-export const EXCHANGE_BOOTHS: { stock: string; name: string; x: number; color: number }[] = [
+export const EXCHANGE_TICKERS: { stock: string; name: string; x: number; color: number }[] = [
   { stock: 'samsung', name: '삼성전자', x: 16, color: 0x1428a0 },
   { stock: 'hynix', name: 'SK하이닉스', x: 20, color: 0xe8102a },
   { stock: 'hanwha', name: '한화', x: 24, color: 0xee6a10 },
@@ -315,18 +316,37 @@ export const EXCHANGE_FURNITURE: Furniture[] = [
 ];
 
 /**
- * 어디와도 이어지지 않은 작은 다다미방(2026-11-13 사용자 요청 "7층과 격리된 공간"). 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
+ * 어디와도 이어지지 않은 16×16칸 다다미방. 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
  * 나가는 포탈은 7층으로 가고, 7층에는 이 방으로 오는 포탈이 없어 엘리베이터 앞에 선다.
  */
-export const ANNEX: Area = [20, 20, 26, 26];
-/** 방석은 바닥 그림이라 밟고 앉을 수 있다. 스탠드와 밥상은 칸을 막는다. */
+export const ANNEX: Area = [16, 16, 31, 31];
+/**
+ * 방석은 바닥 그림이라 밟고 앉을 수 있다. 스탠드, 밥상, 바위, 도코노마 단은 칸을 막는다.
+ * 방석 여섯은 오른쪽 벽 가운데 도코노마(족자와 향로)를 보고 두 줄로 놓는다. 바위 정원은 왼쪽 앞, 밥상은 오른쪽 앞.
+ */
 export const ANNEX_PROPS = {
-  lamp: { x: 20, y: 20 },
-  table: { x: 25, y: 22 },
-  cushion: { x: 23, y: 22 },
-  plant: { x: 26, y: 20 },
+  lamps: [
+    { x: 16, y: 16 },
+    { x: 31, y: 31 },
+  ],
+  plants: [
+    { x: 31, y: 16 },
+    { x: 16, y: 31 },
+  ],
+  table: { x: 28, y: 27 },
+  cushions: [...[21, 24, 27].flatMap((x) => [19, 22].map((y) => ({ x, y }))), { x: 26, y: 27 }],
+  /** 도코노마 단: 오른쪽 벽에 붙은 x 23~25 세 칸 */
+  alcove: { x0: 23, x1: 25 },
+  /** 바위 정원 [x0, y0, x1, y1] */
+  garden: [17, 25, 22, 30] as Area,
+  /** 정원의 바위. r은 둘레에 갈퀴 자국을 두르는 반지름(칸) */
+  rocks: [
+    { x: 19, y: 27, size: 1, r: 1.7 },
+    { x: 21, y: 26, size: 0.65, r: 1.1 },
+    { x: 18, y: 29, size: 0.6, r: 1 },
+  ],
 };
-const ANNEX_EXIT = { x: 23, y: ANNEX[3] };
+const ANNEX_EXIT = { x: 24, y: ANNEX[3] };
 
 function wallPortal([x0, y0]: Area, { wall, at }: Doorway, to: Portal['to'], label?: string): Portal {
   return wall === 'right'
@@ -433,9 +453,8 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     doorways: [],
     portals: [
       { ...EXCHANGE_EXIT, to: 'plains', label: '시작마을', landing: { x: EXCHANGE_EXIT.x, y: EXCHANGE_EXIT.y - 2 } },
-      ...EXCHANGE_BOOTHS.map(
-        ({ stock, name, x }): Portal => ({ x, y: EXCHANGE_HALL[1] + 2, to: 'trade', stock, label: name, landing: { x, y: EXCHANGE_HALL[1] + 4 } }),
-      ),
+      // 전광판 가운데 앞 매매 창구. 밟으면 모든 종목이 있는 거래 창이 열린다.
+      { x: EXCHANGE_HALL_SIGN.x, y: EXCHANGE_HALL[1] + 2, to: 'trade', landing: { x: EXCHANGE_HALL_SIGN.x, y: EXCHANGE_HALL[1] + 4 } },
     ],
   },
   annex: {

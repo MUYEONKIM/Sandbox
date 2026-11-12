@@ -330,8 +330,6 @@ export interface Portal {
   y: number;
   /** 'office', 'shop', 'counter', 'fame', 'board', 'trade', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
   to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
-  /** 'trade' 포탈(거래소 종목 창구)이 고르는 종목 id */
-  stock?: string;
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
   /** 이 포탈 근처에서 플레이어가 서는 칸 */

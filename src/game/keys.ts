@@ -96,9 +96,11 @@ export class Keys {
     }
     if (e.repeat) return;
 
-    const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+    const digit = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     if (digit) {
-      this.actions.onSlot(Number(digit[1]) - 1);
+      // 1~9는 단축키 칸 0~8, 0은 그 뒤의 메모장 칸(inventory.ts의 MEMO_SLOT)이다.
+      const n = Number(digit[1]);
+      this.actions.onSlot(n === 0 ? 9 : n - 1);
     } else if (e.code === 'Space' || e.key === ' ') {
       e.preventDefault();
       this.jumpPressed = true;

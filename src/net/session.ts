@@ -92,6 +92,52 @@ export interface PlacedBlock {
   id: BlockId;
 }
 
+/** 땅에 놓인 메모나 골드(2026-11-13 사용자 요청). 메모 글은 주울 때 받는다. */
+export interface GroundItem {
+  id: number;
+  x: number;
+  y: number;
+  /** 골드면 액수, 메모면 null */
+  amount: number | null;
+}
+
+/** 내가 들고 있는 메모 */
+export interface HeldMemo {
+  id: number;
+  body: string;
+  /** 쓴 사람 닉네임 */
+  author: string;
+}
+
+/** 땅에 놓기가 안 된 까닭: 맵이 서버와 다름, 땅에 둔 것이 너무 많음, 골드 부족, 그 밖 */
+export type DropFail = 'wrong-map' | 'too-many' | 'gold' | 'failed';
+
+export type PickResult =
+  | { ok: true; kind: 'gold'; amount: number; gold: number }
+  | { ok: true; kind: 'memo'; memo: HeldMemo }
+  | { ok: false; reason: 'gone' | 'overflow' | 'failed' };
+
+function parseGround(row: { id?: unknown; x?: unknown; y?: unknown; amount?: unknown }): GroundItem | null {
+  const id = Number(row.id);
+  if (!Number.isSafeInteger(id) || !isTileCoord(row.x) || !isTileCoord(row.y)) return null;
+  const amount = row.amount === null || row.amount === undefined ? null : Number(row.amount);
+  if (amount !== null && !(Number.isSafeInteger(amount) && amount > 0)) return null;
+  return { id, x: row.x, y: row.y, amount };
+}
+
+function parseMemo(row: { id?: unknown; body?: unknown; author?: unknown } | null | undefined): HeldMemo | null {
+  const id = Number(row?.id);
+  if (!row || !Number.isSafeInteger(id) || typeof row.body !== 'string' || typeof row.author !== 'string') return null;
+  return { id, body: row.body, author: row.author };
+}
+
+function dropFail(message: string): DropFail {
+  if (message.includes('wrong map')) return 'wrong-map';
+  if (message.includes('too many')) return 'too-many';
+  if (message.includes('not enough gold')) return 'gold';
+  return 'failed';
+}
+
 export interface SessionEvents {
   /** 내 현재 칸. 새로 들어온 플레이어에게 위치를 알릴 때 쓴다. */
   currentTile(): { x: number; y: number };
@@ -124,6 +170,10 @@ export interface SessionEvents {
   onBlocksLoaded(blocks: PlacedBlock[]): void;
   onBlockPlaced(block: PlacedBlock): void;
   onBlockRemoved(x: number, y: number, z: number): void;
+  /** 지금 맵 땅에 놓인 것 전부. 맵 채널에 들거나 다시 붙을 때 온다. */
+  onGroundLoaded(items: GroundItem[]): void;
+  onGroundAdded(item: GroundItem): void;
+  onGroundRemoved(id: number): void;
   /** 맵 채널 연결 상태. 끊겼으면 reason에 이유가 온다. */
   onConnection(connected: boolean, reason: string | null): void;
 }
@@ -382,6 +432,15 @@ export class GameSession {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'blocks' }, ({ old }) => {
         if (current() && old.map === mapId && isTileCoord(old.x) && isTileCoord(old.y) && isLevel(old.z)) events.onBlockRemoved(old.x, old.y, old.z);
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ground_items' }, ({ new: row }) => {
+        const item = parseGround(row);
+        if (current() && item && row.map === mapId) events.onGroundAdded(item);
+      })
+      // 지운 줄은 기본 키(id)만 온다. 다른 맵의 id면 화면에 없으니 지울 것도 없다.
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'ground_items' }, ({ old }) => {
+        const id = Number(old.id);
+        if (current() && Number.isSafeInteger(id)) events.onGroundRemoved(id);
+      })
       .subscribe((status, error) => {
         if (!current()) return;
         this.joined = status === 'SUBSCRIBED';
@@ -393,6 +452,7 @@ export class GameSession {
           this.trackNow();
           this.announce();
           void this.syncBlocks();
+          void this.syncGround();
           return;
         }
         const server = status === 'CLOSED' && this.lastSystem ? ` / 서버: ${this.lastSystem}` : '';
@@ -640,6 +700,56 @@ export class GameSession {
       shares: Number(shares),
       cost: Number(cost),
     }));
+  }
+
+  /** 지금 맵 땅에 놓인 것을 서버 기준으로 다시 받는다. 한 사람당 20개까지라 1,000줄이면 넉넉하다. */
+  async syncGround() {
+    const { mapId } = this;
+    const { data, error } = await supabase.from('ground_items').select('id, x, y, amount').eq('map', mapId).order('id').limit(1000);
+    if (error || !data || mapId !== this.mapId) return;
+    this.events?.onGroundLoaded(data.map(parseGround).filter((item): item is GroundItem => item !== null));
+  }
+
+  /** 메모를 써서 (x, y)에 놓는다. */
+  async dropMemo(body: string, x: number, y: number): Promise<{ ok: true; item: GroundItem } | { ok: false; reason: DropFail }> {
+    const { data, error } = await supabase.rpc('drop_memo', { body, map: this.mapId, x, y });
+    const item = error ? null : parseGround(data);
+    return item ? { ok: true, item } : { ok: false, reason: dropFail(error?.message ?? '') };
+  }
+
+  /** 들고 있던 메모를 (x, y)에 다시 놓는다. */
+  async placeMemo(memo: number, x: number, y: number): Promise<{ ok: true; item: GroundItem } | { ok: false; reason: DropFail }> {
+    const { data, error } = await supabase.rpc('place_memo', { memo, map: this.mapId, x, y });
+    const item = error ? null : parseGround(data);
+    return item ? { ok: true, item } : { ok: false, reason: dropFail(error?.message ?? '') };
+  }
+
+  /** 골드를 amount만큼 (x, y)에 버린다. gold는 버린 뒤 남은 골드다. */
+  async dropGold(amount: number, x: number, y: number): Promise<{ ok: true; item: GroundItem; gold: number } | { ok: false; reason: DropFail }> {
+    const { data, error } = await supabase.rpc('drop_gold', { amount, map: this.mapId, x, y });
+    const d = data as { item?: unknown; gold?: unknown } | null;
+    const item = error || !d ? null : parseGround(d.item as Parameters<typeof parseGround>[0]);
+    return item ? { ok: true, item, gold: Number(d!.gold) } : { ok: false, reason: dropFail(error?.message ?? '') };
+  }
+
+  /** 땅의 것을 줍는다. 먼저 주운 사람만 받는다. */
+  async pickUp(item: number): Promise<PickResult> {
+    const { data, error } = await supabase.rpc('pick_up', { item });
+    if (error) {
+      const reason = error.message.includes('gone') ? 'gone' : error.message.includes('too much gold') ? 'overflow' : 'failed';
+      return { ok: false, reason };
+    }
+    const d = data as { amount?: unknown; gold?: unknown; memo?: Parameters<typeof parseMemo>[0] };
+    if (d.amount !== undefined && d.amount !== null) return { ok: true, kind: 'gold', amount: Number(d.amount), gold: Number(d.gold) };
+    const memo = parseMemo(d.memo);
+    return memo ? { ok: true, kind: 'memo', memo } : { ok: false, reason: 'failed' };
+  }
+
+  /** 내가 들고 있는 메모, 새것부터 */
+  async myMemos(): Promise<HeldMemo[]> {
+    const { data, error } = await supabase.rpc('my_memos');
+    if (error || !Array.isArray(data)) return [];
+    return data.map(parseMemo).filter((memo): memo is HeldMemo => memo !== null);
   }
 
   /** 주식을 지금 가격에 산다(amount > 0) 또는 판다(amount < 0). 체결 가격과 수는 서버가 정한다. */

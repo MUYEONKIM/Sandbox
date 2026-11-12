@@ -2,6 +2,8 @@ import { BLOCK_IDS, isCube, type BlockId } from '../blocks';
 import { isItem, isWeapon, WEAPON_IDS, type ItemId, type WeaponId } from '../items';
 
 export const HOTBAR_SIZE = 9;
+/** 0번 키 칸: 언제나 메모장이다(2026-11-13 사용자 요청). 단축키 칸 0~8 뒤의 번호로 고르고, 다른 것을 넣거나 뺄 수 없다. */
+export const MEMO_SLOT = HOTBAR_SIZE;
 /** 예전 저장 형식의 한 칸 최대 개수. 지금은 개수를 세지 않지만 저장된 칸을 읽을 때 검사한다. */
 const STACK_SIZE = 64;
 
@@ -76,8 +78,13 @@ export class Inventory {
     for (const fn of this.listeners) fn();
   }
 
+  /** 메모장 칸(MEMO_SLOT)을 고르면 null이다. */
   get selectedStack(): Slot {
-    return this.slots[this.selected];
+    return this.slots[this.selected] ?? null;
+  }
+
+  get memoSelected() {
+    return this.selected === MEMO_SLOT;
   }
 
   /** 탭에 보여 줄 것: 블록은 전부, 무기는 가진 것만. 순서는 blocks.ts, items.ts의 순서다. */

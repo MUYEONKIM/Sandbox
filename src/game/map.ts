@@ -4,6 +4,7 @@ import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
 import {
+  ANNEX,
   ANNEX_PROPS,
   BULL,
   CASINO_FURNITURE,
@@ -196,9 +197,10 @@ export function generateMap(id: MapId): GameMap {
       scenery.trees.push(...EXCHANGE_FURNITURE);
     }
     if (id === 'annex') {
-      const { lamp, table, plant } = ANNEX_PROPS;
-      scenery.trees.push({ sprite: 'plant', ...plant });
-      for (const { x, y } of [lamp, table]) solid[x + y * size] = 1;
+      const { lamps, plants, table, rocks, alcove } = ANNEX_PROPS;
+      scenery.trees.push(...plants.map((at) => ({ sprite: 'plant' as const, ...at })));
+      for (const { x, y } of [...lamps, table, ...rocks]) solid[x + y * size] = 1;
+      for (let x = alcove.x0; x <= alcove.x1; x++) solid[x + ANNEX[1] * size] = 1;
     }
   } else if (id === 'fishing') {
     spots = digPond(terrain);

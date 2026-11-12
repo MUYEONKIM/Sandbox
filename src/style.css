@@ -674,8 +674,9 @@ canvas {
   pointer-events: auto;
 }
 
+/* 단축키 칸 9개 뒤에 0번 메모장 칸 */
 .hotbar {
-  grid-template-columns: repeat(9, var(--slot-size));
+  grid-template-columns: repeat(10, var(--slot-size));
   padding: 0;
   background: none;
   border: 0;
@@ -2279,4 +2280,322 @@ canvas {
 
 .player-wanted[hidden] {
   display: none;
+}
+
+/* 가운데 작은 창(src/ui/modal.ts): 새 소식, 메모, 골드 버리기 */
+.modal-backdrop {
+  position: absolute;
+  z-index: 15;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 35%);
+  pointer-events: auto;
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  max-height: 100%;
+  padding: 18px 20px 14px;
+  overflow-y: auto;
+  color: var(--text);
+  background: var(--panel);
+  border: 3px solid var(--gold);
+  box-shadow: 0 0 0 3px var(--panel-edge), 0 10px 30px rgb(0 0 0 / 50%);
+  animation: modal-in 0.25s ease-out;
+}
+
+.modal-title {
+  color: var(--gold);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-button {
+  padding: 5px 16px;
+  color: var(--text);
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.modal-button.primary {
+  color: var(--panel-edge);
+  background: var(--gold);
+  border-color: #b8923a;
+  font-weight: 700;
+}
+
+.modal-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.whats-new-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.whats-new-date {
+  color: var(--gold);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.whats-new-items {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+
+.whats-new-more {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* 0번 메모장 칸: 다른 칸과 조금 띄우고 종이색 테두리 */
+.hotbar .memo-slot {
+  margin-left: 4px;
+  background: #6b5a3a;
+  border-color: #c9a640;
+}
+
+.hotbar .memo-slot.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
+/* 발밑에 주울 것이 있을 때 뜨는 "F키로 줍기" 안내. 화면 가운데가 내 캐릭터라 그 발밑에 띄운다. 휴대폰에서는 눌러서 줍는다. */
+.pickup-hint {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: calc(50% + 28px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  color: var(--text);
+  background: var(--panel);
+  border: 3px solid var(--gold);
+  box-shadow: 0 0 0 3px var(--panel-edge), 0 6px 18px rgb(0 0 0 / 40%);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: modal-in 0.2s ease-out;
+}
+
+.pickup-hint[hidden] {
+  display: none;
+}
+
+.pickup-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--panel-edge);
+  background: var(--gold);
+  border: 2px solid #b8923a;
+  font-size: 14px;
+}
+
+/* 땅의 골드에 마우스를 올리면 커서 오른쪽 위에 뜨는 액수 */
+.ground-tip {
+  position: absolute;
+  z-index: 7;
+  padding: 3px 8px;
+  color: var(--gold);
+  background: rgb(31 21 16 / 92%);
+  border: 2px solid var(--gold);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translate(12px, -130%);
+  pointer-events: none;
+}
+
+.ground-tip[hidden] {
+  display: none;
+}
+
+/* 인벤토리 위쪽 골드 줄과 버리기 버튼 */
+.bag-gold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.bag-gold-label {
+  color: var(--text-dim);
+}
+
+.bag-gold-amount {
+  flex: 1;
+  color: var(--gold);
+}
+
+.bag-gold-drop {
+  padding: 3px 12px;
+  color: var(--text);
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* 인벤토리 '메모' 탭: 주운 메모 목록 */
+.memo-bag {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: calc(var(--slot-size) * 9 + 32px);
+  max-width: 100%;
+  height: calc(var(--slot-size) * 6 + 20px);
+  max-height: calc(100vh - 290px);
+  overflow-y: auto;
+}
+
+.memo-bag[hidden] {
+  display: none;
+}
+
+.memo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.memo-row-icon {
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+}
+
+.memo-row-author {
+  flex: none;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.memo-row-body {
+  overflow: hidden;
+  color: var(--text-dim);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.memo-empty {
+  padding: 16px 4px;
+  color: var(--text-dim);
+}
+
+/* 메모 쓰기, 읽기, 골드 버리기 창의 내용 */
+.modal-note {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.modal-error {
+  min-height: 1em;
+  color: #ff8a7a;
+  font-size: 13px;
+}
+
+.memo-input,
+.gold-drop-input {
+  width: 100%;
+  padding: 8px;
+  color: #2b2118;
+  background: #fffbea;
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-size: 15px;
+}
+
+.memo-input {
+  resize: vertical;
+  background-image: repeating-linear-gradient(transparent 0 23px, #c9d6ea 23px 24px);
+  line-height: 24px;
+}
+
+.memo-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.memo-count {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.memo-body {
+  padding: 12px 14px;
+  color: #2b2118;
+  background: #fffbea repeating-linear-gradient(transparent 0 23px, #c9d6ea 23px 24px);
+  border: 2px solid var(--slot-sunken);
+  font-size: 16px;
+  line-height: 24px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 620px) {
+  /* 단축키 10칸이 휴대폰 폭(375px)에 들어가게 한다. */
+  .hotbar {
+    grid-template-columns: repeat(10, 32px);
+    gap: 2px;
+  }
+
+  .hotbar .slot {
+    width: 32px;
+    height: 32px;
+  }
+
+  .hotbar .memo-slot {
+    margin-left: 2px;
+  }
 }

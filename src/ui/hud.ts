@@ -1,5 +1,6 @@
+import { paintMemoPadIcon } from '../art/drops';
 import { BLOCK_IDS } from '../blocks';
-import { HOTBAR_SIZE, TABS, type Inventory, type TabId } from '../game/inventory';
+import { HOTBAR_SIZE, MEMO_SLOT, TABS, type Inventory, type TabId } from '../game/inventory';
 import { formatLevel, levelNeed } from '../game/level';
 import { itemName, paintItem, WEAPON_IDS, type ItemId } from '../items';
 import { element } from './dom';
@@ -14,6 +15,10 @@ function paintIcons() {
 }
 
 const TOAST_MS = 3500;
+
+/** 인벤토리 창의 탭: 블록과 무기 탭(inventory.ts의 TABS) 뒤에 주운 메모 탭 */
+type BagTab = TabId | 'memo';
+const BAG_TABS: Record<BagTab, string> = { ...TABS, memo: '메모' };
 
 /** 끌고 있는 것: 단축키 칸에서 집었으면 칸 번호, 인벤토리 목록에서 집었으면 그 물건 */
 type Drag = { from: number } | { item: ItemId };
@@ -43,10 +48,20 @@ export class Hud {
   private readonly expText: HTMLElement;
   private readonly dragIcon: HTMLImageElement;
   private readonly slots: HTMLElement[] = [];
+  /** 0번 키 칸: 언제나 메모장(inventory.ts의 MEMO_SLOT) */
+  private readonly memoSlot: HTMLElement;
+  private readonly memoIcon = paintMemoPadIcon().toDataURL();
   private readonly bag: HTMLElement;
-  private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
-  private tab: TabId = 'tile';
+  private readonly bagHint: HTMLElement;
+  /** 인벤토리의 '메모' 탭 내용. 그리는 것은 GroundUi다. */
+  private readonly memoPane: HTMLElement;
+  private renderMemos: ((pane: HTMLElement) => void) | null = null;
+  private readonly bagGold: HTMLElement;
+  private readonly tabButtons = new Map<BagTab, HTMLButtonElement>();
+  private tab: BagTab = 'tile';
   private readonly icons = paintIcons();
+  /** 인벤토리의 골드 '버리기' 버튼을 누르면 부른다(main.ts가 정한다). */
+  onDropGold: (() => void) | null = null;
   private readonly connection: HTMLElement;
   private readonly hpFill: HTMLElement;
   private readonly hpText: HTMLElement;
@@ -82,7 +97,7 @@ export class Hud {
     this.topLeft = element('top-left', root);
     const help = element('help', this.topLeft);
     help.innerHTML =
-      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>달리기</b> Shift 누르기 &nbsp; <b>점프</b> Space &nbsp; <b>작업</b> F<br><b>설치 / 공격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
+      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>메모장</b> 0 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>달리기</b> Shift 누르기 &nbsp; <b>점프</b> Space &nbsp; <b>작업 / 줍기</b> F<br><b>설치 / 공격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
 
     this.panel = element('panel', root);
     this.panel.hidden = true;
@@ -99,8 +114,16 @@ export class Hud {
     }
     this.infoPane = element('panel-pane', this.panel);
     this.bagPane = element('panel-pane', this.panel);
+    // 가진 골드와 버리기 버튼(2026-11-13 사용자 요청 "인벤토리에서 나의 골드 옆에 '버리기' 버튼")
+    const goldRow = element('bag-gold', this.bagPane);
+    element('bag-gold-label', goldRow, 'span').textContent = '골드';
+    this.bagGold = element('bag-gold-amount', goldRow, 'span');
+    const dropGold = element('bag-gold-drop', goldRow, 'button') as HTMLButtonElement;
+    dropGold.type = 'button';
+    dropGold.textContent = '버리기';
+    dropGold.addEventListener('click', () => this.onDropGold?.());
     const tabs = element('bag-tabs', this.bagPane);
-    for (const [id, label] of Object.entries(TABS) as [TabId, string][]) {
+    for (const [id, label] of Object.entries(BAG_TABS) as [BagTab, string][]) {
       const button = element('bag-tab', tabs, 'button') as HTMLButtonElement;
       button.type = 'button';
       button.textContent = label;
@@ -111,7 +134,9 @@ export class Hud {
       this.tabButtons.set(id, button);
     }
     this.bag = element('slots bag', this.bagPane);
-    element('bag-hint', this.bagPane).textContent =
+    this.memoPane = element('memo-bag', this.bagPane);
+    this.bagHint = element('bag-hint', this.bagPane);
+    this.bagHint.textContent =
       '아래 단축키 칸으로 끌어다 놓거나, 누르면 지금 고른 칸에 들어갑니다. 단축키 칸에서 이 창으로 끌면 칸이 비워집니다.';
 
     this.downNotice = element('down-notice', root);
@@ -137,6 +162,13 @@ export class Hud {
     const hotbar = element('slots hotbar', bottom);
 
     for (let i = 0; i < HOTBAR_SIZE; i++) this.slots.push(this.createSlot(i, hotbar));
+    this.memoSlot = element('slot memo-slot', hotbar);
+    this.memoSlot.title = '메모장: 좌클릭하면 쪽지를 써서 선 자리에 놓습니다';
+    const memoIcon = element('slot-icon', this.memoSlot, 'img') as HTMLImageElement;
+    memoIcon.draggable = false;
+    memoIcon.alt = '';
+    memoIcon.src = this.memoIcon;
+    element('slot-key', this.memoSlot).textContent = '0';
 
     this.dragIcon = element('drag-icon', root, 'img') as HTMLImageElement;
     this.dragIcon.hidden = true;
@@ -214,6 +246,18 @@ export class Hud {
 
   setGold(gold: number) {
     this.gold.textContent = `${gold.toLocaleString()}G`;
+    this.bagGold.textContent = `${gold.toLocaleString()}G`;
+  }
+
+  /** 인벤토리 '메모' 탭을 그리는 함수를 받는다. */
+  setMemoRenderer(render: (pane: HTMLElement) => void) {
+    this.renderMemos = render;
+    this.refreshMemos();
+  }
+
+  /** 주운 메모가 바뀌면 부른다. '메모' 탭이 보이고 있으면 다시 그린다. */
+  refreshMemos() {
+    if (this.isOpen && this.view === 'bag' && this.tab === 'memo') this.renderMemos?.(this.memoPane);
   }
 
   /** 정보창 탭을 그리는 함수를 받는다. */
@@ -271,6 +315,10 @@ export class Hud {
   }
 
   private onPointerDown(e: PointerEvent) {
+    if (e.target instanceof Element && e.target.closest('.memo-slot')) {
+      this.inventory.select(MEMO_SLOT);
+      return;
+    }
     const index = this.slotFrom(e.target);
     const item = this.itemFrom(e.target);
     if (index !== null) {
@@ -324,6 +372,14 @@ export class Hud {
   private renderBag() {
     for (const [id, button] of this.tabButtons) button.classList.toggle('chosen', id === this.tab);
     this.bag.replaceChildren();
+    const memo = this.tab === 'memo';
+    this.bag.hidden = memo;
+    this.bagHint.hidden = memo;
+    this.memoPane.hidden = !memo;
+    if (this.tab === 'memo') {
+      this.renderMemos?.(this.memoPane);
+      return;
+    }
     for (const id of this.inventory.catalog(this.tab)) {
       const cell = element('slot', this.bag);
       cell.dataset.item = id;
@@ -357,6 +413,13 @@ export class Hud {
       count.textContent = '';
       slot.classList.toggle('selected', i === this.inventory.selected);
     });
+    this.memoSlot.classList.toggle('selected', this.inventory.memoSelected);
+    if (this.inventory.memoSelected) {
+      this.pickedName.textContent = '메모장';
+      this.pickedIcon.hidden = false;
+      this.pickedIcon.src = this.memoIcon;
+      return;
+    }
     const selected = this.inventory.selectedStack;
     this.pickedName.textContent = selected ? itemName(selected.id) : '빈손';
     this.pickedIcon.hidden = !selected;

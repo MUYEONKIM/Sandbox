@@ -10,9 +10,11 @@ import {
   paintLamp,
   paintLowTable,
   paintRailing,
+  paintGardenRock,
 } from '../art/interior';
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
+import { anyModalOpen } from '../ui/modal';
 import { CUBE_ORIGIN_X, CUBE_ORIGIN_Y, cubeOriginY, paintCube } from '../art/cube';
 import { GLASS_RAIL, NEIGHBOR, OFFICE_WALL, paintThinWall, thinWallOriginY, type ThinWallStyle } from '../art/partition';
 import { paintBullet } from '../art/weapons';
@@ -36,12 +38,16 @@ import type {
   Bounty,
   ChatMessage,
   GameSession,
+  GroundItem,
+  HeldMemo,
   Motion,
   PlacedBlock,
   PlayerMove,
   PlayerShot,
   SessionEvents,
 } from '../net/session';
+import { dropFailText, type GroundUi } from '../ui/ground';
+import { GroundItems } from './drops';
 import type { ChatBox } from '../ui/chat';
 import type { Hud } from '../ui/hud';
 import type { Minimap } from '../ui/minimap';
@@ -90,7 +96,7 @@ import {
   ANNEX_PROPS,
   CAFE_SIGN,
   CASINO_SIGN,
-  EXCHANGE_BOOTHS,
+  EXCHANGE_TICKERS,
   EXCHANGE_HALL,
   EXCHANGE_HALL_SIGN,
   FLOORS,
@@ -245,6 +251,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private mapImages: Phaser.GameObjects.Image[] = [];
   private readonly covers = new CoverFader(this);
   private readonly workFx = new WorkFx(this);
+  /** 땅에 놓인 메모와 골드 */
+  private readonly drops = new GroundItems(this);
+  /** 줍기를 서버에 묻는 중이면 true. F를 연달아 눌러도 한 번만 묻는다. */
+  private picking = false;
   /** 칸별 자원 그림. 작업할 때 흔들린다. */
   private readonly spotImages = new Map<string, Phaser.GameObjects.Image>();
   private chimneySmoke: Phaser.GameObjects.Image | null = null;
@@ -299,6 +309,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly wanted: WantedPanel,
     private readonly exchange: ExchangeWindow,
     private readonly market: Market,
+    private readonly groundUi: GroundUi,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -312,6 +323,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
     this.showMap(this.mapId);
     this.market.onChange(() => this.paintTickers());
+    this.groundUi.placeHeld = (memo) => this.placeHeldMemo(memo);
+    this.groundUi.onHintClick = () => {
+      if (this.canAct) this.tryPickUp();
+    };
     // 숨은 방 안에서 접속을 끊었다면 방이 열린 채로 시작한다.
     const saved = this.session.profile;
     if (this.mapId === HIDEOUT.map && isInside(HIDEOUT.area, saved.x, saved.y)) this.showHideout(false);
@@ -584,8 +599,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     if (id === 'exchange') this.showTickers();
     if (id === 'annex') {
-      this.addMapArt('hideout-lamp', paintLamp, ANNEX_PROPS.lamp.x, ANNEX_PROPS.lamp.y);
-      this.addMapArt('hideout-table', paintLowTable, ANNEX_PROPS.table.x, ANNEX_PROPS.table.y);
+      const { lamps, table, rocks } = ANNEX_PROPS;
+      for (const { x, y } of lamps) this.addMapArt('hideout-lamp', paintLamp, x, y);
+      this.addMapArt('hideout-table', paintLowTable, table.x, table.y);
+      rocks.forEach(({ x, y, size }, i) => this.addMapArt(`annex-rock-${i}`, () => paintGardenRock(size), x, y));
     }
   }
 
@@ -609,11 +626,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     });
   }
 
-  /** 증권거래소 안: 간판과 종목 시세판. 시세판 숫자는 이름표처럼 화면 위 글씨라 가격이 바뀌면 바로 고친다. */
+  /** 증권거래소 안: 간판과 큰 시세 전광판. 전광판 숫자는 이름표처럼 화면 위 글씨라 가격이 바뀌면 바로 고친다. */
   private showTickers() {
     const sign = gridToWorld(EXCHANGE_HALL_SIGN.x, EXCHANGE_HALL_SIGN.y);
     this.addSign(MAPS.exchange.name, sign.x, sign.y - EXCHANGE_HALL_SIGN.lift);
-    for (const { stock, x } of EXCHANGE_BOOTHS) {
+    for (const { stock, x } of EXCHANGE_TICKERS) {
       const tag = `ticker-${stock}`;
       this.tags.add(tag, '', 'ticker');
       const at = gridToWorld(x + 0.5, EXCHANGE_HALL[1]);
@@ -625,7 +642,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private paintTickers() {
     if (this.mapId !== 'exchange') return;
-    for (const { stock } of EXCHANGE_BOOTHS) {
+    for (const { stock } of EXCHANGE_TICKERS) {
       const quote = this.market.quote(stock);
       const head = document.createElement('span');
       head.className = 'ticker-price';
@@ -784,6 +801,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const image of this.mapImages) image.destroy();
     this.mapImages = [];
     this.bullets.clear();
+    this.drops.clear();
+    this.groundUi.setHint(null);
+    this.groundUi.setTip(null);
   }
 
   update(time: number) {
@@ -801,6 +821,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.animatePortals(time);
     this.covers.update(time, this.me.sprite);
     this.updateHover();
+    this.updatePickupHint();
     this.placeNameTags();
     this.updateMinimap(time);
     // 거래소 안에 있으면 시세판을 1분마다 새로 받는다(Market.refresh가 1분 안에는 건너뛴다).
@@ -818,7 +839,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.exchange.isOpen ||
       this.elevator.isOpen ||
       this.casino.isOpen ||
-      this.chat.isOpen;
+      this.chat.isOpen ||
+      anyModalOpen();
     return !windowOpen && !this.traveling && !this.down;
   }
 
@@ -836,7 +858,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.me.update(delta);
     if (this.traveling || this.down) return;
 
-    if (this.keys.takeWork() && this.canAct) this.toggleWork();
+    // F는 발밑에 주울 것이 있으면 줍고, 없으면 일을 시작하거나 멈춘다.
+    if (this.keys.takeWork() && this.canAct && !this.tryPickUp()) this.toggleWork();
 
     if (this.keys.takeJump() && this.canAct && !this.me.jumping) this.jump();
 
@@ -853,7 +876,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
       else if (portal.to === 'board') this.board.open();
-      else if (portal.to === 'trade') this.exchange.open(portal.stock);
+      else if (portal.to === 'trade') this.exchange.open();
       else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor);
       else if (isGame(portal.to)) this.casino.open(portal.to);
       else this.travel(portal.to);
@@ -882,7 +905,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     const g = worldToGrid(w.x, w.y);
-    this.walkTo({ x: Math.floor(g.gx), y: Math.floor(g.gy) });
+    const goal = { x: Math.floor(g.gx), y: Math.floor(g.gy) };
+    // 메모장을 들고 내 칸을 누르면 메모를 쓴다.
+    if (this.inventory.memoSelected && goal.x === this.me.tile.x && goal.y === this.me.tile.y) {
+      this.writeMemo();
+      return;
+    }
+    this.walkTo(goal);
   }
 
   /** 누른 곳 가까이에 쓰러지지 않은 다른 플레이어가 있는지 본다. 몸통을 눌러도 되도록 총알 높이만큼 내려서 잰다. */
@@ -1258,6 +1287,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private useSelectedItem() {
+    if (this.inventory.memoSelected) {
+      this.writeMemo();
+      return;
+    }
     const weapon = this.selectedWeapon;
     if (weapon && this.isSafeMap) this.notice(`${this.safeName}은 비무장지대입니다`, '이곳에서는 무기를 쓸 수 없습니다.');
     else if (weapon) this.attack(weapon);
@@ -1396,6 +1429,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.hoveredBlock = this.hoveredGround = null;
       this.ghost.setVisible(false);
       this.marker.clear();
+      this.groundUi.setTip(null);
       return;
     }
 
@@ -1413,6 +1447,100 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.hoveredBlock = hit ? { x: hit[0], y: hit[1] } : null;
     this.hoveredGround = !hit && this.world.inBounds(x, y) ? { x, y } : null;
     this.drawHover();
+    this.updateGoldTip();
+  }
+
+  /** 땅의 골드에 마우스를 올리면 커서 옆에 액수를 띄운다(2026-11-13 사용자 요청 "호버 시 100G처럼"). */
+  private updateGoldTip() {
+    const tile = this.canAct ? this.hoveredGround : null;
+    const gold = tile ? this.drops.at(tile.x, tile.y).find((item) => item.amount !== null) : undefined;
+    const pointer = this.input.activePointer;
+    this.groundUi.setTip(gold ? `${gold.amount!.toLocaleString()}G` : null, pointer.x, pointer.y);
+  }
+
+  /** 발밑에 주울 것이 있으면 "F키로 줍기" 안내를 띄운다. 여럿이면 맨 나중에 놓인 것부터 줍는다. */
+  private updatePickupHint() {
+    const items = this.traveling || this.down || this.me.moving ? [] : this.drops.at(this.me.tile.x, this.me.tile.y);
+    const [top] = items;
+    if (!top) {
+      this.groundUi.setHint(null);
+      return;
+    }
+    const what = top.amount === null ? '메모' : `${top.amount.toLocaleString()}G`;
+    this.groundUi.setHint(items.length > 1 ? `${what} 외 ${items.length - 1}개` : what);
+  }
+
+  /** 발밑에 주울 것이 있으면 하나 줍는다. 주울 것이 있었으면 true(F로 일을 시작하지 않는다). */
+  private tryPickUp() {
+    if (this.me.moving) return false;
+    const [item] = this.drops.at(this.me.tile.x, this.me.tile.y);
+    if (!item) return false;
+    if (!this.picking) void this.pickUp(item);
+    return true;
+  }
+
+  private async pickUp(item: GroundItem) {
+    this.picking = true;
+    const result = await this.session.pickUp(item.id);
+    this.picking = false;
+    if (!result.ok) {
+      if (result.reason === 'gone') {
+        this.drops.remove(item.id);
+        this.hud.toast('한발 늦었습니다', '누가 먼저 주워 갔습니다');
+      } else if (result.reason === 'overflow') {
+        this.hud.toast('주머니가 터지겠습니다', '골드가 너무 많아 더 들 수 없습니다');
+      } else {
+        this.hud.toast('줍지 못했습니다', '잠시 뒤 다시 해 보세요');
+      }
+      return;
+    }
+    this.drops.remove(item.id);
+    if (result.kind === 'gold') {
+      this.economy.setGold(result.gold);
+      this.hud.toast(`${result.amount.toLocaleString()}G 줍줍`, '주인은 지금쯤 땅을 치고 있습니다', true);
+      return;
+    }
+    this.groundUi.addHeld(result.memo);
+    this.groundUi.showMemo(result.memo, true);
+  }
+
+  /** 0번 메모장: 쪽지를 써서 지금 선 칸에 놓는다(2026-11-13 사용자 요청). */
+  private writeMemo() {
+    if (!this.canAct) return;
+    this.clearRoute();
+    this.groundUi.openWriter(async (body) => {
+      if (this.traveling || this.down) return '지금은 놓을 수 없습니다.';
+      const { x, y } = this.me.tile;
+      const result = await this.session.dropMemo(body, x, y);
+      if (!result.ok) return dropFailText(result.reason);
+      this.drops.add(result.item);
+      this.hud.toast('쪽지를 놓았습니다', '누군가 F로 주워 읽을 겁니다');
+      return null;
+    });
+  }
+
+  /** 인벤토리의 '버리기': 골드를 지금 선 칸에 떨어뜨린다. 실패하면 까닭 문구 */
+  async dropGold(amount: number): Promise<string | null> {
+    if (this.traveling || this.down) return '지금은 버릴 수 없습니다.';
+    const { x, y } = this.me.tile;
+    const result = await this.session.dropGold(amount, x, y);
+    if (!result.ok) return dropFailText(result.reason);
+    this.economy.setGold(result.gold);
+    this.drops.add(result.item);
+    this.hud.toast(`${amount.toLocaleString()}G를 버렸습니다`, '발밑에서 반짝입니다. 먼저 줍는 사람이 임자');
+    return null;
+  }
+
+  /** 주운 메모를 지금 선 칸에 다시 놓는다. 실패하면 까닭 문구 */
+  private async placeHeldMemo(memo: HeldMemo): Promise<string | null> {
+    if (this.traveling || this.down) return '지금은 놓을 수 없습니다.';
+    const { x, y } = this.me.tile;
+    const result = await this.session.placeMemo(memo.id, x, y);
+    if (!result.ok) return dropFailText(result.reason);
+    this.groundUi.removeHeld(memo.id);
+    this.drops.add(result.item);
+    this.hud.toast('쪽지를 내려놓았습니다', `${memo.author}의 메모가 다시 땅에서 반짝입니다`);
+    return null;
   }
 
   private canPlaceAt(target: Tile) {
@@ -1754,6 +1882,18 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.chat.show(message);
     // 말풍선은 같은 맵에 보이는 사람에게만 뜬다(다른 맵에서 온 전체 채팅은 기록에만 남음).
     this.tags.say(message.id, message.text);
+  }
+
+  onGroundLoaded(items: GroundItem[]) {
+    this.drops.set(items);
+  }
+
+  onGroundAdded(item: GroundItem) {
+    this.drops.add(item);
+  }
+
+  onGroundRemoved(id: number) {
+    this.drops.remove(id);
   }
 
   onBlocksLoaded(blocks: PlacedBlock[]) {
