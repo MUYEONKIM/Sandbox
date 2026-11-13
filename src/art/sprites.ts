@@ -1,3 +1,5 @@
+import { assetUrl } from '../assetUrl';
+
 /** public/sprites 폴더의 이미지를 게임 시작 전에 한 번에 읽어 둔다. */
 const NAMES = [
   'Smoke0000',
@@ -38,7 +40,7 @@ export type SpriteName = (typeof NAMES)[number];
 const images = new Map<string, HTMLImageElement>();
 
 export function spriteUrl(name: string) {
-  return `sprites/${name}.png`;
+  return assetUrl(`sprites/${name}.png`);
 }
 
 function loadImage(name: string) {

@@ -1,3 +1,4 @@
+import { assetUrl } from '../assetUrl';
 /**
  * 증권거래소의 종목과 내 주식(2026-11-12 사용자 요청). 가격과 보유 수는 서버(stocks, holdings 표)가 정하고
  * 여기서는 화면에 보여 줄 사본만 든다. 1원 = 1G.
@@ -5,10 +6,10 @@
 
 /** 서버 stocks 표의 id. 그림과 소개 문구는 여기서 붙인다. */
 export const STOCK_INFO: Record<string, { icon: string; blurb: string; listed: boolean }> = {
-  samsung: { icon: 'stocks/samsung.png', blurb: '국민 주식. 일단 다들 하나씩은 있습니다.', listed: true },
-  hynix: { icon: 'stocks/hynix.png', blurb: '한 주 사려면 노동청에서 며칠 묵어야 합니다.', listed: true },
-  hanwha: { icon: 'stocks/hanwha.png', blurb: '불꽃처럼 오를지도 모릅니다. 불꽃은 금방 집니다.', listed: true },
-  itspace: { icon: 'stocks/itspace.png', blurb: '비상장. 대체로 내려갑니다. 애사심은 오릅니다.', listed: false },
+  samsung: { icon: assetUrl('stocks/samsung.png'), blurb: '국민 주식. 일단 다들 하나씩은 있습니다.', listed: true },
+  hynix: { icon: assetUrl('stocks/hynix.png'), blurb: '한 주 사려면 노동청에서 며칠 묵어야 합니다.', listed: true },
+  hanwha: { icon: assetUrl('stocks/hanwha.png'), blurb: '불꽃처럼 오를지도 모릅니다. 불꽃은 금방 집니다.', listed: true },
+  itspace: { icon: assetUrl('stocks/itspace.png'), blurb: '비상장. 대체로 내려갑니다. 애사심은 오릅니다.', listed: false },
 };
 
 /** 한 번에 사고팔 수 있는 최대 주식 수. 서버 trade_stock과 같다. */

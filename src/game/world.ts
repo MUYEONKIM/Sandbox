@@ -35,6 +35,8 @@ export class World {
    * 카펫처럼 지나갈 수 있는 가구는 바닥 그림일 뿐이라 덮은 칸을 막지 않는다(그 위에 다른 가구를 놓을 수 있다).
    */
   private readonly covered = new Map<number, number>();
+  /** 블록을 놓거나 치울 때마다 1씩 는다. 전쟁터 손전등이 막힌 칸이 바뀐 것을 알아챌 때 쓴다. */
+  version = 0;
 
   constructor(
     readonly map: GameMap,
@@ -187,6 +189,7 @@ export class World {
   }
 
   place(x: number, y: number, z: number, id: BlockId) {
+    this.version++;
     const key = this.key(x, y);
     const stack = this.blocks.get(key) ?? [];
     stack[z] = id;
@@ -199,6 +202,7 @@ export class World {
   }
 
   remove(x: number, y: number, z: number) {
+    this.version++;
     const key = this.key(x, y);
     const stack = this.blocks.get(key);
     if (!stack) return;

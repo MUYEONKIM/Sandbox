@@ -176,6 +176,8 @@ const SOLID_PARTITIONS: Partial<Record<PartitionKind, { texture: number; height:
 const WORLD_BACKGROUND = '#2c6f93';
 const INDOOR_BACKGROUND = '#14141c';
 const ROOF_BACKGROUND = '#8fcfee';
+/** 전쟁터처럼 늘 어두운 맵의 맵 바깥 색. 하늘색이면 어둠 밖이 밝게 튀어 보인다. */
+const DARK_BACKGROUND = '#07090f';
 
 /** 작물 밭은 칸 하나가 아니라 4칸 너비로 그려진다. 그림에서 밭 가운데 위치 */
 const CROPS_CENTER = { x: 64, y: 58 };
@@ -582,10 +584,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     );
     this.minimap.setMap(info.name, info.color, this.world.map.bounds);
     this.cameras.main.setBackgroundColor(
-      id === 'rooftop' || id === 'stairs' ? ROOF_BACKGROUND : isTower(id) ? INDOOR_BACKGROUND : WORLD_BACKGROUND,
+      info.dark ? DARK_BACKGROUND : id === 'rooftop' || id === 'stairs' ? ROOF_BACKGROUND : isTower(id) ? INDOOR_BACKGROUND : WORLD_BACKGROUND,
     );
     // 바깥 맵은 KST 시간대 색을 덮고, 전쟁터는 늘 어둡고 손전등 빛만 보인다(2026-11-13 사용자 요청).
-    this.flashlight.setActive(info.dark === true);
+    this.flashlight.setActive(info.dark === true, this.world.map.size);
     this.daylight.setMap(
       !isTower(id) && !info.dark,
       rect.left - DAYLIGHT_PAD,
@@ -1304,7 +1306,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private updateVision() {
     if (!this.flashlight.active) return;
     const me = this.me.position();
-    this.flashlight.update(me.x + 0.5, me.y + 0.5, this.me.gridFacing, (x, y) => !this.world.inBounds(x, y) || this.world.blocksShots(x, y));
+    this.flashlight.update(
+      me.x + 0.5,
+      me.y + 0.5,
+      this.me.gridFacing,
+      (x, y) => !this.world.inBounds(x, y) || this.world.blocksShots(x, y),
+      this.world.version,
+    );
     for (const [id, avatar] of this.others) {
       const at = avatar.position();
       const seen = this.flashlight.sees(at.x + 0.5, at.y + 0.5);

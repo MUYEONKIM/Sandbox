@@ -1,3 +1,4 @@
+import { assetUrl } from '../assetUrl';
 import { GAMES, SNAIL_COLORS } from '../game/casino';
 import type { Economy } from '../game/economy';
 import type { Color } from '../art/pixels';
@@ -5,9 +6,9 @@ import { animate, BetWindow, css, GOLD, loadImage, OUTLINE, STAGE_W, wait, type 
 
 /** 사용자가 준 경주 배경(1344×796)과 같은 비율 */
 const STAGE_H = 190;
-const BACKGROUND = 'casino/snail-race.webp';
+const BACKGROUND = assetUrl('casino/snail-race.webp');
 /** 사용자가 준 달팽이 실루엣(1280×1144, 왼쪽을 봄) */
-const SNAIL = 'casino/snail.svg';
+const SNAIL = assetUrl('casino/snail.svg');
 
 /** 배경 속 흙길 세 줄의 높이와 출발, 결승 위치(배경 크기에 대한 비율) */
 const LANE_Y = [0.58, 0.722, 0.867].map((v) => v * STAGE_H);
