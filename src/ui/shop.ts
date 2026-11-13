@@ -1,5 +1,5 @@
 import { spriteUrl } from '../art/sprites';
-import type { Economy, ShopTool, ShopWeapon } from '../game/economy';
+import { RENAME_PRICE, type Economy, type ShopTool, type ShopWeapon } from '../game/economy';
 import { paintItem, WEAPONS, type WeaponId } from '../items';
 import { element } from './dom';
 import { PLACE_ICONS } from './office';
@@ -8,6 +8,7 @@ import { PurchaseWindow } from './purchase';
 interface ShopActions {
   onBuyWeapon(id: WeaponId): Promise<void>;
   onBuyTool(tool: ShopTool): Promise<void>;
+  onBuyRenameTicket(): Promise<void>;
   onSell(): void;
 }
 
@@ -40,6 +41,9 @@ export class ShopWindow extends PurchaseWindow {
     element('office-section', this.root).textContent = '작업 도구';
     this.toolList = element('shop-stats', this.root);
     for (const tool of economy.tools) this.addTool(tool);
+
+    element('office-section', this.root).textContent = '기타';
+    this.addRenameTicket(element('shop-stats', this.root));
 
     this.finish();
   }
@@ -81,6 +85,25 @@ export class ShopWindow extends PurchaseWindow {
       const owned = this.economy.ownsTool(id);
       buy.textContent = owned ? '보유 중' : `${price.toLocaleString()}G`;
       buy.disabled = this.busy || owned || this.economy.gold < price;
+    });
+  }
+
+  /** 닉네임 변경권(2026-11-13 사용자 요청). 여러 장 사 둘 수 있고 I 창 정보창에서 쓴다. */
+  private addRenameTicket(list: HTMLElement) {
+    const row = element('shop-stat', list);
+    const badge = element('shop-stat-badge', row);
+    element('shop-stat-id', badge).textContent = '보유';
+    const owned = element('shop-stat-value', badge);
+
+    const text = element('shop-stat-text', row);
+    element('shop-stat-name', text).textContent = '닉네임 변경권';
+    element('shop-stat-blurb', text).textContent = '닉네임을 한 번 바꿉니다. I 창 정보창에서 씁니다.';
+
+    const buy = this.buyButton(row, () => this.actions.onBuyRenameTicket());
+    this.refreshers.push(() => {
+      owned.textContent = `${this.economy.renameTickets.toLocaleString()}장`;
+      buy.textContent = `${RENAME_PRICE.toLocaleString()}G`;
+      buy.disabled = this.busy || this.economy.gold < RENAME_PRICE;
     });
   }
 

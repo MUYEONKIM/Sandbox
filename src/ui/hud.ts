@@ -69,6 +69,7 @@ export class Hud {
   private readonly gold: HTMLElement;
   private readonly toastBox: HTMLElement;
   private readonly announceBox: HTMLElement;
+  private readonly accountName: HTMLElement;
   private popupBox: HTMLElement | null = null;
   private drag: Drag | null = null;
 
@@ -80,7 +81,8 @@ export class Hud {
     onSignOut: () => void,
   ) {
     const account = element('account', side);
-    element('account-name', account, 'span').textContent = nickname;
+    this.accountName = element('account-name', account, 'span');
+    this.accountName.textContent = nickname;
     this.gold = element('account-gold', account, 'span');
     const signOut = element('account-signout', account, 'button') as HTMLButtonElement;
     signOut.type = 'button';
@@ -97,7 +99,7 @@ export class Hud {
     this.topLeft = element('top-left', root);
     const help = element('help', this.topLeft);
     help.innerHTML =
-      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>메모장</b> 0 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>달리기</b> Shift 누르기 &nbsp; <b>점프</b> Space &nbsp; <b>작업 / 줍기</b> F<br><b>설치 / 공격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
+      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>메모장</b> 0 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>달리기</b> Shift 누르기 &nbsp; <b>점프</b> Space &nbsp; <b>작업 / 줍기</b> F<br><b>설치 / 공격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>가구 돌리기</b> R &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
 
     this.panel = element('panel', root);
     this.panel.hidden = true;
@@ -137,7 +139,7 @@ export class Hud {
     this.memoPane = element('memo-bag', this.bagPane);
     this.bagHint = element('bag-hint', this.bagPane);
     this.bagHint.textContent =
-      '아래 단축키 칸으로 끌어다 놓거나, 누르면 지금 고른 칸에 들어갑니다. 단축키 칸에서 이 창으로 끌면 칸이 비워집니다.';
+      '아래 단축키 칸으로 끌어다 놓거나, 누르면 지금 고른 칸에 들어갑니다. 단축키 칸에서 이 창으로 끌면 칸이 비워집니다. 가구는 R(휴대폰은 고른 칸을 한 번 더 누름)로 방향을 돌립니다.';
 
     this.downNotice = element('down-notice', root);
     this.downNotice.textContent = '쓰러졌습니다. 잠시 후 포탈 앞에서 다시 시작합니다.';
@@ -244,6 +246,11 @@ export class Hud {
     this.downNotice.hidden = !down;
   }
 
+  /** 닉네임을 바꾸면 오른쪽 위 계정 줄의 이름도 바꾼다. */
+  setNickname(nickname: string) {
+    this.accountName.textContent = nickname;
+  }
+
   setGold(gold: number) {
     this.gold.textContent = `${gold.toLocaleString()}G`;
     this.bagGold.textContent = `${gold.toLocaleString()}G`;
@@ -324,6 +331,8 @@ export class Hud {
     if (index !== null) {
       const stack = this.inventory.slots[index];
       if (this.isOpen && stack) this.startDrag({ from: index }, stack.id, e);
+      // 고른 칸을 한 번 더 누르면 가구를 돌린다(휴대폰에는 R 키가 없어서).
+      else if (index === this.inventory.selected) this.inventory.rotateSelected();
       else this.inventory.select(index);
     } else if (item && this.isOpen) {
       this.startDrag({ item }, item, e);

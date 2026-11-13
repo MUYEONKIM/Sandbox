@@ -1,4 +1,4 @@
-import type { Economy } from '../game/economy';
+import { RENAME_PRICE, type Economy } from '../game/economy';
 import { formatLevel, levelNeed } from '../game/level';
 import { profitText, STOCK_INFO, type Market } from '../game/market';
 import { statEffect } from '../game/stats';
@@ -19,10 +19,13 @@ export interface MyStatus {
 export class InfoView {
   constructor(
     private readonly root: HTMLElement,
-    private readonly nickname: string,
+    /** 내 닉네임. 바꿀 수 있어서 그릴 때마다 묻는다. */
+    private readonly nickname: () => string,
     private readonly economy: Economy,
     private readonly market: Market,
     private readonly status: () => MyStatus,
+    /** '닉네임 바꾸기'를 누르면 부른다. */
+    private readonly onRename: () => void,
   ) {
     root.classList.add('info');
   }
@@ -32,8 +35,20 @@ export class InfoView {
     this.root.replaceChildren();
 
     const head = element('info-head', this.root);
-    element('info-name', head, 'span').textContent = this.nickname;
+    element('info-name', head, 'span').textContent = this.nickname();
     element('info-level', head, 'span').textContent = `Lv. ${formatLevel(level)}`;
+
+    // 닉네임 변경권(2026-11-13 사용자 요청 "처음 한 번은 무료, 이후 상점에서 10만 골드")
+    const tickets = this.economy.renameTickets;
+    const rename = element('info-rename', this.root);
+    element('info-rename-count', rename, 'span').textContent = tickets
+      ? `닉네임 변경권 ${tickets.toLocaleString()}장`
+      : `닉네임 변경권 없음 · 상점에서 ${RENAME_PRICE.toLocaleString()}G`;
+    const change = element('info-rename-button', rename, 'button') as HTMLButtonElement;
+    change.type = 'button';
+    change.textContent = '닉네임 바꾸기';
+    change.disabled = tickets < 1;
+    change.addEventListener('click', () => this.onRename());
 
     const basics = element('info-grid', this.root);
     const line = (label: string, value: string) => {

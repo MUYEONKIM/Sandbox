@@ -28,6 +28,17 @@ export interface HarvestResult {
 
 export type HarvestFail = 'elsewhere' | 'failed';
 
+/** 닉네임을 못 바꾼 까닭: 이미 쓰는 이름, 지금 이름과 같음, 2~12자가 아님, 변경권 없음, 그 밖 */
+export type RenameFail = 'taken' | 'same' | 'bad' | 'ticket' | 'failed';
+
+function renameFail(message: string): RenameFail {
+  if (message.includes('name taken')) return 'taken';
+  if (message.includes('same name')) return 'same';
+  if (message.includes('bad name')) return 'bad';
+  if (message.includes('no ticket')) return 'ticket';
+  return 'failed';
+}
+
 export interface PlayerMove {
   id: string;
   nickname: string;
@@ -280,6 +291,10 @@ const isName = (v: unknown): v is string => typeof v === 'string' && v.length > 
 function parseNotice(value: unknown): Notice | null {
   const n = value as { kind?: unknown; name?: unknown; killer?: unknown; victim?: unknown } | null;
   if (n?.kind === 'join' && isName(n.name)) return { kind: 'join', name: n.name.slice(0, MAX_NAME) };
+  const r = value as { id?: unknown; from?: unknown; to?: unknown } | null;
+  if (n?.kind === 'rename' && typeof r?.id === 'string' && isName(r.from) && isName(r.to)) {
+    return { kind: 'rename', id: r.id, from: r.from.slice(0, MAX_NAME), to: r.to.slice(0, MAX_NAME) };
+  }
   if (n?.kind === 'kill' && isName(n.killer) && isName(n.victim)) {
     const wanted = (n as { wanted?: unknown }).wanted;
     return {
@@ -612,6 +627,25 @@ export class GameSession {
   async buyWeapon(weapon: WeaponId): Promise<number | null> {
     const { data, error } = await supabase.rpc('buy_weapon', { weapon });
     return error ? null : (data as number);
+  }
+
+  /** 닉네임 변경권을 한 장 사고 새 골드와 변경권 수를 돌려준다. 실패하면 null이다. */
+  async buyRenameTicket(): Promise<{ gold: number; tickets: number } | null> {
+    const { data, error } = await supabase.rpc('buy_rename_ticket');
+    return error ? null : (data as { gold: number; tickets: number });
+  }
+
+  /**
+   * 변경권 한 장을 써서 닉네임을 바꾼다. 바뀌면 접속 명단과 이동 알림에 새 이름을 실어 같은 맵 사람의 이름표도 바뀌게 한다.
+   * 모든 사람에게 가는 변경 알림은 서버가 보낸다.
+   */
+  async changeNickname(name: string): Promise<{ ok: true; name: string } | { ok: false; reason: RenameFail }> {
+    const { data, error } = await supabase.rpc('change_nickname', { new_name: name });
+    if (error) return { ok: false, reason: renameFail(error.message) };
+    this.profile.nickname = data as string;
+    this.refreshPresence();
+    this.announce();
+    return { ok: true, name: this.profile.nickname };
   }
 
   /** 작업 도구를 사고 새 골드를 돌려준다. 실패하면 null이다. */

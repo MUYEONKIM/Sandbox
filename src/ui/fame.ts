@@ -24,7 +24,8 @@ export class FameWindow {
 
   constructor(
     parent: HTMLElement,
-    private readonly me: string,
+    /** 내 닉네임. 바꿀 수 있어서 그릴 때마다 묻는다. */
+    private readonly me: () => string,
     private readonly load: LoadRanking,
   ) {
     this.root = element('office', parent);
@@ -49,7 +50,7 @@ export class FameWindow {
     this.list.textContent = '불러오는 중입니다.';
     const entries = await this.load();
     if (!entries) this.list.textContent = LOAD_FAILED;
-    else showRanks(this.list, entries, this.me, false);
+    else showRanks(this.list, entries, this.me(), false);
   }
 
   close() {
@@ -63,7 +64,7 @@ export class RankPanel {
 
   constructor(
     parent: HTMLElement,
-    private readonly me: string,
+    private readonly me: () => string,
     private readonly load: LoadRanking,
   ) {
     const box = element('rank-panel', parent);
@@ -75,7 +76,7 @@ export class RankPanel {
 
   private async refresh() {
     const entries = await this.load();
-    if (entries) showRanks(this.list, entries, this.me, true);
+    if (entries) showRanks(this.list, entries, this.me(), true);
     else if (!this.list.childElementCount) this.list.textContent = LOAD_FAILED;
     window.setTimeout(() => void this.refresh(), HOUR_MS - (Date.now() % HOUR_MS));
   }

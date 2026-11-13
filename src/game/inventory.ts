@@ -1,4 +1,5 @@
-import { BLOCK_IDS, isCube, type BlockId } from '../blocks';
+import { BLOCK_IDS, isCube, isFurniture, rotatedBlock, type BlockId } from '../blocks';
+import { FURNITURE_KINDS } from '../furniture';
 import { isItem, isWeapon, WEAPON_IDS, type ItemId, type WeaponId } from '../items';
 
 export const HOTBAR_SIZE = 9;
@@ -15,12 +16,16 @@ export interface Stack {
 
 export type Slot = Stack | null;
 
-/** 인벤토리 창의 탭(2026-11-12 사용자 요청 "타일, 장식품 탭 분류"). 타일은 상자 블록, 장식품은 나머지 블록이다. */
-export const TABS = { tile: '타일', decor: '장식품', weapon: '무기' } as const;
+/**
+ * 인벤토리 창의 탭(2026-11-12 사용자 요청 "타일, 장식품 탭 분류"). 타일은 상자 블록, 장식품은 나머지 블록이다.
+ * 가구는 사용자가 준 실내 꾸미기 에셋으로 만든 장식품이고(2026-11-13), 종류가 많아 탭을 따로 둔다.
+ */
+export const TABS = { tile: '타일', decor: '장식품', furniture: '가구', weapon: '무기' } as const;
 export type TabId = keyof typeof TABS;
 
 export function tabOf(id: ItemId): TabId {
   if (isWeapon(id)) return 'weapon';
+  if (isFurniture(id)) return 'furniture';
   return isCube(id) ? 'tile' : 'decor';
 }
 
@@ -90,7 +95,19 @@ export class Inventory {
   /** 탭에 보여 줄 것: 블록은 전부, 무기는 가진 것만. 순서는 blocks.ts, items.ts의 순서다. */
   catalog(tab: TabId): ItemId[] {
     if (tab === 'weapon') return WEAPON_IDS.filter((id) => this.weapons.has(id));
+    // 가구는 방향마다 블록이 따로 있어서 종류마다 첫 방향만 보이고, 단축키 칸에서 돌린다(rotateSelected).
+    if (tab === 'furniture') return FURNITURE_KINDS as BlockId[];
     return BLOCK_IDS.filter((id) => tabOf(id) === tab);
+  }
+
+  /** 고른 칸의 가구를 다음 방향으로 돌린다. 돌릴 것이 없으면 false */
+  rotateSelected() {
+    const stack = this.selectedStack;
+    const next = stack && !isWeapon(stack.id) ? rotatedBlock(stack.id) : null;
+    if (!next) return false;
+    this.slots[this.selected] = { id: next, count: 1 };
+    this.changed();
+    return true;
   }
 
   /** 단축키 칸에서의 자리. 없으면 -1 */

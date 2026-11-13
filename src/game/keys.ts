@@ -40,6 +40,8 @@ interface KeyActions {
   onScoreboard(open: boolean): void;
   onSlot(index: number): void;
   onInventory(): void;
+  /** R: 들고 있는 가구를 돌린다. */
+  onRotate(): void;
   onEscape(): void;
   onChat(): void;
 }
@@ -108,6 +110,8 @@ export class Keys {
       this.workPressed = true;
     } else if (e.code === 'KeyI') {
       this.actions.onInventory();
+    } else if (e.code === 'KeyR') {
+      this.actions.onRotate();
     } else if (e.code === 'Escape') {
       this.actions.onEscape();
     } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {

@@ -44,6 +44,7 @@ export interface ShopStat {
 
 export interface EconomyData {
   gold: number;
+  renameTickets: number;
   loot: LootItem[];
   workplaces: Workplace[];
   stash: { item: string; count: number }[];
@@ -54,6 +55,9 @@ export interface EconomyData {
   owned: WeaponId[];
   ownedTools: string[];
 }
+
+/** 닉네임 변경권 한 장 값. 서버 buy_rename_ticket의 100000과 같다(2026-11-13 사용자 요청 "10만 골드"). */
+export const RENAME_PRICE = 100_000;
 
 /** 한 번 캘 때 얻는 기본 개수. 서버 harvest의 2와 같다(2026-11-11 사용자 요청으로 2배). */
 export const HARVEST_COUNT = 2;
@@ -67,6 +71,8 @@ const DEFAULT_COOLDOWN_MS = 250;
 /** 내 골드, 자원, 무기, 스텟. 값은 모두 서버가 정하고 여기서는 화면에 보여 줄 사본만 들고 있다. */
 export class Economy {
   gold: number;
+  /** 가진 닉네임 변경권 수 */
+  renameTickets: number;
   readonly workplaces: Workplace[];
   readonly stats: ShopStat[];
   readonly tools: ShopTool[];
@@ -80,6 +86,7 @@ export class Economy {
 
   constructor(data: EconomyData) {
     this.gold = data.gold;
+    this.renameTickets = data.renameTickets;
     this.workplaces = data.workplaces;
     this.stats = data.stats;
     this.tools = data.tools;
@@ -197,6 +204,12 @@ export class Economy {
   setToolBought(id: string, gold: number) {
     this.gold = gold;
     this.ownedTools.add(id);
+    this.changed();
+  }
+
+  setRenameTickets(tickets: number, gold = this.gold) {
+    this.gold = gold;
+    this.renameTickets = tickets;
     this.changed();
   }
 

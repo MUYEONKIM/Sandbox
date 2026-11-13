@@ -6,7 +6,7 @@ import { Inventory } from './game/inventory';
 import { Keys } from './game/keys';
 import { Market } from './game/market';
 import { currentUser, loadEconomy, loadProfile, signOut, type Profile } from './net/auth';
-import { GameSession } from './net/session';
+import { GameSession, type RenameFail } from './net/session';
 import { isConfigured } from './net/supabase';
 import { ChatBox } from './ui/chat';
 import { element } from './ui/dom';
@@ -29,6 +29,7 @@ import { OfficeWindow } from './ui/office';
 import { ShopWindow } from './ui/shop';
 import { GroundUi } from './ui/ground';
 import { anyModalOpen, closeTopModal } from './ui/modal';
+import { openRenameDialog } from './ui/rename';
 import { showWhatsNew } from './ui/whatsNew';
 
 /** 명예의 전당 창과 미니맵 밑 패널에 보여 줄 인원 */
@@ -64,12 +65,30 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   const market = new Market({ quotes: () => session.fetchQuotes(), holdings: () => session.fetchHoldings() });
   market.onChange(() => hud.refreshInfo());
-  const info = new InfoView(hud.infoPane, profile.nickname, economy, market, () => hud.status);
+  // 닉네임 변경권(2026-11-13 사용자 요청). session.profile이 이 profile이라 바꾸면 profile.nickname도 바뀐다.
+  const myName = () => profile.nickname;
+  const renameFail: Record<RenameFail, string> = {
+    taken: '이미 쓰는 닉네임입니다.',
+    same: '지금 닉네임과 같습니다.',
+    bad: '닉네임은 2~12자로 적어 주세요.',
+    ticket: '변경권이 없습니다. 상점에서 살 수 있습니다.',
+    failed: '바꾸지 못했습니다. 잠시 후 다시 해 주세요.',
+  };
+  const rename = () =>
+    openRenameDialog(root, profile.nickname, economy.renameTickets, async (name) => {
+      const result = await session.changeNickname(name);
+      if (!result.ok) return renameFail[result.reason];
+      hud.setNickname(result.name);
+      tags.setName(profile.id, result.name);
+      economy.setRenameTickets(Math.max(0, economy.renameTickets - 1));
+      return null;
+    });
+  const info = new InfoView(hud.infoPane, myName, economy, market, () => hud.status, rename);
   hud.setInfoRenderer(() => info.render());
   void market.refresh();
 
   const minimap = new Minimap(side);
-  new RankPanel(side, profile.nickname, () => session.fetchRanking(PANEL_SIZE));
+  new RankPanel(side, myName, () => session.fetchRanking(PANEL_SIZE));
   const chat = new ChatBox(root, (text, everyone) => void session.sendChat(text, everyone), `chat-log:${profile.id}`);
   const tags = new NameTags(root);
   const wanted = new WantedPanel(hud.topLeft, profile.id, () => session.fetchWanted());
@@ -83,6 +102,15 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   const shop = new ShopWindow(root, economy, {
     onBuyWeapon: (id) => scene.buyWeapon(id),
     onBuyTool: (tool) => scene.buyTool(tool),
+    onBuyRenameTicket: async () => {
+      const bought = await session.buyRenameTicket();
+      if (!bought) {
+        hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
+        return;
+      }
+      economy.setRenameTickets(bought.tickets, bought.gold);
+      hud.toast('닉네임 변경권을 샀습니다', `가진 변경권 ${bought.tickets.toLocaleString()}장. I 창 정보창에서 씁니다.`);
+    },
     onSell: () => void scene.sellEverything(),
   });
 
@@ -90,7 +118,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     onBuyStat: (id, amount) => scene.buyStat(id, amount),
   });
 
-  const fame = new FameWindow(root, profile.nickname, () => session.fetchRanking(FAME_SIZE));
+  const fame = new FameWindow(root, myName, () => session.fetchRanking(FAME_SIZE));
   const notices = new NoticeBar(root);
   const board = new BoardWindow(root, {
     load: (kind) => session.readBoard(BOARD_SIZE, kind),
@@ -121,7 +149,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
       );
     },
   });
-  const killBoard = new KillBoard(root, profile.nickname, () => session.fetchKillRanking(KILL_BOARD_SIZE));
+  const killBoard = new KillBoard(root, myName, () => session.fetchKillRanking(KILL_BOARD_SIZE));
 
   const casino = new CasinoWindows(root, economy, (game, pick, amount) => session.placeBet(game, pick, amount));
 
@@ -133,6 +161,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     onScoreboard: (open) => (open ? void killBoard.show() : killBoard.hide()),
     onSlot: (index) => inventory.select(index),
     onInventory: () => hud.toggle(),
+    onRotate: () => inventory.rotateSelected(),
     onEscape: () => {
       if (anyModalOpen()) {
         closeTopModal();

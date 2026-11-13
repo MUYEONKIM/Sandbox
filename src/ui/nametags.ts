@@ -58,6 +58,13 @@ export class NameTags {
     wanted.hidden = karma === 0;
   }
 
+  /** 플레이어 이름표의 닉네임을 바꾼다(닉네임 변경권, 2026-11-13). 같으면 그대로 둔다. */
+  setName(id: string, nickname: string) {
+    const name = this.tags.get(id)?.name;
+    const text = name && [...name.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+    if (text && text.textContent !== nickname) text.textContent = nickname;
+  }
+
   /** 이름 줄 내용을 바꾼다. 거래소 시세판이 가격이 바뀔 때 쓴다. */
   setLabel(id: string, ...nodes: (Node | string)[]) {
     this.tags.get(id)?.label.replaceChildren(...nodes);

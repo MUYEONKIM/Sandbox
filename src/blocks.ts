@@ -1,6 +1,7 @@
 import { hash2 } from './art/pixels';
 import { sprite, type SpriteName } from './art/sprites';
 import { paintCube } from './art/cube';
+import { FURNITURE_BLOCKS, FURNITURE_NEXT } from './furniture';
 
 /** tiles.png는 32×32 칸이 가로 11개씩 놓인 그림이다. */
 const TILE_CELL = 32;
@@ -11,11 +12,14 @@ const TILE_COLUMNS = 11;
  * cube: block-textures.png의 텍스처 칸으로 그린 상자(기본 블록). 그 위에 다른 블록을 쌓을 수 있다. side는 옆면 텍스처.
  * sprite: public/sprites의 그림 한 장을 칸 위에 세운다(나무, 가구).
  * tile: tiles.png의 칸 그림이고, 같은 칸에는 늘 같은 그림이 나오도록 위치로 하나를 고른다(꽃, 바위 등).
+ * furniture: furniture.png 한 장 안의 한 자리(사용자가 준 실내 꾸미기 에셋, src/furniture.ts).
+ *   frame은 [x, y, 너비, 높이, 칸 가운데에 맞출 점 x, y]다.
  */
 export type BlockArt =
   | { kind: 'cube'; texture: number; side?: number }
   | { kind: 'sprite'; sprite: SpriteName }
-  | { kind: 'tile'; tiles: readonly number[] };
+  | { kind: 'tile'; tiles: readonly number[] }
+  | { kind: 'furniture'; frame: readonly [number, number, number, number, number, number] };
 
 interface BlockInfo {
   name: string;
@@ -98,6 +102,8 @@ export const BLOCKS = {
   vine_mound: { name: '덩굴 흙더미', solid: true, art: { kind: 'tile', tiles: [19, 20] } },
   cafe_table: { name: '카페 테이블', solid: true, art: { kind: 'sprite', sprite: 'cafe-table' } },
   plant: { name: '화분', solid: true, art: { kind: 'sprite', sprite: 'plant' } },
+  // 2026-11-13 사용자 요청 "데코 에셋도 장식품으로": 가구 91종(방향마다 한 블록). 목록은 art-source/deco/make-furniture.cjs가 만든다.
+  ...FURNITURE_BLOCKS,
 } as const satisfies Record<string, BlockInfo>;
 
 export type BlockId = keyof typeof BLOCKS;
@@ -113,6 +119,15 @@ export function blockArt(id: BlockId): BlockArt {
 
 export function isCube(id: BlockId) {
   return BLOCKS[id].art.kind === 'cube';
+}
+
+export function isFurniture(id: BlockId) {
+  return BLOCKS[id].art.kind === 'furniture';
+}
+
+/** 가구를 돌렸을 때(R) 바뀌는 다음 방향. 방향이 하나뿐이거나 가구가 아니면 null */
+export function rotatedBlock(id: BlockId): BlockId | null {
+  return (FURNITURE_NEXT[id] as BlockId | undefined) ?? null;
 }
 
 /** tile 블록이 칸 (x, y)에서 쓰는 tiles.png 번호 */
@@ -138,6 +153,13 @@ export function paintBlockIcon(id: BlockId): HTMLCanvasElement {
     const sx = (tile % TILE_COLUMNS) * TILE_CELL;
     const sy = Math.floor(tile / TILE_COLUMNS) * TILE_CELL;
     context.drawImage(sprite('tiles'), sx, sy, TILE_CELL, TILE_CELL, 0, 0, TILE_CELL, TILE_CELL);
+    return canvas;
+  }
+  if (art.kind === 'furniture') {
+    const [x, y, w, h] = art.frame;
+    const size = Math.max(w, h);
+    canvas.width = canvas.height = size;
+    context.drawImage(sprite('furniture'), x, y, w, h, Math.floor((size - w) / 2), Math.floor((size - h) / 2), w, h);
     return canvas;
   }
   const image = sprite(art.sprite);

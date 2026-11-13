@@ -10,7 +10,8 @@ export class KillBoard {
 
   constructor(
     parent: HTMLElement,
-    private readonly myName: string,
+    /** 내 닉네임. 바꿀 수 있어서 그릴 때마다 묻는다. */
+    private readonly myName: () => string,
     private readonly fetchRanking: () => Promise<KillEntry[] | null>,
   ) {
     this.root = element('killboard', parent);
@@ -39,7 +40,7 @@ export class KillBoard {
       return;
     }
     entries.forEach(({ nickname, kills, deaths }, i) => {
-      const row = element(nickname === this.myName ? 'killboard-row me' : 'killboard-row', this.list);
+      const row = element(nickname === this.myName() ? 'killboard-row me' : 'killboard-row', this.list);
       for (const text of [String(i + 1), nickname, String(kills), String(deaths)]) {
         element('killboard-cell', row, 'span').textContent = text;
       }

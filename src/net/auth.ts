@@ -29,6 +29,8 @@ export interface Profile {
   owned_tools: string[];
   /** 회원가입 때 고른 캐릭터. 옛 계정은 null이다. */
   skin: number | null;
+  /** 가진 닉네임 변경권 수. 처음에 1장(무료)이고 상점에서 더 산다. */
+  rename_tickets: number;
 }
 
 const MESSAGES: Record<string, string> = {
@@ -85,9 +87,10 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
   ]);
   const error = workplaces.error ?? loot.error ?? stash.error ?? weapons.error ?? tools.error ?? stats.error;
   if (error) throw new Error(error.message);
-  const { gold, str, def, agi, luk, max_hp: maxHp, owned_weapons: owned, owned_tools: ownedTools } = profile;
+  const { gold, str, def, agi, luk, max_hp: maxHp, owned_weapons: owned, owned_tools: ownedTools, rename_tickets: renameTickets } = profile;
   return {
     gold,
+    renameTickets,
     myStats: { str, def, agi, luk, hp: maxHp - BASE_HP },
     owned: owned.filter(isWeapon),
     ownedTools,
@@ -112,7 +115,7 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
 export async function loadProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nickname, map, x, y, hp, max_hp, gold, level::text, exp, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin')
+    .select('id, nickname, map, x, y, hp, max_hp, gold, level::text, exp, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin, rename_tickets')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(error.message);

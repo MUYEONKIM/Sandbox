@@ -19,6 +19,7 @@ import { CUBE_ORIGIN_X, CUBE_ORIGIN_Y, cubeOriginY, paintCube } from '../art/cub
 import { GLASS_RAIL, NEIGHBOR, OFFICE_WALL, paintThinWall, thinWallOriginY, type ThinWallStyle } from '../art/partition';
 import { paintBullet } from '../art/weapons';
 import { blockArt, blockTile, BLOCKS, paintBlock, CUBE_IDS, type BlockId } from '../blocks';
+import { FURNITURE_BLOCKS } from '../furniture';
 import {
   BLOCK_HEIGHT,
   JUMP_MS,
@@ -400,6 +401,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.textures.addSpriteSheet('team-back', sprite('team-back'), { frameWidth: TEAM_W, frameHeight: TEAM_H });
     this.textures.addSpriteSheet('tiles', sprite('tiles'), { frameWidth: TILE_CELL, frameHeight: TILE_CELL });
     for (const name of SMOKE_FRAMES) this.spriteTexture(name);
+  }
+
+  /** 가구 그림(furniture.png 한 장)을 등록하고 가구마다 그 안의 자리를 프레임으로 나눈다. 블록 id가 프레임 이름이다. */
+  private furnitureTexture() {
+    if (this.textures.exists('furniture')) return;
+    const texture = this.textures.addImage('furniture', sprite('furniture'))!;
+    for (const [id, { art }] of Object.entries(FURNITURE_BLOCKS)) {
+      const [x, y, w, h] = art.frame;
+      texture.add(id, 0, x, y, w, h);
+    }
   }
 
   /** public/sprites 이미지를 게임에서 쓸 수 있게 등록한다. */
@@ -1710,6 +1721,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 나무, 가구, 높이 쌓은 상자는 뒤에 선 캐릭터를 가리므로 반투명하게 할 대상에 넣는다.
     if (art.kind === 'sprite') this.covers.add(art.sprite, [image]);
     if (art.kind === 'cube') this.covers.add(`block-${id}`, [image]);
+    if (art.kind === 'furniture') this.covers.add('furniture', [image]);
   }
 
   /**
@@ -1723,6 +1735,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (art.kind === 'cube') {
       const c = tileCenter(x, y);
       return image.setTexture(`block-${id}`).setOrigin(CUBE_ORIGIN_X, CUBE_ORIGIN_Y).setPosition(c.x, c.y - lift).setDepth(depth);
+    }
+    if (art.kind === 'furniture') {
+      this.furnitureTexture();
+      const [, , w, h, ax, ay] = art.frame;
+      const c = tileCenter(x, y);
+      // 카펫, 담요처럼 지나갈 수 있는 가구는 바닥에 깔려 캐릭터가 위로 지나간다.
+      return image
+        .setTexture('furniture', id)
+        .setOrigin(ax / w, ay / h)
+        .setPosition(c.x, c.y - lift)
+        .setDepth(BLOCKS[id].solid || z > 0 ? depth : DEPTH_DECAL);
     }
     if (art.kind === 'sprite') {
       this.spriteTexture(art.sprite);
@@ -1789,6 +1812,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       avatar.maxHp = maxHp;
       this.tags.setHp(id, avatar.hp, maxHp);
     }
+    // 닉네임 변경권으로 이름을 바꿨으면 이름표도 바꾼다.
+    this.tags.setName(id, nickname);
     this.showRemoteWork(id, avatar, work);
     const { tile } = avatar;
     const reachable = inReach(tile, { x, y }, JUMP_TILES + 1);
@@ -1864,6 +1889,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.chat.system(noticeText(notice));
     // 누가 쓰러지면 악업이 바뀌므로 현상범 명단을 다시 읽는다.
     if (notice.kind === 'kill') void this.wanted.refresh();
+    if (notice.kind === 'rename') this.tags.setName(notice.id, notice.to);
   }
 
   /** 현상범이 잡혔다. 내가 잡았거나 잡혔으면 골드와 자원을 서버와 같게 맞추고 알려 준다. */

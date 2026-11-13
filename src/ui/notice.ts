@@ -4,7 +4,9 @@ import { element } from './dom';
 export type Notice =
   | { kind: 'join'; name: string }
   /** wanted는 잡힌 사람의 악업(0이면 현상범이 아니었음) */
-  | { kind: 'kill'; killer: string; victim: string; wanted: number };
+  | { kind: 'kill'; killer: string; victim: string; wanted: number }
+  /** 닉네임 변경(2026-11-13 사용자 요청 "전체에 알림"). id로 같은 맵 사람의 이름표를 바꾼다. */
+  | { kind: 'rename'; id: string; from: string; to: string };
 
 /** 한 번에 화면에 남겨 두는 알림 수와 보이는 시간 */
 const MAX_NOTICES = 3;
@@ -30,8 +32,22 @@ function josa(word: string, withBatchim: string, without: string) {
   return word + (batchim ? withBatchim : without);
 }
 
+/** "으로/로": 받침이 없거나 ㄹ 받침이면 "로"다. 숫자 1, 7, 8(일, 칠, 팔)도 ㄹ 받침이다. */
+function josaRo(word: string) {
+  const last = word.at(-1) ?? '';
+  const code = last.charCodeAt(0);
+  if (code >= 0xac00 && code <= 0xd7a3) {
+    const final = (code - 0xac00) % 28;
+    return word + (final === 0 || final === 8 ? '로' : '으로');
+  }
+  const batchim = DIGIT_BATCHIM[last];
+  if (batchim === undefined) return `${word}(으)로`;
+  return word + (batchim && !'178'.includes(last) ? '으로' : '로');
+}
+
 export function noticeText(notice: Notice) {
   if (notice.kind === 'join') return `${notice.name}님이 입장했습니다`;
+  if (notice.kind === 'rename') return `${josa(notice.from, '이', '가')} 닉네임을 ${josaRo(notice.to)} 바꿨습니다`;
   if (notice.wanted > 0) return `${josa(notice.killer, '이', '가')} 현상범 ${josa(notice.victim, '을', '를')} 잡았습니다`;
   return `${josa(notice.killer, '이', '가')} ${josa(notice.victim, '을', '를')} 죽였습니다`;
 }

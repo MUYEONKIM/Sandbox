@@ -854,6 +854,36 @@ canvas {
   font-weight: 700;
 }
 
+.info-rename {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.info-rename-button {
+  flex: none;
+  padding: 3px 10px;
+  color: inherit;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.info-rename-button:not(:disabled) {
+  color: var(--gold);
+}
+
+.info-rename-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .info-grid {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -2544,7 +2574,8 @@ canvas {
 }
 
 .memo-input,
-.gold-drop-input {
+.gold-drop-input,
+.rename-input {
   width: 100%;
   padding: 8px;
   color: #2b2118;

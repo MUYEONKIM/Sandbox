@@ -16,6 +16,7 @@ const NAMES = [
   'firtree',
   'fish',
   'fruit',
+  'furniture',
   'house',
   'inn',
   'oaktree',
