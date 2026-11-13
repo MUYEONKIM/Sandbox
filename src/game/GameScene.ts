@@ -39,6 +39,7 @@ import type {
   ChatMessage,
   GameSession,
   GroundItem,
+  HarvestFail,
   HeldMemo,
   Motion,
   PlacedBlock,
@@ -115,6 +116,11 @@ import { HUSH_HOLD_MS, openHush } from './hush';
 
 /** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
 const WORK_TICK_MS = 250;
+/**
+ * 서버가 작업을 연달아 이만큼 거절하면 일을 멈춘다. 예전에는 멈추지 않고 채집 시간마다 다시 물어서, 숨은 창에서도
+ * Supabase에 에러가 끝없이 쌓였다(2026-11-13 사용자 보고).
+ */
+const HARVEST_FAILS_TO_STOP = 2;
 
 const DEPTH_GROUND = 0;
 const DEPTH_OVERLAY = 1;
@@ -264,6 +270,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private workStartedAt: number | null = null;
   /** 일하고 있는 자원 칸 */
   private workSpot: Tile | null = null;
+  /** 서버가 작업을 연달아 거절한 횟수 */
+  private harvestFails = 0;
   private portalFrame = 0;
   private traveling = false;
   private down = false;
@@ -1120,6 +1128,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.me.face(Math.sign(spot.x - this.me.tile.x), Math.sign(spot.y - this.me.tile.y));
     this.workStartedAt = performance.now();
     this.workSpot = spot;
+    this.harvestFails = 0;
     this.startWorkFx(this.session.profile.id, this.me, spot);
     this.announceWork();
   }
@@ -1168,8 +1177,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private async collectResource() {
     const result = await this.session.harvest();
-    const info = result ? this.economy.lootItem(result.item) : undefined;
-    if (!result || !info) return;
+    if (typeof result === 'string') {
+      this.harvestFailed(result);
+      return;
+    }
+    this.harvestFails = 0;
+    const info = this.economy.lootItem(result.item);
+    if (!info) return;
     const rare = this.economy.isRare(info);
     this.workFx.finish(this.session.profile.id, rare, true);
     this.session.sendHarvest(rare);
@@ -1177,6 +1191,18 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const name = result.count > 1 ? `${info.name} ×${result.count}` : info.name;
     this.hud.toast(`${name} 획득 (${info.price}G) · 경험치 +${result.gained}`, info.blurb, this.economy.isRare(info));
     this.gainExp(BigInt(result.level), result.exp);
+  }
+
+  /** 서버가 작업을 거절했다. 연달아 거절하면 일을 멈추고 까닭을 알린다. */
+  private harvestFailed(reason: HarvestFail) {
+    this.harvestFails++;
+    if (this.harvestFails < HARVEST_FAILS_TO_STOP || this.workStartedAt === null) return;
+    this.stopWork();
+    if (reason === 'elsewhere') {
+      this.hud.toast('분신술은 아직 못 배웠습니다', '같은 계정이 다른 창에서 다른 곳에 가 있어 일을 멈췄습니다. 다른 창을 닫고 새로고침하세요');
+    } else {
+      this.hud.toast('일이 손에 안 잡힙니다', '서버가 연달아 받아 주지 않아 일을 멈췄습니다. F로 다시 시작하세요');
+    }
   }
 
   /** 내 레벨과 경험치가 바뀌었다. 작업 결과와 서버 알림이 둘 다 오므로 지금보다 앞설 때만 바꾼다. */

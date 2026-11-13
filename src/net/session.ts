@@ -26,6 +26,8 @@ export interface HarvestResult {
   gained: number;
 }
 
+export type HarvestFail = 'elsewhere' | 'failed';
+
 export interface PlayerMove {
   id: string;
   nickname: string;
@@ -500,13 +502,16 @@ export class GameSession {
     window.clearTimeout(this.rejoinTimer);
     this.rejoinTimer = 0;
     this.rejoinTries = 0;
+    // 서버의 내 맵은 채널을 옮기기 전에 먼저 저장한다. 채널을 나가는 데 시간이 걸리면 그동안 서버가 나를 예전 맵에 있다고 보고
+    // 작업장의 harvest나 땅의 물건 줍기를 거절했다(2026-11-13 사용자가 Supabase에 'not at a workplace'가 자주 뜬다고 함).
+    this.saveLater({ map: mapId, x, y });
+    const saved = this.flush();
     // 예전 맵 채널을 다 나갈 때까지 기다리지 않고 새 맵 채널에 바로 든다. 같은 맵이면 채널 이름이 같아서 먼저 나간다.
     if (previousChat) void dropChannel(previousChat);
     if (previous && sameMap) await dropChannel(previous);
     else if (previous) void dropChannel(previous);
     await this.joinMap();
-    this.saveLater({ map: mapId, x, y });
-    await this.flush();
+    await saved;
   }
 
   /**
@@ -587,10 +592,14 @@ export class GameSession {
     void this.channel.send({ type: 'broadcast', event: 'shot', payload });
   }
 
-  /** 자원 하나를 캔다. 작업 간격을 어기거나 작업장이 아니면 null을 돌려준다. */
-  async harvest(): Promise<HarvestResult | null> {
+  /**
+   * 자원 하나를 캔다. 실패하면 까닭을 돌려준다. 'elsewhere'는 서버에 저장된 내 맵이 작업장이 아닐 때다:
+   * 같은 계정의 다른 창이나 기기가 다른 맵으로 옮겨 간 경우다.
+   */
+  async harvest(): Promise<HarvestResult | HarvestFail> {
     const { data, error } = await supabase.rpc('harvest');
-    return error ? null : (data as HarvestResult);
+    if (!error) return data as HarvestResult;
+    return error.message.includes('not at a workplace') ? 'elsewhere' : 'failed';
   }
 
   /** 가진 자원을 모두 팔고 새 골드를 돌려준다. */
