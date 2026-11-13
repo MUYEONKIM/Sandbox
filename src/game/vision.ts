@@ -11,6 +11,9 @@ import { gridToWorld } from '../iso';
  * 처음에는 어둠을 빛줄기 사이 조각 수백 장으로 그렸는데, 조각 사이에 실금이 생겨 빛줄기가 줄무늬로 새어 보였다(2026-11-13 사용자 보고).
  * 사용자가 "투박해도 되니 최적화와 렌더링에 신경 써 달라"고 해서, 가장자리는 늘린 그림의 흐릿함으로 부드럽게 두고
  * 내 위치나 방향, 막힌 칸이 바뀔 때만 다시 그린다.
+ *
+ * 빛은 마우스 쪽을 비춘다(2026-11-13 사용자 요청 "시야각을 마우스 따라가도록, 렉이 안 걸리는 게 우선"). 마우스는 쉬지 않고
+ * 움직이므로 방향을 5도 단위로 끊고, 방향만 바뀐 것은 1초에 30번까지만 다시 그린다. 내가 움직인 것은 빛이 늦게 따라오지 않게 바로 그린다.
  */
 
 /** 부채꼴: 사용자가 고른 90도(반각 45도), 8칸 */
@@ -27,8 +30,16 @@ const STEP = 0.12;
 const FACE = 0.45;
 /** 빛 끝의 옅은 띠(칸). 장애물에 막힌 쪽에는 두지 않는다. */
 const FADE = 0.9;
-/** 어둠 canvas 해상도: 월드 픽셀 몇 개를 한 칸으로 칠하는지 */
-const SCALE = 3;
+/** 어둠 canvas 해상도: 월드 픽셀 몇 개를 한 칸으로 칠하는지. 클수록 가볍고 가장자리가 흐리다. */
+const SCALE = 4;
+/** 빛 방향을 끊는 단위: 한 바퀴를 72칸(5도) */
+const AIM_STEPS = 72;
+/** 지금 그린 방향에서 이만큼(칸) 넘게 벗어나야 방향을 바꾼다. 0.5면 떨림을 못 막는다. */
+const AIM_HOLD = 0.7;
+/** 방향만 바뀌었을 때 다시 그리는 최소 간격(ms). 1초에 30번 */
+const AIM_REDRAW_MS = 33;
+/** 내 위치를 끊는 단위(칸). 이보다 덜 움직이면 다시 그리지 않는다. */
+const POSITION_STEP = 0.05;
 const DARK = 'rgba(5, 7, 12, 0.88)';
 /** 옅은 띠는 어둠을 이만큼 걷어 낸다. */
 const FADE_CLEAR = 0.45;
@@ -48,8 +59,10 @@ export class Flashlight {
   private ox = 0;
   private oy = 0;
   private on = false;
-  /** 지난번에 그린 상태. 같으면 다시 그리지 않는다. */
-  private drawn = '';
+  /** 지난번에 그린 위치·막힌 칸 상태와 빛 방향(끊은 값), 그린 시각 */
+  private drawnPlace = '';
+  private drawnAim = -1;
+  private drawnAt = 0;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -63,7 +76,8 @@ export class Flashlight {
   /** 맵에 들어갈 때 부른다. on이면 그 맵(한 변 size칸)을 덮는 어둠을 준비한다. */
   setActive(on: boolean, size: number) {
     this.on = on;
-    this.drawn = '';
+    this.drawnPlace = '';
+    this.drawnAim = -1;
     if (!on) {
       this.image?.setVisible(false);
       return;
@@ -83,17 +97,25 @@ export class Flashlight {
   }
 
   /**
-   * (ox, oy)는 내 위치(칸 가운데의 격자 좌표), facing은 바라보는 격자 방향, stops(x, y)는 빛을 막는 칸인지,
-   * version은 막힌 칸이 바뀔 때마다 달라지는 값이다.
+   * (ox, oy)는 내 위치(칸 가운데의 격자 좌표), aim은 비추는 방향(격자 좌표의 각도), stops(x, y)는 빛을 막는 칸인지,
+   * version은 막힌 칸이 바뀔 때마다 달라지는 값이다. 매 프레임 불러도 바뀐 것이 없으면 아무것도 하지 않는다.
    */
-  update(ox: number, oy: number, facing: { dx: number; dy: number }, stops: (x: number, y: number) => boolean, version: number) {
+  update(ox: number, oy: number, aim: number, stops: (x: number, y: number) => boolean, version: number, now: number) {
     if (!this.on) return;
-    const state = `${ox.toFixed(2)},${oy.toFixed(2)},${facing.dx},${facing.dy},${version}`;
-    if (state === this.drawn) return;
-    this.drawn = state;
+    const place = `${Math.round(ox / POSITION_STEP)},${Math.round(oy / POSITION_STEP)},${version}`;
+    const raw = (((aim / TAU) * AIM_STEPS) % AIM_STEPS + AIM_STEPS) % AIM_STEPS;
+    // 마우스가 5도 경계에서 떨리면 두 방향을 오가며 계속 다시 그리게 되므로, 지금 방향에서 0.7칸 넘게 벗어나야 바꾼다.
+    const drift = Math.abs(((raw - this.drawnAim + AIM_STEPS * 1.5) % AIM_STEPS) - AIM_STEPS / 2);
+    const step = this.drawnAim >= 0 && drift < AIM_HOLD ? this.drawnAim : Math.round(raw) % AIM_STEPS;
+    const moved = place !== this.drawnPlace;
+    if (!moved && step === this.drawnAim) return;
+    if (!moved && now - this.drawnAt < AIM_REDRAW_MS) return;
+    this.drawnPlace = place;
+    this.drawnAim = step;
+    this.drawnAt = now;
     this.ox = ox;
     this.oy = oy;
-    this.cast(Math.atan2(facing.dy, facing.dx), stops);
+    this.cast((step / AIM_STEPS) * TAU, stops);
     this.paint();
   }
 

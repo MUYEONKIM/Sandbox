@@ -11,8 +11,10 @@ export const MAP_SIZE = 46;
 /** 서버가 받는 좌표의 칸 수. profiles와 blocks 표의 x, y 검사(0~99)와 같아야 한다. */
 export const MAX_MAP_SIZE = 100;
 
-/** 블록을 놓을 수 있는 거리 (칸). 1이면 캐릭터를 둘러싼 8칸이다. */
+/** 작업장 자원에 손이 닿는 거리 (칸). 1이면 캐릭터를 둘러싼 8칸이다. */
 export const PLACE_RANGE = 1;
+/** 블록과 가구를 놓고 치울 수 있는 거리 (칸). 8방위로 2칸, 캐릭터를 둘러싼 5×5칸이다(2026-11-13 사용자 요청). */
+export const BUILD_RANGE = 2;
 
 /** 마름모 변을 따라 한 칸 이동하는 시간 (ms). 꼭짓점 방향은 거리만큼 더 걸린다. */
 export const STEP_MS = 120;

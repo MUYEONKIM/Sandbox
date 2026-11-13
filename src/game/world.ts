@@ -1,5 +1,5 @@
 import { BLOCKS, footprintOf, isCube, isLarge, type BlockId } from '../blocks';
-import { MAX_STACK, PLACE_RANGE } from '../config';
+import { BUILD_RANGE, MAX_STACK, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
 import { isInside, type Area, type Portal } from './maps';
 
@@ -14,14 +14,11 @@ export function inReach(from: Tile, to: Tile, range = PLACE_RANGE) {
 }
 
 /**
- * 블록을 놓고 치울 수 있는 칸: 둘레 8칸(화면에서 마름모)에 더해, 마름모 네 변의 가운데에서 바깥으로 한 칸씩 더
- * (2026-11-12 사용자 요청 "상하좌우 한 칸씩 더", 같은 날 "마름모 꼭짓점이 아니라 변마다 가운데 한 칸"으로 바로잡음).
- * 변의 가운데는 격자로 곧은 방향이라, 더 닿는 네 칸은 격자로 곧게 두 칸 떨어진 칸이다.
+ * 블록과 가구를 놓고 치울 수 있는 칸: 8방위로 BUILD_RANGE(2)칸, 화면에서 큰 마름모(2026-11-13 사용자 요청 "그냥 8방위 2칸으로").
+ * 예전에는 둘레 8칸에 네 변의 가운데에서 한 칸씩만 더 닿았다(2026-11-12).
  */
 export function inBuildReach(from: Tile, to: Tile) {
-  const dx = Math.abs(from.x - to.x);
-  const dy = Math.abs(from.y - to.y);
-  return Math.max(dx, dy) <= PLACE_RANGE || (dx + dy === PLACE_RANGE + 1 && Math.min(dx, dy) === 0);
+  return Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) <= BUILD_RANGE;
 }
 
 /** 맵 위 상태(지형, 고정 장애물, 설치된 블록)와 그에 대한 규칙 */

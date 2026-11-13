@@ -16,6 +16,19 @@ function paintIcons() {
 
 const TOAST_MS = 3500;
 
+/** 왼쪽 위 조작 안내: [이름, 키들, 덧붙임] */
+const HELP_ROWS: [string, string[], string?][] = [
+  ['이동', ['WASD', '방향키'], '두 키는 대각선'],
+  ['달리기 · 점프', ['Shift', 'Space']],
+  ['선택', ['1~9'], '메모장 0'],
+  ['인벤토리 · 채팅', ['I', 'Enter']],
+  ['작업 · 줍기', ['F']],
+  ['설치 · 공격', ['좌클릭']],
+  ['회수', ['우클릭']],
+  ['가구 돌리기', ['R']],
+  ['맵 이동', ['귀퉁이 포탈']],
+];
+
 /** 인벤토리 창의 탭: 블록과 무기 탭(inventory.ts의 TABS) 뒤에 주운 메모 탭 */
 type BagTab = TabId | 'memo';
 const BAG_TABS: Record<BagTab, string> = { ...TABS, memo: '메모' };
@@ -97,9 +110,17 @@ export class Hud {
 
     /** 왼쪽 위 칸: 조작 안내와 그 아래 현상범 명단 */
     this.topLeft = element('top-left', root);
+    // 항목마다 한 줄, 키는 키보드 단추 모양(2026-11-13 사용자 "글자만 이어져 있어 가독성이 떨어진다").
     const help = element('help', this.topLeft);
-    help.innerHTML =
-      '<b>이동</b> WASD 또는 방향키 (두 키를 함께 누르면 대각선)<br><b>선택</b> 1~9 &nbsp; <b>메모장</b> 0 &nbsp; <b>인벤토리</b> I &nbsp; <b>채팅</b> Enter<br><b>달리기</b> Shift 누르기 &nbsp; <b>점프</b> Space &nbsp; <b>작업 / 줍기</b> F<br><b>설치 / 공격</b> 좌클릭 &nbsp; <b>회수</b> 우클릭 &nbsp; <b>가구 돌리기</b> R &nbsp; <b>맵 이동</b> 귀퉁이 포탈';
+    for (const [label, keys, note] of HELP_ROWS) {
+      element('help-label', help, 'span').textContent = label;
+      const row = element('help-keys', help, 'span');
+      keys.forEach((key, i) => {
+        if (i) element('help-or', row, 'span').textContent = '/';
+        element('help-key', row, 'kbd').textContent = key;
+      });
+      if (note) element('help-note', row, 'span').textContent = note;
+    }
 
     this.panel = element('panel', root);
     this.panel.hidden = true;

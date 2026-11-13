@@ -26,7 +26,7 @@ import {
   JUMP_TILES,
   MAP_SIZE,
   MAX_STACK,
-  PLACE_RANGE,
+  BUILD_RANGE,
   RUN_SPEED,
   STEP_MS,
   TILE_H,
@@ -1306,12 +1306,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private updateVision() {
     if (!this.flashlight.active) return;
     const me = this.me.position();
+    const ox = me.x + 0.5;
+    const oy = me.y + 0.5;
     this.flashlight.update(
-      me.x + 0.5,
-      me.y + 0.5,
-      this.me.gridFacing,
+      ox,
+      oy,
+      this.flashlightAim(ox, oy),
       (x, y) => !this.world.inBounds(x, y) || this.world.blocksShots(x, y),
       this.world.version,
+      this.time.now,
     );
     for (const [id, avatar] of this.others) {
       const at = avatar.position();
@@ -1319,6 +1322,23 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       avatar.setHidden(!seen);
       this.tags.setHidden(id, !seen);
     }
+  }
+
+  /**
+   * 손전등이 비출 방향(격자 좌표의 각도): 마우스가 있으면 마우스 쪽(2026-11-13 사용자 요청), 휴대폰처럼 터치로 하거나
+   * 마우스를 아직 움직이지 않았거나 캐릭터 바로 위를 가리키면 캐릭터가 바라보는 방향이다.
+   */
+  private flashlightAim(ox: number, oy: number) {
+    const pointer = this.input.activePointer;
+    if (!pointer.wasTouch && (pointer.x !== 0 || pointer.y !== 0)) {
+      const w = this.pointerWorld();
+      const g = worldToGrid(w.x, w.y);
+      const dx = g.gx - ox;
+      const dy = g.gy - oy;
+      if (dx * dx + dy * dy > 0.25) return Math.atan2(dy, dx);
+    }
+    const { dx, dy } = this.me.gridFacing;
+    return Math.atan2(dy, dx);
   }
 
   private placeNameTags() {
@@ -1702,7 +1722,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private drawRange() {
     const size = this.world.map.size;
     const me = this.me.tile;
-    const far = PLACE_RANGE + 1;
+    const far = BUILD_RANGE;
     const reach = new Set<string>();
     for (let dy = -far; dy <= far; dy++) {
       for (let dx = -far; dx <= far; dx++) {

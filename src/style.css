@@ -60,9 +60,56 @@ canvas {
   color: var(--text-dim);
 }
 
-.help b {
+/* 조작 안내: 왼쪽은 이름, 오른쪽은 키 단추 */
+.help {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: center;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.help-label {
+  color: var(--gold);
+  text-align: right;
+}
+
+.help-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.help-key {
+  min-width: 20px;
+  padding: 1px 5px 2px;
   color: var(--text);
-  font-weight: 700;
+  background: #f3e2c0;
+  border: 1px solid var(--panel-edge);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  font: inherit;
+  text-align: center;
+}
+
+.help-or {
+  color: var(--text-dim);
+}
+
+.help-note {
+  margin-left: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* 휴대폰에는 키보드가 없고 화면이 좁아 다른 상자를 가리므로 조작 안내를 숨긴다. */
+@media (max-width: 620px), (pointer: coarse) {
+  .help {
+    display: none;
+  }
 }
 
 .bottom {
@@ -2628,5 +2675,181 @@ canvas {
 
   .hotbar .memo-slot {
     margin-left: 2px;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * Sprout Lands UI 스킨(2026-11-13 사용자 요청 "우리 UI가 되는 assets과 font를 적용").
+ * 조각 그림은 src/ui/skin/(art-source/ui-pack/make-skin.cjs가 자름)이고, 창과 칸과 버튼 테두리를 border-image로 입힌다.
+ * 원본이 1픽셀 도트라 게임 화면처럼 2배로 그린다(조각 slice × 2 = 테두리 두께).
+ * 게임 화면 위에 바로 뜨는 이름표, 채팅, 줍기 안내, 위쪽 알림은 바탕 그림 위에서 읽혀야 해서 예전 어두운 반투명 그대로 둔다.
+ * 글꼴은 사용자가 준 깍두기 도면체(SIL OFL, 라이선스 public/licenses/KkakdugiDrafting-OFL.txt). 팩의 도트 글꼴은 한글과 소문자가
+ * 없어서 쓰지 않는다. 한 굵기가 5MB라 파일 하나만 싣는다. 보통 굵기는 황토색 바탕에서 획이 가늘어 잘 안 읽혀서 굵은(Bold) 파일을
+ * 모든 굵기에 쓴다(브라우저가 더 두껍게 덧그리지 않음). 받는 동안은 맑은 고딕으로 보인다.
+ * ─────────────────────────────────────────────────────────────────────────── */
+@font-face {
+  font-family: 'KkakdugiDrafting';
+  src: url('./ui/skin/kkakdugi-bold.ttf') format('truetype');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --panel: #dcb98a;
+  --panel-edge: #aa7959;
+  --slot: #e8cfa6;
+  --slot-sunken: #c49a6c;
+  --gold: #9c4a1c;
+  --text: #5a3726;
+  --text-dim: #7c5a40;
+  --cursor: url('./ui/skin/cursor.png') 4 2, auto;
+  --cursor-point: url('./ui/skin/cursor-pointer.png') 8 2, pointer;
+}
+
+html,
+body,
+canvas {
+  cursor: var(--cursor);
+}
+
+#hud,
+.login {
+  font-family: 'KkakdugiDrafting', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+}
+
+#hud button,
+.login button {
+  cursor: var(--cursor-point);
+}
+
+/* 게임 화면 위에 바로 뜨는 것은 예전 밝은 글자 색을 쓴다. */
+.player-tag,
+.sign-name,
+.portal-name,
+.chat,
+.pickup-hint,
+.ground-tip,
+.notices,
+.connection,
+.drag-icon {
+  --gold: #f2cf6a;
+  --text: #f7ecd6;
+  --text-dim: #d8c6a8;
+  --panel-edge: #1f1510;
+}
+
+/* 큰 창: I 창, 상점·노동청 같은 창, 가운데 작은 창, 로그인, 킬/데스 순위 */
+.panel,
+.office,
+.modal,
+.popup,
+.login-panel,
+.killboard {
+  background: none;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 12px;
+  border-image: url('./ui/skin/panel.png') 6 fill / 12px / 0 stretch;
+  box-shadow: none;
+  image-rendering: pixelated;
+}
+
+/* 화면 가장자리의 작은 상자: 조작 안내, 계정, 미니맵, 순위, 현상범, 알림, 아래 상태 막대 */
+.help,
+.account,
+.minimap,
+.rank-panel,
+.wanted,
+.toast,
+.announce,
+.down-notice,
+.new-version,
+.bottom,
+.elevator-panel {
+  background: none;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 8px 8px 12px;
+  border-image: url('./ui/skin/button-light.png') 4 4 6 fill / 8px 8px 12px / 0 stretch;
+  box-shadow: none;
+  color: var(--text);
+  image-rendering: pixelated;
+}
+
+/* 단축키 칸 묶음과 인벤토리 목록은 테두리 없이 칸만 보인다. */
+.slots {
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.slot {
+  background: none;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 10px 10px 14px;
+  border-image: url('./ui/skin/slot.png') 5 5 7 fill / 10px 10px 14px / 0 stretch;
+  image-rendering: pixelated;
+}
+
+.hotbar .slot.selected,
+.hotbar .memo-slot.selected {
+  border-image-source: url('./ui/skin/slot-mid.png');
+  box-shadow: none;
+  outline: 3px solid #f6e7c4;
+  outline-offset: -3px;
+}
+
+/* 버튼: 보통은 황토색, 고른 탭과 주 버튼은 밝은 크림색, 누르는 동안은 눌린 그림 */
+#hud button,
+.login button {
+  color: var(--text);
+  background: none;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 6px 6px 9px;
+  border-image: url('./ui/skin/button.png') 4 4 6 fill / 6px 6px 9px / 0 stretch;
+  box-shadow: none;
+  image-rendering: pixelated;
+}
+
+#hud button:active:not(:disabled),
+.login button:active:not(:disabled) {
+  border-width: 7px 6px 8px;
+  border-image: url('./ui/skin/button-down.png') 4 fill / 7px 6px 8px / 0 stretch;
+}
+
+#hud button:disabled,
+.login button:disabled {
+  opacity: 0.55;
+}
+
+/* 고른 탭과 금액 버튼(정보창/인벤토리, 블록 탭, 게시판 탭, 거는 곳 등)은 밝은 크림색에 진한 글자로 구분한다. */
+#hud button.chosen {
+  color: var(--gold);
+  font-weight: 700;
+  border-image-source: url('./ui/skin/button-light.png');
+}
+
+#hud .modal-button.primary,
+.login .login-submit {
+  color: var(--text);
+  border-image-source: url('./ui/skin/button-light.png');
+}
+
+/* 칸 안의 작은 숫자와 이름 */
+.slot-key {
+  color: var(--text-dim);
+}
+
+@media (max-width: 620px) {
+  .slot {
+    border-width: 6px 6px 9px;
+    border-image-width: 6px 6px 9px;
+  }
+
+  #hud button {
+    border-width: 4px 4px 6px;
+    border-image-width: 4px 4px 6px;
   }
 }
