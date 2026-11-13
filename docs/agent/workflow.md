@@ -65,7 +65,7 @@
 1. 게시판 공지 "업데이트 내역"(`src/updates.ts`의 `UPDATES`) 맨 아래에 이번 배포 항목을 하나 더한다(사용자 요청 2026-11-12, 배포마다 빠짐없이). `date`는 배포하는 날, `items`는 플레이어가 화면에서 알아볼 변화를 한 줄씩 쓴다. 인계 문서만 고친 배포처럼 게임에 변화가 없으면 더하지 않는다.
 2. `npm run build`가 통과한다.
 3. `git add <경로들>` → `git status --short`로 바뀐 파일이 모두 스테이징됐는지 본다(`art-source/`는 빼고).
-4. 커밋 메시지는 영어로, 마지막 줄에 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+4. 커밋 메시지는 영어로, 마지막 줄에 `Co-Authored-By: <그 세션의 모델 이름> <noreply@anthropic.com>`(세션이 알려 주는 서명 줄을 그대로 쓴다).
 5. `git push origin main`
 6. `gh run list --commit <전체 SHA>`로 실행을 찾고 `gh run watch <id> --exit-status`. 짧은 SHA로는 찾지 못한다.
 7. 실제 사이트 확인: `index.html`에서 `assets/*.js`를 찾아 새 문구가 있는지 `grep`, 새 그림은 `curl`로 받아 `cmp`.
