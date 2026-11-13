@@ -68,6 +68,10 @@ export class Avatar {
   private flip = false;
   /** 화면 위쪽을 보고 있으면 뒷모습을 그린다. */
   private back = false;
+  /** 격자에서 바라보는 방향. 전쟁터 손전등이 이 쪽을 비춘다(처음엔 화면 왼쪽 아래 = y 방향). */
+  private dir = { dx: 0, dy: 1 };
+  /** 전쟁터에서 내 손전등 빛 밖에 있어 숨긴 캐릭터 */
+  private hidden = false;
   /** 걷는 동안 보여 줄 그림. 걸음마다 바뀐다. */
   private stepFrame = 0;
   private aimAngle: number | null = null;
@@ -122,6 +126,20 @@ export class Avatar {
     return this.airborne;
   }
 
+  /** 격자에서 바라보는 방향(dx, dy는 -1, 0, 1) */
+  get gridFacing() {
+    return this.dir;
+  }
+
+  /** 전쟁터에서 빛 밖에 있으면 캐릭터와 그림자, 무기를 숨긴다. */
+  setHidden(hidden: boolean) {
+    if (hidden === this.hidden) return;
+    this.hidden = hidden;
+    this.image.setVisible(!hidden);
+    this.shadow.setVisible(!hidden);
+    if (hidden) this.gun.setVisible(false);
+  }
+
   /** 지금 바라보는 화면 방향. 오른쪽이 1이다. */
   get facing() {
     return this.flip ? 1 : -1;
@@ -140,6 +158,7 @@ export class Avatar {
 
   /** 격자 이동 방향으로 몸을 돌린다. 그림이 왼쪽을 보므로 화면 오른쪽으로 갈 때 뒤집는다. */
   face(dx: number, dy: number) {
+    if (dx || dy) this.dir = { dx: Math.sign(dx), dy: Math.sign(dy) };
     const screenX = dx - dy;
     if (screenX !== 0) this.flip = screenX > 0;
     const screenY = dx + dy;
@@ -308,7 +327,7 @@ export class Avatar {
       .setDepth(depth);
     this.shadow.setPosition(pos.x, pos.y).setDepth(depthOf(x, y));
 
-    const armed = this.aimAngle !== null && !this.isDown;
+    const armed = this.aimAngle !== null && !this.isDown && !this.hidden;
     this.gun.setVisible(armed);
     if (armed) {
       const angle = this.aimAngle! + (this.swingT < 1 ? (this.swingT - 0.5) * SWING_ARC : 0);

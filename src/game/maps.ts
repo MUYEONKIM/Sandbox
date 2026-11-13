@@ -32,7 +32,6 @@ export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | TowerI
 
 /** tiles.png의 타일 번호. 왼쪽 위부터 오른쪽으로 센다. 번호를 여러 번 넣으면 더 자주 나온다. */
 const GRASS = [22, 23, 24];
-const DARK_GRASS = [40];
 const DIRT = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const CRACKED_DIRT = [11, 14, 15, 16];
 const SCORCHED_DIRT = [17, 18, 21];
@@ -60,6 +59,8 @@ export interface MapInfo {
   work?: boolean;
   /** true면 공격이 막힌다. 서버도 같은 맵을 막으므로 바꾸면 SQL도 함께 바꾼다. 지금은 시작마을뿐이다(2026-11-11 사용자 요청). */
   safe?: boolean;
+  /** true면 늘 어둡고 내 손전등 시야만 보인다(전쟁터, 2026-11-13 사용자 요청). */
+  dark?: boolean;
 }
 
 /** 맵 목록. 평원을 중심으로 귀퉁이가 각 맵으로 이어지고, 작업장은 노동청에서 간다. 블록은 어느 맵이든 바닥 전체에 놓는다(2026-11-11 사용자 요청). */
@@ -183,13 +184,16 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0x8fd0ff,
     links: {},
   },
+  // 예전 숲. 2026-11-13 사용자 요청으로 전쟁터가 됐다. 저장된 위치와 블록이 'forest'를 쓰므로 id는 그대로 둔다.
+  // 손전등 시야(src/game/vision.ts)와 장애물 배치(src/game/battlefield.ts)가 이 맵에만 있다.
   forest: {
-    name: '숲',
-    floor: DARK_GRASS,
+    name: '전쟁터',
+    floor: [...CRACKED_DIRT, ...SCORCHED_DIRT, 0, 3],
     floorTop: BLOCK_TOP,
-    color: 0x3f8a35,
-    accent: 0x4fdc86,
+    color: 0x5a4a3a,
+    accent: 0xff7a4d,
     links: { right: 'plains', top: 'snow' },
+    dark: true,
   },
   quarry: {
     name: '채석장',

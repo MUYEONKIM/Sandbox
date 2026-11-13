@@ -116,6 +116,12 @@ export class NameTags {
     label.addEventListener('animationend', () => label.remove());
   }
 
+  /** 전쟁터에서 빛 밖에 있는 사람의 이름표를 숨긴다. */
+  setHidden(id: string, hidden: boolean) {
+    const tag = this.tags.get(id);
+    if (tag) tag.root.style.visibility = hidden ? 'hidden' : '';
+  }
+
   remove(id: string) {
     const tag = this.tags.get(id);
     if (!tag) return;

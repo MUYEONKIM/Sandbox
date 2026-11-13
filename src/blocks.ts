@@ -13,13 +13,13 @@ const TILE_COLUMNS = 11;
  * sprite: public/sprites의 그림 한 장을 칸 위에 세운다(나무, 가구).
  * tile: tiles.png의 칸 그림이고, 같은 칸에는 늘 같은 그림이 나오도록 위치로 하나를 고른다(꽃, 바위 등).
  * furniture: furniture.png 한 장 안의 한 자리(사용자가 준 실내 꾸미기 에셋, src/furniture.ts).
- *   frame은 [x, y, 너비, 높이, 칸 가운데에 맞출 점 x, y]다.
+ *   frame은 [x, y, 너비, 높이, 차지하는 칸들의 가운데에 맞출 점 x, y, 차지하는 칸 수 x 방향, y 방향]이다.
  */
 export type BlockArt =
   | { kind: 'cube'; texture: number; side?: number }
   | { kind: 'sprite'; sprite: SpriteName }
   | { kind: 'tile'; tiles: readonly number[] }
-  | { kind: 'furniture'; frame: readonly [number, number, number, number, number, number] };
+  | { kind: 'furniture'; frame: readonly [number, number, number, number, number, number, number, number] };
 
 interface BlockInfo {
   name: string;
@@ -123,6 +123,31 @@ export function isCube(id: BlockId) {
 
 export function isFurniture(id: BlockId) {
   return BLOCKS[id].art.kind === 'furniture';
+}
+
+/** 블록이 차지하는 칸들: 왼쪽 위(뒤) 모서리 칸 (x0, y0)에서 x 방향 a칸, y 방향 b칸 */
+export interface Footprint {
+  x0: number;
+  y0: number;
+  a: number;
+  b: number;
+}
+
+/**
+ * 칸 (x, y)에 놓은 블록이 차지하는 칸들. 큰 가구(2026-11-13 사용자 요청 "한 칸 블록이 아니어도 된다")는
+ * 놓은 칸이 가운데쯤 오게 퍼진다(2×2는 놓은 칸이 뒤 모서리, 3×3은 한가운데). 다른 블록은 그 칸 하나다.
+ */
+export function footprintOf(id: BlockId, x: number, y: number): Footprint {
+  const art = BLOCKS[id].art;
+  if (art.kind !== 'furniture') return { x0: x, y0: y, a: 1, b: 1 };
+  const [, , , , , , a, b] = art.frame;
+  return { x0: x - Math.floor((a - 1) / 2), y0: y - Math.floor((b - 1) / 2), a, b };
+}
+
+/** 한 칸보다 큰 블록인지. 큰 가구는 다른 블록 위에 쌓지 않는다. */
+export function isLarge(id: BlockId) {
+  const { a, b } = footprintOf(id, 0, 0);
+  return a > 1 || b > 1;
 }
 
 /** 가구를 돌렸을 때(R) 바뀌는 다음 방향. 방향이 하나뿐이거나 가구가 아니면 null */

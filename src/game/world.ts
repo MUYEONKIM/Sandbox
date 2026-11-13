@@ -1,4 +1,4 @@
-import { BLOCKS, isCube, type BlockId } from '../blocks';
+import { BLOCKS, footprintOf, isCube, isLarge, type BlockId } from '../blocks';
 import { MAX_STACK, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
 import { isInside, type Area, type Portal } from './maps';
@@ -30,6 +30,11 @@ export class World {
   private readonly blocks = new Map<number, BlockId[]>();
   /** 건물 층 안의 벽 칸 */
   private readonly partitions = new Set<number>();
+  /**
+   * 여러 칸을 차지하는 막힌 가구(침대, 탁자 등)가 덮은 칸 → 가구를 놓은 칸. 놓은 칸 자체는 blocks에 있다.
+   * 카펫처럼 지나갈 수 있는 가구는 바닥 그림일 뿐이라 덮은 칸을 막지 않는다(그 위에 다른 가구를 놓을 수 있다).
+   */
+  private readonly covered = new Map<number, number>();
 
   constructor(
     readonly map: GameMap,
@@ -54,6 +59,12 @@ export class World {
   /** 높이 z에 놓인 블록 */
   blockAtLevel(x: number, y: number, z: number) {
     return this.blocks.get(this.key(x, y))?.[z];
+  }
+
+  /** 큰 가구가 덮은 칸이면 그 가구를 놓은 칸 */
+  ownerOf(x: number, y: number): Tile | undefined {
+    const key = this.covered.get(this.key(x, y));
+    return key === undefined ? undefined : { x: key % this.map.size, y: Math.floor(key / this.map.size) };
   }
 
   /** 칸에 쌓인 블록 수 */
@@ -98,6 +109,7 @@ export class World {
 
   isWalkable(x: number, y: number) {
     if (!this.isOpenGround(x, y)) return false;
+    if (this.covered.has(this.key(x, y))) return false;
     const block = this.blockAt(x, y);
     return !block || !BLOCKS[block].solid;
   }
@@ -110,7 +122,7 @@ export class World {
   /** 총알과 칼을 막는 칸: 건물이나 자원 같은 고정 장애물과 지나갈 수 없는 블록이다. 물과 꽃은 넘어간다. */
   blocksShots(x: number, y: number) {
     const block = this.blockAt(x, y);
-    return this.map.solid[this.key(x, y)] === 1 || (block !== undefined && BLOCKS[block].solid);
+    return this.map.solid[this.key(x, y)] === 1 || this.covered.has(this.key(x, y)) || (block !== undefined && BLOCKS[block].solid);
   }
 
   /** from에서 (dx, dy)로 한 칸 갈 수 있는지 본다. 양옆이 모두 막힌 틈은 지나갈 수 없다. */
@@ -120,17 +132,36 @@ export class World {
     return this.isWalkable(from.x + dx, from.y) || this.isWalkable(from.x, from.y + dy);
   }
 
-  canPlace(target: Tile, player: Tile) {
+  /**
+   * target에 id를 놓을 수 있는지. 손은 target에만 닿으면 되고, 막힌 큰 가구는 차지하는 칸이 모두 비어 있어야 한다.
+   * 지나갈 수 있는 가구(카펫 등)는 놓는 칸 하나만 본다.
+   */
+  canPlace(target: Tile, player: Tile, id: BlockId) {
     if (!inBuildReach(player, target)) return false;
+    return this.placeTiles(target, id).every((tile) => this.isFreeForBlock(tile, player));
+  }
+
+  /** 놓을 때 비어 있어야 하는 칸들 */
+  placeTiles(target: Tile, id: BlockId): Tile[] {
+    if (!BLOCKS[id].solid) return [target];
+    const { x0, y0, a, b } = footprintOf(id, target.x, target.y);
+    const tiles: Tile[] = [];
+    for (let y = y0; y < y0 + b; y++) for (let x = x0; x < x0 + a; x++) tiles.push({ x, y });
+    return tiles;
+  }
+
+  private isFreeForBlock(target: Tile, player: Tile) {
     if (target.x === player.x && target.y === player.y) return false;
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     if (this.isPortalArea(target.x, target.y)) return false;
     if (this.map.reserved.some(({ x, y }) => x === target.x && y === target.y)) return false;
+    if (this.covered.has(this.key(target.x, target.y))) return false;
     return this.isOpenGround(target.x, target.y) && !this.heightAt(target.x, target.y);
   }
 
-  /** 칸의 블록 위에 하나 더 쌓을 수 있는지. 기본 블록(상자) 위에만, MAX_STACK개까지 쌓는다. */
-  canStack(target: Tile, player: Tile) {
+  /** 칸의 블록 위에 하나 더 쌓을 수 있는지. 기본 블록(상자) 위에만, MAX_STACK개까지 쌓는다. 큰 가구는 쌓지 않는다. */
+  canStack(target: Tile, player: Tile, id?: BlockId) {
+    if (id && isLarge(id)) return false;
     if (!inBuildReach(player, target)) return false;
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     const top = this.topAt(target.x, target.y);
@@ -160,12 +191,20 @@ export class World {
     const stack = this.blocks.get(key) ?? [];
     stack[z] = id;
     this.blocks.set(key, stack);
+    if (z === 0 && BLOCKS[id].solid) {
+      for (const tile of this.placeTiles({ x, y }, id)) {
+        if (this.inBounds(tile.x, tile.y) && (tile.x !== x || tile.y !== y)) this.covered.set(this.key(tile.x, tile.y), key);
+      }
+    }
   }
 
   remove(x: number, y: number, z: number) {
     const key = this.key(x, y);
     const stack = this.blocks.get(key);
     if (!stack) return;
+    if (z === 0) {
+      for (const [tile, owner] of this.covered) if (owner === key) this.covered.delete(tile);
+    }
     delete stack[z];
     // 맨 위가 빠지면 비어 있는 꼭대기를 걷어 낸다.
     while (stack.length && stack[stack.length - 1] === undefined) stack.pop();

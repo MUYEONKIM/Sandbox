@@ -17,6 +17,7 @@ import {
   SNAIL_TRACK,
   type PartitionKind,
 } from './tower';
+import { layoutBattlefield, type BattleProp } from './battlefield';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 
@@ -65,6 +66,8 @@ export interface GameMap extends Scenery {
   partitions: PartitionTile[];
   /** 블록을 놓으면 안 되는 칸. 숨은 방을 여는 칸이 막히지 않게 한다. */
   reserved: Tile[];
+  /** 전쟁터 전용 장애물과 포탄 구덩이 */
+  battleProps: BattleProp[];
 }
 
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
@@ -163,6 +166,8 @@ export function generateMap(id: MapId): GameMap {
   const buildings: Building[] = [];
   let spots: Tile[] = [];
   let scenery: Scenery = { floorTiles: new Map(), decals: new Map(), props: [], trees: [] };
+  let battleProps: BattleProp[] = [];
+  let battleWalls: FixedWall[] = [];
 
   if (id === 'plains') {
     for (const { sprite, x, y, w, d } of [OFFICE, CASTLE, SHOP]) buildings.push({ sprite, x, y, w, d });
@@ -202,6 +207,13 @@ export function generateMap(id: MapId): GameMap {
       for (const { x, y } of [...lamps, table, ...rocks]) solid[x + y * size] = 1;
       for (let x = alcove.x0; x <= alcove.x1; x++) solid[x + ANNEX[1] * size] = 1;
     }
+  } else if (id === 'forest') {
+    const battle = layoutBattlefield();
+    scenery.trees.push(...battle.trees);
+    battleProps = battle.props;
+    battleWalls = battle.walls;
+    for (const { kind, x, y } of battleProps) if (kind !== 'crater') solid[x + y * size] = 1;
+    for (const { x, y } of battleWalls) solid[x + y * size] = 1;
   } else if (id === 'fishing') {
     spots = digPond(terrain);
   } else if (MAPS[id].work) {
@@ -232,12 +244,12 @@ export function generateMap(id: MapId): GameMap {
       }
     }
   }
-  const walls = MAPS[id].work ? workWalls(id as WorkId, terrain, solid) : [];
+  const walls = MAPS[id].work ? workWalls(id as WorkId, terrain, solid) : battleWalls;
   const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, size - 1, size - 1];
   // 블록은 어느 맵이든 바닥 전체에 놓는다. 벽, 물, 포탈 둘레처럼 놓을 수 없는 칸은 World.canPlace가 거른다.
   const buildZones = [bounds];
   const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger] : [];
-  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved };
+  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved, battleProps };
 }
 
 /** 장식 벽을 놓을 수 있는 칸에만 세우고 그 칸을 막는다. */
