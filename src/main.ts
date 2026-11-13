@@ -161,6 +161,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     onScoreboard: (open) => (open ? void killBoard.show() : killBoard.hide()),
     onSlot: (index) => inventory.select(index),
     onInventory: () => hud.toggle(),
+    onHelp: () => hud.toggleHelp(),
     onRotate: () => inventory.rotateSelected(),
     onEscape: () => {
       if (anyModalOpen()) {

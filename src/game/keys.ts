@@ -40,6 +40,8 @@ interface KeyActions {
   onScoreboard(open: boolean): void;
   onSlot(index: number): void;
   onInventory(): void;
+  /** H: 왼쪽 위 조작 안내를 열고 닫는다. */
+  onHelp(): void;
   /** R: 들고 있는 가구를 돌린다. */
   onRotate(): void;
   onEscape(): void;
@@ -110,6 +112,8 @@ export class Keys {
       this.workPressed = true;
     } else if (e.code === 'KeyI') {
       this.actions.onInventory();
+    } else if (e.code === 'KeyH') {
+      this.actions.onHelp();
     } else if (e.code === 'KeyR') {
       this.actions.onRotate();
     } else if (e.code === 'Escape') {

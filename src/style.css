@@ -2683,31 +2683,21 @@ canvas {
  * 조각 그림은 src/ui/skin/(art-source/newui/make-skin.cjs가 자름)이고, 창과 버튼 테두리를 border-image로 입힌다.
  * 원본이 1픽셀 도트라 게임 화면처럼 2배로 그린다(조각 slice × 2 = 테두리 두께).
  * 칸은 팩에서도 무늬 없는 황토색 네모라 그림 없이 색으로 그린다. 팩에 마우스 커서가 없어 기본 커서를 쓴다.
+ * 버튼은 팩의 초록 버튼 모양에 갈색을 입혔고(사용자 요청 2026-11-13 "갈색 느낌, 글자는 밝게"), 강조 글자도 갈색이다.
  * 게임 화면 위에 바로 뜨는 이름표, 채팅, 줍기 안내, 위쪽 알림은 바탕 그림 위에서 읽혀야 해서 어두운 반투명에 밝은 글자다.
- * 글꼴은 사용자가 준 Gmarket Sans Light(2026-11-13에 깍두기 도면체에서 바꿈). 파일 하나(2.4MB)만 싣고, 굵은 글씨는
- * 브라우저가 덧그린다. 받는 동안은 맑은 고딕으로 보인다.
+ * 글꼴은 따로 싣지 않고 맑은 고딕을 쓴다(2026-11-13 사용자 "폰트 적용 안 할 것이다").
  * ─────────────────────────────────────────────────────────────────────────── */
-@font-face {
-  font-family: 'GmarketSans';
-  src: url('./ui/skin/gmarket-sans-light.ttf') format('truetype');
-  font-weight: 300 400;
-  font-display: swap;
-}
 
 :root {
   --panel: #e5d6a1;
   --panel-edge: #603928;
   --slot: #cda677;
   --slot-sunken: #b8926a;
-  --gold: #1d6650;
+  /* 강조 글자: 사용자가 보낸 미니맵 제목 "아이티공간 7층"의 글자색 */
+  --gold: #3e1f1d;
   --text: #3e1f1d;
   --text-dim: #6b4a32;
-  --button-text: #14302a;
-}
-
-#hud,
-.login {
-  font-family: 'GmarketSans', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+  --button-text: #fbf3dc;
 }
 
 /* 어두운 바탕 위의 것은 밝은 글자 색을 쓴다: 게임 화면 위에 바로 뜨는 것과 갈색 아래 막대 */
@@ -2799,8 +2789,8 @@ canvas {
 .hotbar .slot.selected,
 .hotbar .memo-slot.selected {
   background: #f2e3b4;
-  border-color: #57c767;
-  box-shadow: 0 0 0 2px #294040;
+  border-color: #3e1f1d;
+  box-shadow: 0 0 0 2px #f2cf6a;
 }
 
 /* 버튼: 보통은 초록, 주 버튼은 밝은 초록, 고른 탭은 밝은 초록이 눌린 모양, 누르는 동안은 눌린 그림 */
@@ -2871,6 +2861,8 @@ canvas {
 :root {
   /* 아래 상태 막대가 차지하는 높이. 가운데 창은 이 위쪽 공간의 가운데에 뜬다. */
   --bottom-bar: 124px;
+  /* 가운데 창이 화면 위에서 떨어지는 거리 */
+  --window-top: 16px;
 }
 
 /* 크림색 상자 안의 글자는 진한 갈색으로 */
@@ -2907,10 +2899,13 @@ canvas {
 }
 
 /* 가운데 창: 폭과 여백을 줄이고 아래 막대 위쪽 공간 안에 들어오게 한다. */
+/* 가운데 창은 화면 위쪽에 붙이고(사용자 요청 2026-11-13 "아래 UI와 너무 붙어 있다, 위에 공간을 살짝 남기고 붙도록"),
+ * 아래 막대와는 24px 넘게 띄운다. 내용이 길면 창 안에서 스크롤한다. */
 .office {
-  top: calc((100% - var(--bottom-bar)) / 2);
+  top: var(--window-top);
+  transform: translateX(-50%);
   width: min(480px, calc(100% - 32px));
-  max-height: calc(100% - var(--bottom-bar) - 16px);
+  max-height: calc(100% - var(--window-top) - var(--bottom-bar) - 24px);
   padding: 8px 12px 12px;
 }
 
@@ -2955,7 +2950,8 @@ canvas {
 /* I 창: 칸을 줄여 창을 작게 하고 아래 막대와 띄운다. */
 .panel {
   --slot-size: 46px;
-  bottom: var(--bottom-bar);
+  top: var(--window-top);
+  bottom: auto;
   padding: 6px 10px 10px;
 }
 
@@ -3077,4 +3073,10 @@ canvas {
 .player-tag .tone-down,
 .ticker-name .tone-down {
   color: #7fb2ff !important;
+}
+
+/* 조작 안내를 닫아 두었을 때 보이는 작은 상자. 누르거나 H를 치면 다시 열린다. */
+.help-closed {
+  pointer-events: auto;
+  cursor: pointer;
 }

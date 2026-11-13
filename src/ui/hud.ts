@@ -27,7 +27,11 @@ const HELP_ROWS: [string, string[], string?][] = [
   ['회수', ['우클릭']],
   ['가구 돌리기', ['R']],
   ['맵 이동', ['귀퉁이 포탈']],
+  ['이 안내 닫기', ['H']],
 ];
+
+/** 조작 안내를 닫아 두었는지 브라우저에 남기는 이름(2026-11-13 사용자 요청 "단축키 화면은 H로 여닫기") */
+const HELP_CLOSED_KEY = 'help-closed';
 
 /** 인벤토리 창의 탭: 블록과 무기 탭(inventory.ts의 TABS) 뒤에 주운 메모 탭 */
 type BagTab = TabId | 'memo';
@@ -46,6 +50,8 @@ export class Hud {
   private readonly panel: HTMLElement;
   /** 화면 왼쪽 위에 세로로 쌓는 칸(조작 안내, 현상범 명단) */
   readonly topLeft: HTMLElement;
+  private help!: HTMLElement;
+  private helpClosed!: HTMLElement;
   /** 정보창 탭의 내용이 들어가는 칸. 그리는 것은 InfoView다. */
   readonly infoPane: HTMLElement;
   private readonly bagPane: HTMLElement;
@@ -112,6 +118,7 @@ export class Hud {
     this.topLeft = element('top-left', root);
     // 항목마다 한 줄, 키는 키보드 단추 모양(2026-11-13 사용자 "글자만 이어져 있어 가독성이 떨어진다").
     const help = element('help', this.topLeft);
+    this.help = help;
     for (const [label, keys, note] of HELP_ROWS) {
       element('help-label', help, 'span').textContent = label;
       const row = element('help-keys', help, 'span');
@@ -121,6 +128,18 @@ export class Hud {
       });
       if (note) element('help-note', row, 'span').textContent = note;
     }
+    // 닫아 두면 다시 여는 키만 작게 보인다.
+    this.helpClosed = element('help help-closed', this.topLeft);
+    element('help-label', this.helpClosed, 'span').textContent = '조작 안내';
+    element('help-key', element('help-keys', this.helpClosed, 'span'), 'kbd').textContent = 'H';
+    this.helpClosed.addEventListener('click', () => this.toggleHelp());
+    let closed = false;
+    try {
+      closed = localStorage.getItem(HELP_CLOSED_KEY) === '1';
+    } catch {
+      // 저장소를 못 쓰면 늘 열린 채로 시작한다.
+    }
+    this.showHelp(!closed);
 
     this.panel = element('panel', root);
     this.panel.hidden = true;
@@ -317,6 +336,22 @@ export class Hud {
   close() {
     this.panel.hidden = true;
     this.cancelDrag();
+  }
+
+  /** H: 왼쪽 위 조작 안내를 열고 닫는다. 닫은 상태는 이 브라우저에 남긴다. */
+  toggleHelp() {
+    const open = this.help.hidden === true;
+    this.showHelp(open);
+    try {
+      localStorage.setItem(HELP_CLOSED_KEY, open ? '0' : '1');
+    } catch {
+      // 저장하지 못해도 지금 화면에서는 바뀐다.
+    }
+  }
+
+  private showHelp(open: boolean) {
+    this.help.hidden = !open;
+    this.helpClosed.hidden = open;
   }
 
   private createSlot(index: number, parent: HTMLElement) {
