@@ -31,11 +31,10 @@ export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
 /** 던전(2026-11-15 사용자 요청). id는 서버 dungeons 표와 같다. */
 export type DungeonId = 'meadow' | 'inferno';
 export const DUNGEON_IDS: readonly DungeonId[] = ['meadow', 'inferno'];
-export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | TowerId | WorkId | DungeonId;
+export type MapId = 'plains' | 'snow' | 'farm' | 'forest' | TowerId | WorkId | DungeonId;
 
 /** tiles.png의 타일 번호. 왼쪽 위부터 오른쪽으로 센다. 번호를 여러 번 넣으면 더 자주 나온다. */
 const GRASS = [22, 23, 24];
-const DIRT = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const CRACKED_DIRT = [11, 14, 15, 16];
 const SCORCHED_DIRT = [17, 18, 21];
 const STONE = [63, 63, 63, 61];
@@ -81,7 +80,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     floorTop: BLOCK_TOP,
     color: 0xa5d04f,
     accent: 0x9df08f,
-    links: { right: 'desert', left: 'forest' },
+    links: { right: 'farm', left: 'forest' },
     safe: true,
   },
   snow: {
@@ -92,21 +91,14 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0x7fd3ff,
     links: { bottom: 'forest' },
   },
-  desert: {
-    name: '사막',
-    floor: DIRT,
+  // 농장(2026-11-15 사용자 요청). 사막과 화산을 없애고 시작마을 오른쪽 포탈이 농장으로 간다. 공격이 된다.
+  farm: {
+    name: '농장',
+    floor: GRASS,
     floorTop: BLOCK_TOP,
-    color: 0xa5714f,
-    accent: 0xffc34d,
-    links: { left: 'plains', right: 'volcano' },
-  },
-  volcano: {
-    name: '화산',
-    floor: SCORCHED_DIRT,
-    floorTop: BLOCK_TOP,
-    color: 0x6e3a24,
-    accent: 0xff6a3d,
-    links: { left: 'desert' },
+    color: 0x8fbf4f,
+    accent: 0xf2d16b,
+    links: { left: 'plains' },
   },
   // 아이티공간 건물 안
   tower1: {
@@ -280,12 +272,12 @@ export const DEFAULT_MAP: MapId = 'plains';
 /** 평원 위쪽 귀퉁이의 노동청 건물. 문 앞 칸이 포탈이다. */
 export const OFFICE = {
   sprite: 'inn' as const,
-  x: 0,
-  y: 0,
+  x: 5,
+  y: 5,
   w: 4,
   d: 4,
-  door: { x: 4, y: 1 },
-  landing: { x: 6, y: 2 },
+  door: { x: 9, y: 6 },
+  landing: { x: 11, y: 7 },
   name: '노동청',
   accent: 0xffd84d,
 };
@@ -306,18 +298,31 @@ export const CASTLE = {
 /** 아이티공간 오른쪽 위의 상점. 문 앞 칸이 포탈이고, 타면 상점 창이 열린다. */
 export const SHOP = {
   sprite: 'villa' as const,
-  x: 18,
-  y: 4,
+  x: 3,
+  y: 16,
   w: 6,
   d: 8,
-  door: { x: 18, y: 12 },
-  landing: { x: 19, y: 14 },
+  door: { x: 3, y: 24 },
+  landing: { x: 4, y: 26 },
   name: '상점',
   accent: 0xb58cff,
 };
 
 /** 시작마을 오른쪽 귀퉁이 주점(tavern)의 오른쪽 벽 문. 문 앞 칸이 포탈이고, 타면 도박장으로 들어간다. 맵 끝이라 벽을 따라 비껴 선다. */
-export const CASINO_DOOR = { door: { x: 45, y: 14 }, landing: { x: 45, y: 16 } };
+export const CASINO_DOOR = { door: { x: 41, y: 38 }, landing: { x: 43, y: 38 } };
+
+/** 주점(도박장) 건물 자리. 오른쪽 벽에 그려진 문이 CASINO_DOOR다. */
+export const TAVERN = { sprite: 'tavern' as const, x: 37, y: 36, w: 4, d: 4, name: '인생한방 도박장' };
+
+/**
+ * 시작마을 귀퉁이 포탈로 가는 길이 성을 두르는 길에서 갈라지는 곳의 안내판(2026-11-15 사용자 요청 "각 방향 포탈이 어디로
+ * 향하는지 모르겠다, 안내판을 세워라"). 자리와 글은 에이전트가 정했다.
+ */
+export const GUIDEPOSTS = [
+  { x: 31, y: 11, text: '농장 가는 길 ↗' },
+  { x: 16, y: 36, text: '↙ 전쟁터 가는 길' },
+  { x: 31, y: 40, text: '던전 입장 ↘' },
+];
 
 /**
  * 광장 오른쪽 잔디밭의 명예의 전당 간판. 앞 칸이 포탈이고, 타면 레벨 순위 창이 열린다.
@@ -355,13 +360,29 @@ export const BOARD = {
  */
 export const EXCHANGE = {
   sprite: 'exchange' as const,
-  x: 38,
-  y: 33,
+  x: 4,
+  y: 32,
   w: 6,
   d: 6,
-  door: { x: 40, y: 39 },
-  landing: { x: 41, y: 41 },
+  door: { x: 6, y: 38 },
+  landing: { x: 7, y: 40 },
   name: '증권거래소',
+};
+
+/**
+ * 농협(2026-11-15 사용자 요청 "시작마을에 농협 건물, 땅과 씨앗을 산다"). 농장으로 가는 길 옆 오른쪽 잔디밭에 선 초가집이고(2026-11-15 건물을 네 방향으로 고루 나누며 옮김),
+ * 앞 왼쪽 면 가운데 문 앞 칸이 포탈이라 타면 농협 창이 열린다. 자리와 그림(마을 에셋의 초가집)은 에이전트가 정했다.
+ */
+export const COOP = {
+  sprite: 'thatched' as const,
+  x: 37,
+  y: 5,
+  w: 4,
+  d: 4,
+  door: { x: 38, y: 9 },
+  landing: { x: 39, y: 11 },
+  name: '농협',
+  accent: 0xf2d16b,
 };
 
 /** 거래소 안 종목 창구 포탈. 이름은 포탈마다 종목 이름(label)을 쓴다. */
@@ -374,8 +395,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office', 'dungeon', 'shop', 'counter', 'fame', 'board', 'trade', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'dungeon' | 'shop' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
+  /** 'office', 'dungeon', 'coop', 'shop', 'counter', 'fame', 'board', 'trade', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'dungeon' | 'coop' | 'shop' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
@@ -399,6 +420,7 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...EXCHANGE.door, to: 'exchange', landing: EXCHANGE.landing });
     portals.push({ ...CASINO_DOOR.door, to: 'casino', landing: CASINO_DOOR.landing });
     portals.push({ ...DUNGEON_GATE.door, to: 'dungeon', landing: DUNGEON_GATE.landing });
+    portals.push({ ...COOP.door, to: 'coop', landing: COOP.landing });
   }
   return portals;
 }
@@ -406,6 +428,7 @@ export function portalsOf(id: MapId): Portal[] {
 function portalInfo({ to }: Portal) {
   if (to === 'office') return OFFICE;
   if (to === 'dungeon') return DUNGEON_GATE;
+  if (to === 'coop') return COOP;
   if (to === 'counter') return COUNTER_INFO;
   if (to === 'panel') return PANEL_INFO;
   if (to === 'fame') return FAME;

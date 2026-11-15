@@ -8,6 +8,7 @@ const NAMES = [
   'block-textures',
   'board',
   'bull',
+  'cabin',
   'cafe-table',
   'castle',
   'chapel',
@@ -38,6 +39,12 @@ const NAMES = [
   'monsters/soldier',
   'monsters/demon',
   'monsters/blood',
+  // 체력 포션(newassets/포션의 potion86, 90, 87)
+  'potions/small',
+  'potions/medium',
+  'potions/large',
+  // 농장 작물(art-source/farm/make-crops.cjs)
+  'farm/crops',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

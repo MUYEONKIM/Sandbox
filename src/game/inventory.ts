@@ -1,6 +1,6 @@
 import { BLOCK_IDS, isCube, isFurniture, rotatedBlock, type BlockId } from '../blocks';
 import { FURNITURE_KINDS } from '../furniture';
-import { isItem, isWeapon, WEAPON_IDS, type ItemId, type WeaponId } from '../items';
+import { isItem, isPotion, isSeed, isWeapon, POTION_IDS, SEED_IDS, WEAPON_IDS, type ItemId, type WeaponId } from '../items';
 
 export const HOTBAR_SIZE = 9;
 /** 0번 키 칸: 언제나 메모장이다(2026-11-13 사용자 요청). 단축키 칸 0~8 뒤의 번호로 고르고, 다른 것을 넣거나 뺄 수 없다. */
@@ -20,11 +20,13 @@ export type Slot = Stack | null;
  * 인벤토리 창의 탭(2026-11-12 사용자 요청 "타일, 장식품 탭 분류"). 타일은 상자 블록, 장식품은 나머지 블록이다.
  * 가구는 사용자가 준 실내 꾸미기 에셋으로 만든 장식품이고(2026-11-13), 종류가 많아 탭을 따로 둔다.
  */
-export const TABS = { tile: '타일', decor: '장식품', furniture: '가구', weapon: '무기' } as const;
+export const TABS = { tile: '타일', decor: '장식품', furniture: '가구', weapon: '무기', potion: '포션', seed: '씨앗' } as const;
 export type TabId = keyof typeof TABS;
 
 export function tabOf(id: ItemId): TabId {
   if (isWeapon(id)) return 'weapon';
+  if (isPotion(id)) return 'potion';
+  if (isSeed(id)) return 'seed';
   if (isFurniture(id)) return 'furniture';
   return isCube(id) ? 'tile' : 'decor';
 }
@@ -95,6 +97,9 @@ export class Inventory {
   /** 탭에 보여 줄 것: 블록은 전부, 무기는 가진 것만. 순서는 blocks.ts, items.ts의 순서다. */
   catalog(tab: TabId): ItemId[] {
     if (tab === 'weapon') return WEAPON_IDS.filter((id) => this.weapons.has(id));
+    // 포션은 가진 개수와 상관없이 다 보이고, 개수는 칸에 적는다(0개면 상점에서 산다).
+    if (tab === 'potion') return POTION_IDS;
+    if (tab === 'seed') return SEED_IDS;
     // 가구는 방향마다 블록이 따로 있어서 종류마다 첫 방향만 보이고, 단축키 칸에서 돌린다(rotateSelected).
     if (tab === 'furniture') return FURNITURE_KINDS as BlockId[];
     return BLOCK_IDS.filter((id) => tabOf(id) === tab);
@@ -103,7 +108,7 @@ export class Inventory {
   /** 고른 칸의 가구를 다음 방향으로 돌린다. 돌릴 것이 없으면 false */
   rotateSelected() {
     const stack = this.selectedStack;
-    const next = stack && !isWeapon(stack.id) ? rotatedBlock(stack.id) : null;
+    const next = stack && !isWeapon(stack.id) && !isPotion(stack.id) && !isSeed(stack.id) ? rotatedBlock(stack.id) : null;
     if (!next) return false;
     this.slots[this.selected] = { id: next, count: 1 };
     this.changed();

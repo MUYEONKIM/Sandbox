@@ -36,7 +36,7 @@ import {
   ZOOM,
 } from '../config';
 import { depthOf, gridToWorld, tileCenter, worldToGrid } from '../iso';
-import { isWeapon, WEAPON_IDS, WEAPONS, type WeaponId } from '../items';
+import { cropOfSeed, isBlockItem, isPotion, isSeed, isWeapon, WEAPON_IDS, WEAPONS, type PotionId, type WeaponId } from '../items';
 import type {
   Bounty,
   ChatMessage,
@@ -88,6 +88,8 @@ import {
   portalsOf,
   respawnTile,
   SHOP,
+  COOP,
+  GUIDEPOSTS,
   isDungeon,
   type DungeonId,
   type MapId,
@@ -127,6 +129,10 @@ import { inSafeZone, spawnCandidates, type MonsterKind } from './dungeon';
 import { isMonsterTarget, MonsterField, registerMonsterAnims } from './monsters';
 import type { DungeonWindow } from '../ui/dungeon';
 import type { MonsterMessage } from '../net/session';
+import { FarmField, formatLeft, GRADE_NAME, gradeOf, isPlot, registerFarmTextures, ripeAt, type CropId, type Plot } from './farm';
+import type { CoopWindow } from '../ui/coop';
+import { Modal } from '../ui/modal';
+import { element } from '../ui/dom';
 
 /** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
 const WORK_TICK_MS = 250;
@@ -136,8 +142,30 @@ const WORK_TICK_MS = 250;
  */
 const HARVEST_FAILS_TO_STOP = 2;
 
+/** 마우스 휠로 고를 수 있는 화면 배율(기본 ZOOM = 2). 반 단위라 도트가 덜 뭉개진다. 단계는 에이전트가 정했다. */
+const ZOOM_LEVELS = [1, 1.5, 2, 2.5, 3];
+/** 휠을 굴릴 때 한 칸씩만 바뀌게 하는 간격 */
+const ZOOM_STEP_MS = 120;
+const ZOOM_KEY = 'camera-zoom';
+
+function nearestZoom(zoom: number) {
+  return ZOOM_LEVELS.reduce((best, level) => (Math.abs(level - zoom) < Math.abs(best - zoom) ? level : best));
+}
+
+/** 이 브라우저에 기억한 화면 배율. 없거나 읽지 못하면 기본 배율 */
+function savedZoom() {
+  try {
+    const value = Number(localStorage.getItem(ZOOM_KEY));
+    return ZOOM_LEVELS.includes(value) ? value : ZOOM;
+  } catch {
+    return ZOOM;
+  }
+}
+
 /** 몬스터를 움직이는 간격(호스트만). 탭이 숨어도 도는 시계로 돈다. */
 const MONSTER_TICK_MS = 100;
+/** 서버 kill_monster는 0.3초 안에 다시 부르면 거절한다. 조금 넉넉히 띄운다. */
+const KILL_CLAIM_GAP_MS = 330;
 const DEPTH_GROUND = 0;
 const DEPTH_OVERLAY = 1;
 
@@ -146,19 +174,28 @@ const HEAD_HEIGHT = 40;
 const PORTAL_TAG_HEIGHT = 44;
 const PORTAL_FRAME_MS = 100;
 
-/** 노동청 굴뚝 꼭대기의 위치 (건물 그림 기준 픽셀)와 연기 그림 수 */
-const CHIMNEY = { x: 56, y: 14 };
+/** 노동청 옥상 배기통 꼭대기의 위치 (건물 그림 기준 픽셀)와 연기 그림 수 */
+const CHIMNEY = { x: 91, y: 3 };
 const SMOKE_FRAMES = ['Smoke0000', 'Smoke0001', 'Smoke0002'] as const;
 const SMOKE_FRAME_MS = 240;
 /** 클릭을 연달아 해도 안내가 쌓이지 않게 하는 간격 */
 const NOTICE_MS = 2000;
 
-/** 아이티공간 간판을 다는 위치 (건물 그림 기준 픽셀). 정문 앞에서도 보이는 높이다. */
-const CASTLE_SIGN = { x: 176, y: 205 };
-/** 상점 간판을 다는 위치 (건물 그림 기준 픽셀) */
-const SHOP_SIGN = { x: 115, y: 40 };
-/** 증권거래소 간판을 다는 위치: 정면 기둥 위 세모 박공 (건물 그림 기준 픽셀) */
-const EXCHANGE_SIGN = { x: 48, y: 118 };
+/**
+ * 건물 이름표를 다는 위치 (건물 그림 기준 픽셀, 이름표 아래 가운데). 2026-11-15 건물을 현대 도시풍으로 다시 그리며
+ * art-source/town/make-town.cjs가 출력한 자리로 맞췄다. 아이티공간은 정문 앞에서도 보이게 타워 앞 모서리의 저층부 옥상 위다.
+ */
+const CASTLE_SIGN = { x: 176, y: 243 };
+/** 상점: 옥상 MART 간판 위 */
+const SHOP_SIGN = { x: 95, y: 32 };
+/** 그 밖의 마을 건물: 지붕(옥상 간판) 위 가운데 */
+const PLAIN_SIGNS: Partial<Record<string, { name: string; x: number; y: number }>> = {
+  inn: { name: OFFICE.name, x: 64, y: 14 },
+  tavern: { name: '인생한방 도박장', x: 64, y: 7 },
+  thatched: { name: COOP.name, x: 66, y: 8 },
+};
+/** 증권거래소: 옥상 가운데 */
+const EXCHANGE_SIGN = { x: 99, y: 55 };
 /** 층 그림은 바닥보다 위, 블록 설치 범위 표시보다 아래에 그린다. */
 const DEPTH_INTERIOR = 0.5;
 /** 밟고 지나가는 꽃과 풀 블록은 바닥 바로 위에 그려 캐릭터를 가리지 않는다. */
@@ -327,6 +364,19 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 던전 몬스터. 던전이 아니면 null */
   private monsters: MonsterField | null = null;
   private stopMonsterTicker: (() => void) | null = null;
+  /** 몬스터 보상을 차례로 받는 줄과 마지막으로 부른 시각 */
+  private killClaims: Promise<void> = Promise.resolve();
+  private lastKillClaimAt = 0;
+
+  /** 농장 땅과 작물 그림. 농장이 아니면 null */
+  private farm: FarmField | null = null;
+  private farmBusy = false;
+
+  /** 휠로 다음 배율을 바꿀 수 있는 시각 */
+  private nextZoomAt = 0;
+
+  /** 포션을 마시는 중(서버 답을 기다림) */
+  private drinking = false;
 
   /** 마우스가 가리키는 설치된 블록 */
   private hoveredBlock: Tile | null = null;
@@ -356,6 +406,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly groundUi: GroundUi,
     private readonly dungeonWindow: DungeonWindow,
     private readonly monsterKinds: MonsterKind[],
+    private readonly coop: CoopWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -402,8 +453,22 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setVisible(false);
 
     const cam = this.cameras.main;
-    cam.setZoom(ZOOM);
+    cam.setZoom(savedZoom());
     cam.startFollow(this.me.anchor, true);
+    // 마우스 휠로 화면을 넓게 보거나 크게 본다(2026-11-15 사용자 요청). 도트가 뭉개지지 않게 정해 둔 단계로만 바꾸고 이 브라우저에 기억한다.
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
+      if (dy === 0 || performance.now() < this.nextZoomAt) return;
+      this.nextZoomAt = performance.now() + ZOOM_STEP_MS;
+      const at = ZOOM_LEVELS.indexOf(nearestZoom(cam.zoom));
+      const next = ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, at + (dy > 0 ? -1 : 1)))];
+      if (next === cam.zoom) return;
+      cam.setZoom(next);
+      try {
+        localStorage.setItem(ZOOM_KEY, String(next));
+      } catch {
+        // 저장하지 못해도 지금 화면에서는 바뀐다.
+      }
+    });
 
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -442,6 +507,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.textures.addSpriteSheet('tiles', sprite('tiles'), { frameWidth: TILE_CELL, frameHeight: TILE_CELL });
     for (const name of SMOKE_FRAMES) this.spriteTexture(name);
     registerMonsterAnims(this, (id) => sprite(`monsters/${id}` as SpriteName));
+    registerFarmTextures(this);
   }
 
   /** 가구 그림(furniture.png 한 장)을 등록하고 가구마다 그 안의 자리를 프레임으로 나눈다. 블록 id가 프레임 이름이다. */
@@ -628,6 +694,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     );
     if (isTower(id)) this.showInterior(id);
     if (isDungeon(id)) this.startMonsters(id);
+    if (id === 'farm') this.startFarm();
+    if (id === DEFAULT_MAP) {
+      for (const post of GUIDEPOSTS) {
+        const c = tileCenter(post.x, post.y);
+        this.addSign(post.text, c.x, c.y - 40);
+      }
+    }
     if (info.mood) this.gloom.show(this.world.map.walls.filter((wall) => wall.id === 'lava'));
     else this.gloom.clear();
     this.chimneySmoke = null;
@@ -637,6 +710,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (building.sprite === CASTLE.sprite) this.addSign(CASTLE.name, left + CASTLE_SIGN.x, top + CASTLE_SIGN.y);
       if (building.sprite === SHOP.sprite) this.addSign(SHOP.name, left + SHOP_SIGN.x, top + SHOP_SIGN.y);
       if (building.sprite === EXCHANGE.sprite) this.addSign(EXCHANGE.name, left + EXCHANGE_SIGN.x, top + EXCHANGE_SIGN.y);
+      // 모든 건물에 같은 노란 이름표를 단다(2026-11-15 사용자 "어떤 건물은 이름표가 있고 어디는 없다"). 지붕 위 가운데.
+      const plain = PLAIN_SIGNS[building.sprite];
+      if (plain && id === DEFAULT_MAP) this.addSign(plain.name, left + plain.x, top + plain.y);
     }
     this.showSpots(id);
     this.showWalls();
@@ -920,6 +996,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.bullets.clear();
     this.drops.clear();
     this.stopMonsters();
+    this.farm?.destroy();
+    this.farm = null;
     this.groundUi.setHint(null);
     this.groundUi.setTip(null);
   }
@@ -934,6 +1012,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.updateVision();
     this.bullets.update(delta);
     this.monsters?.update(delta);
+    this.farm?.update(time);
     if (this.me) this.gloom.track(this.me.sprite);
     this.updateWork();
     this.workFx.update(delta);
@@ -954,6 +1033,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.hud.isOpen ||
       this.office.isOpen ||
       this.dungeonWindow.isOpen ||
+      this.coop.isOpen ||
       this.shop.isOpen ||
       this.castle.isOpen ||
       this.fame.isOpen ||
@@ -981,7 +1061,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.traveling || this.down) return;
 
     // F는 발밑에 주울 것이 있으면 줍고, 없으면 일을 시작하거나 멈춘다.
-    if (this.keys.takeWork() && this.canAct && !this.tryPickUp()) this.toggleWork();
+    if (this.keys.takeWork() && this.canAct && !this.tryPickUp() && !this.farmAction(false)) this.toggleWork();
 
     if (this.keys.takeJump() && this.canAct && !this.me.jumping) this.jump();
 
@@ -995,6 +1075,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (portal) {
       if (portal.to === 'office') this.office.open();
       else if (portal.to === 'dungeon') this.dungeonWindow.open();
+      else if (portal.to === 'coop') this.coop.open();
       else if (portal.to === 'shop') this.shop.open();
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
@@ -1494,10 +1575,51 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.writeMemo();
       return;
     }
+    const potion = this.inventory.selectedStack?.id;
+    if (potion && isPotion(potion)) {
+      void this.drinkPotion(potion);
+      return;
+    }
+    if (this.farmAction(true)) return;
     const weapon = this.selectedWeapon;
     if (weapon && this.isSafeMap) this.notice(`${this.safeName}은 비무장지대입니다`, '이곳에서는 무기를 쓸 수 없습니다.');
     else if (weapon) this.attack(weapon);
     else this.placeBlock();
+  }
+
+  /** 고른 칸의 포션을 마신다(휴대폰에서 고른 포션 칸을 한 번 더 눌렀을 때). */
+  drinkSelectedPotion() {
+    const id = this.inventory.selectedStack?.id;
+    if (id && isPotion(id) && this.canAct) void this.drinkPotion(id);
+  }
+
+  /** 포션 하나를 마신다. 체력과 남은 개수는 서버가 정한다(2026-11-15 사용자 요청). */
+  private async drinkPotion(id: PotionId) {
+    if (this.down || this.drinking) return;
+    if (this.economy.potionCount(id) <= 0) {
+      this.notice('포션이 없습니다', '시작마을 상점에서 삽니다.');
+      return;
+    }
+    if (this.me.hp >= this.me.maxHp) {
+      this.notice('체력이 가득 찼습니다', '지금은 마실 필요가 없습니다.');
+      return;
+    }
+    this.drinking = true;
+    const result = await this.session.usePotion(id);
+    this.drinking = false;
+    if (typeof result === 'string') {
+      if (result === 'none') this.economy.setPotionCount(id, 0);
+      if (result === 'fast') this.notice('아직 삼키는 중입니다', '포션은 1초에 하나씩 마십니다.');
+      else if (result === 'full') this.notice('체력이 가득 찼습니다', '지금은 마실 필요가 없습니다.');
+      else if (result === 'none') this.notice('포션이 없습니다', '시작마을 상점에서 삽니다.');
+      else if (result === 'failed') this.notice('마시지 못했습니다', '잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    const myId = this.session.profile.id;
+    const healed = result.hp - this.me.hp;
+    this.economy.setPotionCount(id, result.count);
+    if (healed > 0) this.tags.float(myId, `+${healed}`, 'heal');
+    this.onHp(myId, result.hp, null);
   }
 
   private notice(title: string, detail: string) {
@@ -1669,7 +1791,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const tile = this.canAct ? this.hoveredGround : null;
     const gold = tile ? this.drops.at(tile.x, tile.y).find((item) => item.amount !== null) : undefined;
     const pointer = this.input.activePointer;
-    this.groundUi.setTip(gold ? `${gold.amount!.toLocaleString()}G` : null, pointer.x, pointer.y);
+    const text = gold ? `${gold.amount!.toLocaleString()}G` : tile ? this.plotTip(tile.x, tile.y) : null;
+    this.groundUi.setTip(text, pointer.x, pointer.y);
   }
 
   /** 발밑에 주울 것이 있으면 "F키로 줍기" 안내를 띄운다. 여럿이면 맨 나중에 놓인 것부터 줍는다. */
@@ -1780,15 +1903,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.marker.setDepth(depthOf(area.x0 + area.a - 1, area.y0 + area.b - 1) + 2);
       this.strokeTile(area.x0, area.y0, ok ? 0xffffff : 0xff6b5e, -BLOCK_HEIGHT * height, area.a, area.b);
       // 블록을 들고 벽 블록을 가리키면 그 위에 쌓일 자리를 미리 보여 준다.
-      if (stack && !isWeapon(stack.id) && this.world.canStack(this.hoveredBlock, this.me.tile, stack.id)) {
+      if (stack && isBlockItem(stack.id) && this.world.canStack(this.hoveredBlock, this.me.tile, stack.id)) {
         this.dressBlock(this.ghost, stack.id, x, y, height).setAlpha(0.7).setTint(0xffffff).setVisible(true);
       }
       return;
     }
 
     if (!this.hoveredGround) return;
-    const id = stack?.id;
-    if (id !== undefined && isWeapon(id)) return;
+    const id = stack && isBlockItem(stack.id) ? stack.id : undefined;
+    if (stack && !id) return;
     const { x, y } = this.hoveredGround;
     const ok = id !== undefined && this.canPlaceAt(this.hoveredGround, id);
     this.marker.setDepth(DEPTH_OVERLAY);
@@ -1868,7 +1991,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private placeBlock() {
     const stack = this.inventory.selectedStack;
-    if (!stack || isWeapon(stack.id)) return;
+    if (!stack || !isBlockItem(stack.id)) return;
     const id = stack.id;
     const spot = this.placementSpot(id);
     if (!spot) return;
@@ -1901,6 +2024,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private async collectBlock() {
     const target = this.hoveredBlock;
     if (!target || !this.reachesBlock(target)) return;
+    if (this.farm && this.farm.at(target.x, target.y)?.owner !== this.session.profile.id) {
+      this.notice('남의 땅입니다', '농장 블록은 땅 주인만 회수합니다.');
+      return;
+    }
     const top = this.world.topAt(target.x, target.y);
     if (!top) return;
 
@@ -2202,7 +2329,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         safe: (x, y) => inSafeZone(id, x, y),
         spawnTiles: spawnCandidates(id),
         send: (message) => this.session.sendMonster(message),
-        onMyKill: (kind, x, y) => void this.claimKill(kind, x, y),
+        onKillSeen: (kind, x, y) => {
+          const p = gridToWorld(x + 0.5, y + 0.5);
+          this.floatGold(`+${kind.gold.toLocaleString()}G`, p.x, p.y);
+        },
+        onMyKill: (kind) => this.queueKillClaim(kind),
         onHitMe: (kind) => void this.hitByMonster(kind),
       },
       DEPTH_OVERLAY + 0.5,
@@ -2217,15 +2348,28 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.monsters = null;
   }
 
-  /** 내가 마지막 한 방을 친 몬스터의 보상을 받는다. */
-  private async claimKill(kind: MonsterKind, x: number, y: number) {
+  /**
+   * 내가 마지막 한 방을 친 몬스터의 보상을 받는다. 알림과 골드는 바로 보이고(받을 값은 몬스터 표에 있음),
+   * 서버 답이 오면 서버 값으로 맞춘다. 서버가 0.3초 안에 다시 부르면 거절하므로 여러 마리를 한꺼번에 잡으면 차례로 부른다.
+   */
+  private queueKillClaim(kind: MonsterKind) {
+    this.economy.setGold(this.economy.gold + kind.gold);
+    this.hud.toast(`${kind.name} 처치 · ${kind.gold.toLocaleString()}G`, `경험치 +${kind.exp.toLocaleString()}`);
+    this.killClaims = this.killClaims.then(() => this.claimKill(kind));
+  }
+
+  private async claimKill(kind: MonsterKind) {
+    const wait = this.lastKillClaimAt + KILL_CLAIM_GAP_MS - performance.now();
+    if (wait > 0) await new Promise((resolve) => window.setTimeout(resolve, wait));
+    this.lastKillClaimAt = performance.now();
     const reward = await this.session.killMonster(kind.id);
-    if (!reward) return;
+    if (!reward) {
+      this.economy.setGold(Math.max(0, this.economy.gold - kind.gold));
+      this.hud.toast('보상을 받지 못했습니다', '서버가 받아 주지 않았습니다. 던전 안에 살아 있는지 확인해 주세요');
+      return;
+    }
     this.economy.setGold(reward.gold);
-    this.hud.toast(`${kind.name} 처치 · ${reward.gained_gold.toLocaleString()}G`, `경험치 +${reward.gained_exp.toLocaleString()}`);
     this.gainExp(BigInt(reward.level), reward.exp);
-    const p = gridToWorld(x + 0.5, y + 0.5);
-    this.floatGold(`+${reward.gained_gold.toLocaleString()}G`, p.x, p.y);
   }
 
   /** 몬스터에게 맞았다. 체력은 서버가 정하고, 다른 사람에게도 서버가 알린다. */
@@ -2243,6 +2387,148 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setDepth(DEPTH_DAYLIGHT - 1)
       .setResolution(2);
     this.tweens.add({ targets: label, y: y - 44, alpha: 0, duration: 1100, ease: 'Sine.easeOut', onComplete: () => label.destroy() });
+  }
+
+  onFarmPlot(plot: Plot) {
+    if (!this.farm) return;
+    // 실시간 알림에는 닉네임이 없어 아는 것으로 채우고, 모르면 다시 읽는다.
+    const known = this.farm.all.find((other) => other.owner === plot.owner)?.nickname;
+    plot.nickname = known ?? (plot.owner === this.session.profile.id ? this.session.profile.nickname : '');
+    this.farm.upsert(plot);
+    if (!known && plot.owner !== this.session.profile.id) void this.reloadFarm();
+  }
+
+  onFarmPlotRemoved(x: number, y: number) {
+    this.farm?.remove(x, y);
+  }
+
+  /** 농장에 들어왔다: 땅을 읽어 그리고, 블록은 내 땅의 빈 칸에만 놓게 한다. */
+  private startFarm() {
+    const crops = new Map(this.economy.crops.map((crop) => [crop.id, crop]));
+    const myId = this.session.profile.id;
+    this.farm = new FarmField(this, crops, myId);
+    this.world.buildFilter = (x, y) => {
+      const plot = this.farm?.at(x, y);
+      return !!plot && plot.owner === myId && !plot.crop;
+    };
+    void this.reloadFarm();
+  }
+
+  private async reloadFarm() {
+    const plots = await this.session.readFarm();
+    if (plots && this.farm && this.mapId === 'farm') this.farm.setAll(plots);
+  }
+
+  /** 밭 위에 마우스를 올리면: 주인, 작물, 남은 시간, 칭찬·비난 수 */
+  private plotTip(x: number, y: number) {
+    if (!this.farm || !isPlot(x, y)) return null;
+    const plot = this.farm.at(x, y);
+    if (!plot) return '빈 땅 · 농협에서 삽니다';
+    const who = plot.owner === this.session.profile.id ? '내 땅' : `${plot.nickname || '누군가'}의 땅`;
+    const crop = plot.crop && this.farm.crop(plot.crop);
+    if (!crop) return `${who} · 비어 있음`;
+    const left = ripeAt(plot, crop) - Date.now();
+    const votes = `칭찬 ${plot.praise} · 비난 ${plot.blame}`;
+    if (left <= 0) return `${who} · ${GRADE_NAME[gradeOf(plot)]}${crop.name} 다 자람 · ${votes}`;
+    return `${who} · ${crop.name} ${formatLeft(left)} 남음 · ${votes}`;
+  }
+
+  /**
+   * 농장에서 가리킨 칸에 하는 일. 손이 닿는 칸(8방위 2칸)만이다. click이면 좌클릭(씨앗을 들고 있으면 심기), 아니면 F.
+   * 내 다 자란 작물은 거두고, 자라는 작물은 칭찬·비난 창을 연다(F만). 한 일이 있으면 true
+   */
+  private farmAction(click: boolean) {
+    if (!this.farm || !this.canAct) return false;
+    const tile = this.hoveredGround ?? this.hoveredBlock;
+    if (!tile || !isPlot(tile.x, tile.y) || !inBuildReach(this.me.tile, tile)) return false;
+    const plot = this.farm.at(tile.x, tile.y);
+    const myId = this.session.profile.id;
+    const held = this.inventory.selectedStack?.id;
+    if (plot?.crop) {
+      if (plot.owner === myId && this.farm.isRipe(plot)) {
+        void this.harvestPlot(plot);
+        return true;
+      }
+      if (!click) {
+        this.openVote(plot);
+        return true;
+      }
+      return false;
+    }
+    if (click && held && isSeed(held)) {
+      if (!plot || plot.owner !== myId) this.notice('내 땅이 아닙니다', '씨앗은 농협에서 산 내 땅에만 심습니다.');
+      else if (this.world.heightAt(tile.x, tile.y)) this.notice('블록이 놓여 있습니다', '블록을 회수한 뒤 심습니다.');
+      else void this.plantSeed(plot, cropOfSeed(held));
+      return true;
+    }
+    return false;
+  }
+
+  private async plantSeed(plot: Plot, crop: CropId) {
+    if (this.farmBusy) return;
+    if (this.economy.seedCount(crop) <= 0) {
+      this.notice('씨앗이 없습니다', '시작마을 농협에서 삽니다.');
+      return;
+    }
+    this.farmBusy = true;
+    const left = await this.session.plantCrop(plot.x, plot.y, crop);
+    this.farmBusy = false;
+    if (typeof left === 'string') {
+      this.notice('심지 못했습니다', left === 'no seed' ? '씨앗이 없습니다.' : '내 빈 땅인지 확인해 주세요.');
+      return;
+    }
+    this.economy.setSeedCount(crop, left);
+    this.farm?.upsert({ ...plot, crop, plantedAt: Date.now(), praise: 0, blame: 0 });
+  }
+
+  private async harvestPlot(plot: Plot) {
+    if (this.farmBusy) return;
+    this.farmBusy = true;
+    const result = await this.session.harvestPlot(plot.x, plot.y);
+    this.farmBusy = false;
+    if (typeof result === 'string') {
+      this.notice('거두지 못했습니다', result === 'not ripe' ? '아직 다 자라지 않았습니다.' : '잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    this.economy.addCrop(result.crop, result.grade, result.count);
+    this.farm?.upsert({ ...plot, crop: null, plantedAt: null, praise: 0, blame: 0 });
+    const name = this.economy.cropInfo(result.crop)?.name ?? '작물';
+    this.hud.toast(`${GRADE_NAME[result.grade]}${name} ${result.count}개 거둠`, '시작마을 농협에서 팝니다');
+  }
+
+  /** 자라는 작물의 칭찬·비난 창. 누가 눌렀는지는 보이지 않고 수만 보인다. 한 사람이 한 작물에 10분에 한 번 */
+  private openVote(plot: Plot) {
+    const crop = plot.crop && this.farm?.crop(plot.crop);
+    if (!crop) return;
+    const root = document.getElementById('hud');
+    if (!root) return;
+    const modal = new Modal(root, 'vote', `${crop.name} 칭찬·비난`);
+    const who = plot.owner === this.session.profile.id ? '내 작물' : `${plot.nickname || '누군가'}의 작물`;
+    element('modal-note', modal.box).textContent = `${who} · 다 자랄 때까지 ${formatLeft(ripeAt(plot, crop) - Date.now())}`;
+    const counts = element('modal-note', modal.box);
+    const wait = element('modal-note', modal.box);
+    const show = (praise: number, blame: number, next: number | null) => {
+      counts.textContent = `칭찬 ${praise} · 비난 ${blame} (다 자랄 때 많은 쪽이 칭찬·비난 작물이 됩니다)`;
+      const left = next ? next - Date.now() : 0;
+      wait.textContent = left > 0 ? `다음은 ${formatLeft(left)} 뒤에 누를 수 있습니다` : '지금 누를 수 있습니다 (한 작물에 10분에 한 번)';
+      good.disabled = bad.disabled = left > 0;
+    };
+    const vote = async (isGood: boolean) => {
+      const result = await this.session.voteCrop(plot.x, plot.y, isGood);
+      if (typeof result === 'string') {
+        wait.textContent = result === 'too soon' ? '아직 10분이 지나지 않았습니다' : result === 'already ripe' ? '이미 다 자랐습니다' : '누르지 못했습니다';
+        return false;
+      }
+      const updated = { ...plot, praise: result.praise, blame: result.blame };
+      this.farm?.upsert(updated);
+      show(result.praise, result.blame, Date.parse(result.next_at));
+      return false;
+    };
+    const good = modal.button('칭찬하기', () => vote(true), true);
+    const bad = modal.button('비난하기', () => vote(false));
+    modal.button('닫기', () => undefined);
+    show(plot.praise, plot.blame, null);
+    void this.session.myVoteNext(plot.x, plot.y).then((next) => show(plot.praise, plot.blame, next));
   }
 
   onConnection(connected: boolean, reason: string | null) {

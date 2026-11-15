@@ -1,11 +1,12 @@
 import type { AuthError, User } from '@supabase/supabase-js';
 import type { DungeonInfo, MonsterKind } from '../game/dungeon';
+import { isCropId, type CropId, type CropInfo, type Grade } from '../game/farm';
 import { DUNGEON_IDS, type DungeonId } from '../game/maps';
-import type { EconomyData } from '../game/economy';
+import type { EconomyData, PotionInfo } from '../game/economy';
 import { DEFAULT_MAP, isMapId, type WorkId } from '../game/maps';
 import { BASE_HP } from '../config';
 import { isStat } from '../game/stats';
-import { isWeapon } from '../items';
+import { isPotion, isWeapon, type PotionId } from '../items';
 import { supabase } from './supabase';
 
 export interface Profile {
@@ -152,5 +153,35 @@ export async function loadDungeons(): Promise<{ dungeons: DungeonInfo[]; monster
         exp: Number(m.exp),
         count: Number(m.count),
       })),
+  };
+}
+
+/** 포션 표와 내가 가진 포션. 표가 아직 없거나 실패하면 빈 목록이다. */
+export async function loadPotions(): Promise<{ catalog: PotionInfo[]; counts: { potion: PotionId; count: number }[] }> {
+  const [catalog, mine] = await Promise.all([
+    supabase.from('potions').select('id, name, blurb, heal, price').order('sort'),
+    supabase.from('player_potions').select('potion, count'),
+  ]);
+  if (catalog.error || mine.error) return { catalog: [], counts: [] };
+  return {
+    catalog: (catalog.data as PotionInfo[]).filter((potion) => isPotion(potion.id)),
+    counts: (mine.data as { potion: string; count: number }[]).filter((row): row is { potion: PotionId; count: number } => isPotion(row.potion)),
+  };
+}
+
+/** 농장 작물 표와 내 씨앗·거둔 작물. 표가 아직 없거나 실패하면 빈 목록이다. */
+export async function loadFarm(): Promise<{ crops: CropInfo[]; stock: { kind: 'seed' | Grade; crop: CropId; count: number }[] }> {
+  const [crops, stock] = await Promise.all([
+    supabase.from('crops').select('id, name, grow_seconds, price, yield').order('sort'),
+    supabase.from('farm_stock').select('kind, crop, count'),
+  ]);
+  if (crops.error || stock.error) return { crops: [], stock: [] };
+  return {
+    crops: (crops.data as { id: string; name: string; grow_seconds: number; price: number; yield: number }[])
+      .filter((row) => isCropId(row.id))
+      .map((row) => ({ id: row.id as CropId, name: row.name, growSeconds: row.grow_seconds, price: row.price, yield: row.yield })),
+    stock: (stock.data as { kind: 'seed' | Grade; crop: string; count: number }[]).filter(
+      (row): row is { kind: 'seed' | Grade; crop: CropId; count: number } => isCropId(row.crop),
+    ),
   };
 }

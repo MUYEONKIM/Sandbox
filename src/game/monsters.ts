@@ -32,6 +32,11 @@ const SPAWN_CLEAR = 7;
 const WANDER_RADIUS = 4;
 /** 몬스터끼리 이보다 가까우면 서로 밀어낸다. */
 const SEPARATION = 0.7;
+/**
+ * 호스트가 아닐 때 내 공격으로 체력이 0이 되면 호스트의 답을 기다리지 않고 바로 쓰러뜨려 보인다(2026-11-15 사용자 보고
+ * "죽고 나서 골드 획득량이 뜨는 게 느리다"). 이 시간 안에는 호스트의 위치 알림이 아직 살아 있다고 해도 쓰러진 채로 둔다.
+ */
+const PREDICT_MS = 1200;
 /** 맞은 사람이 공격 거리에서 이만큼 벗어났으면 빗나간다. */
 const DODGE_SLACK = 1.4;
 
@@ -61,6 +66,8 @@ interface Monster {
   lerp: number;
   shown: State | null;
   flashUntil: number;
+  /** 내 공격으로 쓰러졌다고 미리 보이는 동안(이 시각까지) */
+  predictedUntil: number;
 }
 
 export interface MonsterHooks {
@@ -72,8 +79,10 @@ export interface MonsterHooks {
   safe(x: number, y: number): boolean;
   spawnTiles: Tile[];
   send(message: MonsterMessage): void;
-  /** 내가 마지막 한 방을 쳤다 */
-  onMyKill(kind: MonsterKind, x: number, y: number): void;
+  /** 내 공격으로 몬스터가 쓰러지는 것이 보였다. 받을 골드를 바로 띄운다(몬스터마다 한 번). */
+  onKillSeen(kind: MonsterKind, x: number, y: number): void;
+  /** 내가 마지막 한 방을 친 것이 확정됐다. 서버에서 보상을 받는다(몬스터마다 한 번). */
+  onMyKill(kind: MonsterKind): void;
   /** 몬스터가 나를 때렸다 */
   onHitMe(kind: MonsterKind): void;
 }
@@ -116,6 +125,8 @@ export class MonsterField {
   private readonly respawns: { kind: MonsterKind; at: number }[] = [];
   /** 보상을 이미 받은 몬스터 */
   private readonly claimed = new Set<number>();
+  /** 쓰러지며 받을 골드를 이미 띄운 몬스터 */
+  private readonly seenKills = new Set<number>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -225,7 +236,8 @@ export class MonsterField {
         const d = dist(m.x, m.y, target.x, target.y);
         this.faceToward(m, target.x - m.x, target.y - m.y);
         if (d <= m.kind.reach) {
-          if (now >= m.nextAttackAt && m.state !== 'hurt') {
+          // 맞는 중에도 공격한다. 맞았다고 멈추는 시간은 없다(2026-11-15 사용자 요청 "무적시간 따위는 없다").
+          if (now >= m.nextAttackAt) {
             m.state = 'attack';
             m.stateUntil = now + Math.min(600, m.kind.attackMs * 0.6);
             m.nextAttackAt = now + m.kind.attackMs;
@@ -233,8 +245,10 @@ export class MonsterField {
           } else if (m.state === 'walk') {
             m.state = 'idle';
           }
-        } else if (m.state !== 'attack' && m.state !== 'hurt') {
-          m.state = this.move(m, target.x, target.y, m.kind.speed, dt) ? 'walk' : 'idle';
+        } else if (m.state !== 'attack') {
+          // 맞는 중에도 쫓아온다. 맞은 동작은 걷기로 바뀌기 전까지만 보인다.
+          const moved = this.move(m, target.x, target.y, m.kind.speed, dt);
+          if (m.state !== 'hurt' || moved) m.state = moved ? 'walk' : 'idle';
         }
       } else if (m.state !== 'hurt') {
         this.wander(m, now, dt);
@@ -397,9 +411,16 @@ export class MonsterField {
   }
 
   private claim(m: Monster) {
+    this.seeKill(m);
     if (this.claimed.has(m.id)) return;
     this.claimed.add(m.id);
-    this.hooks.onMyKill(m.kind, this.shownX(m), this.shownY(m));
+    this.hooks.onMyKill(m.kind);
+  }
+
+  private seeKill(m: Monster) {
+    if (this.seenKills.has(m.id)) return;
+    this.seenKills.add(m.id);
+    this.hooks.onKillSeen(m.kind, this.shownX(m), this.shownY(m));
   }
 
   // ───────── 모두가 하는 일 ─────────
@@ -415,8 +436,15 @@ export class MonsterField {
     }
     this.hooks.send({ event: 'mhit', id, damage, by: this.hooks.myId });
     // 호스트의 답을 기다리는 동안 맞은 티를 낸다. 체력은 다음 위치 알림이 맞춘다.
-    m.flashUntil = performance.now() + HURT_MS;
-    m.hp = Math.max(1, m.hp - damage);
+    const now = performance.now();
+    m.flashUntil = now + HURT_MS;
+    m.hp = Math.max(0, m.hp - damage);
+    if (m.hp > 0) return;
+    // 내 한 방으로 쓰러질 체력이었다: 바로 쓰러뜨려 보이고 받을 골드를 띄운다. 보상은 호스트가 확인해 주면(mdead) 받는다.
+    m.state = 'dead';
+    m.deadAt = now;
+    m.predictedUntil = now + PREDICT_MS;
+    this.seeKill(m);
   }
 
   /** 누가 쏜 총알이든 몬스터에 닿으면 번쩍인다. */
@@ -440,9 +468,12 @@ export class MonsterField {
           m.hp = 0;
         }
         if (message.by === this.hooks.myId && !this.claimed.has(message.id)) {
-          this.claimed.add(message.id);
-          const kind = this.kinds.find((k) => k.id === message.kind);
-          if (kind) this.hooks.onMyKill(kind, m ? this.shownX(m) : 0, m ? this.shownY(m) : 0);
+          if (m) this.claim(m);
+          else {
+            this.claimed.add(message.id);
+            const kind = this.kinds.find((k) => k.id === message.kind);
+            if (kind) this.hooks.onMyKill(kind);
+          }
         }
         break;
       }
@@ -477,6 +508,8 @@ export class MonsterField {
         this.add(id, kind, x, y, hp, state, face < 0 ? -1 : 1);
         continue;
       }
+      // 내가 쓰러뜨렸다고 미리 보이는 동안에는 호스트가 아직 내 공격을 받기 전의 알림이라도 쓰러진 채로 둔다.
+      if (m.predictedUntil > performance.now() && STATES[stateIndex] !== 'dead') continue;
       m.fromX = this.shownX(m);
       m.fromY = this.shownY(m);
       m.lerp = 0;
@@ -513,6 +546,7 @@ export class MonsterField {
       lerp: 1,
       shown: null,
       flashUntil: 0,
+      predictedUntil: 0,
     };
     this.monsters.set(id, m);
     this.draw(m, performance.now());

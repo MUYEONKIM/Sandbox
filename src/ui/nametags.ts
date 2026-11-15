@@ -108,7 +108,7 @@ export class NameTags {
   }
 
   /** 머리 위로 글자가 떠올랐다가 사라진다. */
-  float(id: string, text: string, kind: 'damage' | 'dodge') {
+  float(id: string, text: string, kind: 'damage' | 'dodge' | 'heal') {
     const tag = this.tags.get(id);
     if (!tag) return;
     const label = element(`float-text ${kind}`, tag.root);

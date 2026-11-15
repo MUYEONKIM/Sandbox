@@ -1,4 +1,5 @@
-import type { WeaponId } from '../items';
+import type { PotionId, WeaponId } from '../items';
+import { cropValue, type CropId, type CropInfo, type Grade } from './farm';
 import type { WorkId } from './maps';
 import type { StatId } from './stats';
 
@@ -56,6 +57,15 @@ export interface EconomyData {
   ownedTools: string[];
 }
 
+/** 상점에서 파는 포션(서버 potions 표) */
+export interface PotionInfo {
+  id: PotionId;
+  name: string;
+  blurb: string;
+  heal: number;
+  price: number;
+}
+
 /** 닉네임 변경권 한 장 값. 서버 buy_rename_ticket의 100000과 같다(2026-11-13 사용자 요청 "10만 골드"). */
 export const RENAME_PRICE = 100_000;
 
@@ -83,6 +93,12 @@ export class Economy {
   private readonly loot = new Map<string, LootItem>();
   private readonly stash = new Map<string, number>();
   private readonly listeners: (() => void)[] = [];
+  potions: PotionInfo[] = [];
+  private readonly potionCounts = new Map<PotionId, number>();
+  /** 농장 작물 표, 내 씨앗과 거둔 작물(2026-11-15) */
+  crops: CropInfo[] = [];
+  private readonly seeds = new Map<CropId, number>();
+  private readonly harvested = new Map<string, number>();
 
   constructor(data: EconomyData) {
     this.gold = data.gold;
@@ -181,6 +197,75 @@ export class Economy {
   monsterDamage(id: WeaponId) {
     const base = this.weapons.find((weapon) => weapon.id === id)?.damage ?? 0;
     return Math.max(1, Math.floor(base * (1 + this.stat('str') * 0.001) + Math.random()));
+  }
+
+  /** 포션 표와 내가 가진 개수. 접속할 때 따로 읽는다(표가 없으면 빈 목록). */
+  setPotions(catalog: PotionInfo[], counts: { potion: PotionId; count: number }[]) {
+    this.potions = catalog;
+    this.potionCounts.clear();
+    for (const { potion, count } of counts) this.potionCounts.set(potion, count);
+    this.changed();
+  }
+
+  potion(id: PotionId) {
+    return this.potions.find((potion) => potion.id === id);
+  }
+
+  potionCount(id: PotionId) {
+    return this.potionCounts.get(id) ?? 0;
+  }
+
+  setPotionCount(id: PotionId, count: number) {
+    this.potionCounts.set(id, count);
+    this.changed();
+  }
+
+  /** 작물 표와 내 씨앗·작물. 접속할 때 따로 읽는다(표가 없으면 빈 목록). */
+  setFarm(crops: CropInfo[], stock: { kind: 'seed' | Grade; crop: CropId; count: number }[]) {
+    this.crops = crops;
+    this.seeds.clear();
+    this.harvested.clear();
+    for (const { kind, crop, count } of stock) {
+      if (kind === 'seed') this.seeds.set(crop, count);
+      else if (count > 0) this.harvested.set(`${kind}:${crop}`, count);
+    }
+    this.changed();
+  }
+
+  cropInfo(id: CropId) {
+    return this.crops.find((crop) => crop.id === id);
+  }
+
+  seedCount(crop: CropId) {
+    return this.seeds.get(crop) ?? 0;
+  }
+
+  setSeedCount(crop: CropId, count: number) {
+    this.seeds.set(crop, count);
+    this.changed();
+  }
+
+  addCrop(crop: CropId, grade: Grade, count: number) {
+    const k = `${grade}:${crop}`;
+    this.harvested.set(k, (this.harvested.get(k) ?? 0) + count);
+    this.changed();
+  }
+
+  clearCrops() {
+    this.harvested.clear();
+    this.changed();
+  }
+
+  /** 거둔 작물(종류마다 한 줄)과 팔면 받는 값 */
+  get cropStock() {
+    const rows: { crop: CropInfo; grade: Grade; count: number; value: number }[] = [];
+    for (const crop of this.crops) {
+      for (const grade of ['praise', 'normal', 'blame'] as Grade[]) {
+        const count = this.harvested.get(`${grade}:${crop.id}`) ?? 0;
+        if (count > 0) rows.push({ crop, grade, count, value: count * cropValue(crop.price, grade) });
+      }
+    }
+    return rows;
   }
 
   owns(id: WeaponId) {

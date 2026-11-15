@@ -1,4 +1,5 @@
 import { RENAME_PRICE, type Economy } from '../game/economy';
+import { GRADE_NAME } from '../game/farm';
 import { formatLevel, levelNeed } from '../game/level';
 import { profitText, STOCK_INFO, type Market } from '../game/market';
 import { statEffect } from '../game/stats';
@@ -79,6 +80,20 @@ export class InfoView {
       element('info-row-name', row, 'span').textContent = name;
       element('info-row-count', row, 'span').textContent = `${count.toLocaleString()}개`;
       element('info-row-value', row, 'span').textContent = `${(price * count).toLocaleString()}G`;
+    }
+
+    // 거둔 농장 작물(2026-11-15 사용자 요청 "I 창에서도 보이게"). 칭찬·일반·비난이 따로 쌓인다. 씨앗은 인벤토리 '씨앗' 탭에 있다.
+    const crops = this.economy.cropStock;
+    const cropTitle = element('info-section', this.root);
+    const cropValue = crops.reduce((sum, row) => sum + row.value, 0);
+    cropTitle.textContent = crops.length ? `거둔 작물 · 농협에 팔면 ${cropValue.toLocaleString()}G` : '거둔 작물';
+    const cropList = element('info-list', this.root);
+    if (!crops.length) element('info-empty', cropList).textContent = '거둔 작물이 없습니다. 농장의 내 땅에 씨앗을 심어 거둡니다.';
+    for (const { crop, grade, count, value } of crops) {
+      const row = element('info-row', cropList);
+      element('info-row-name', row, 'span').textContent = `${GRADE_NAME[grade]}${crop.name}`;
+      element('info-row-count', row, 'span').textContent = `${count.toLocaleString()}개`;
+      element('info-row-value', row, 'span').textContent = `${value.toLocaleString()}G`;
     }
 
     const owned = this.market.owned();

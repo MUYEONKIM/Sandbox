@@ -2,13 +2,13 @@ import { paintMemoPadIcon } from '../art/drops';
 import { BLOCK_IDS } from '../blocks';
 import { HOTBAR_SIZE, MEMO_SLOT, TABS, type Inventory, type TabId } from '../game/inventory';
 import { formatLevel, levelNeed } from '../game/level';
-import { itemName, paintItem, WEAPON_IDS, type ItemId } from '../items';
+import { isPotion, isSeed, itemName, paintItem, POTION_IDS, SEED_IDS, WEAPON_IDS, type ItemId, type PotionId, type SeedId } from '../items';
 import { element } from './dom';
 import type { MyStatus } from './info';
 
 /** 이미지를 읽은 뒤에 그릴 수 있어서 Hud를 만들 때 준비한다. */
 function paintIcons() {
-  return Object.fromEntries([...BLOCK_IDS, ...WEAPON_IDS].map((id) => [id, paintItem(id).toDataURL()])) as Record<
+  return Object.fromEntries([...BLOCK_IDS, ...WEAPON_IDS, ...POTION_IDS, ...SEED_IDS].map((id) => [id, paintItem(id).toDataURL()])) as Record<
     ItemId,
     string
   >;
@@ -79,6 +79,12 @@ export class Hud {
   private readonly tabButtons = new Map<BagTab, HTMLButtonElement>();
   private tab: BagTab = 'tile';
   private readonly icons = paintIcons();
+  /** 가진 포션 개수(main에서 economy로 이음) */
+  potionCount: (id: PotionId) => number = () => 0;
+  /** 가진 씨앗 개수(main에서 economy로 이음) */
+  seedCount: (id: SeedId) => number = () => 0;
+  /** 휴대폰에서 고른 포션 칸을 한 번 더 눌렀다 */
+  onUsePotion?: () => void;
   /** 인벤토리의 골드 '버리기' 버튼을 누르면 부른다(main.ts가 정한다). */
   onDropGold: (() => void) | null = null;
   private readonly connection: HTMLElement;
@@ -327,6 +333,11 @@ export class Hud {
     window.setTimeout(() => box.remove(), TOAST_MS);
   }
 
+  /** 포션 개수가 바뀌면 칸의 숫자를 다시 쓴다. */
+  refreshCounts() {
+    this.render();
+  }
+
   toggle() {
     this.panel.hidden = !this.panel.hidden;
     this.cancelDrag();
@@ -387,7 +398,8 @@ export class Hud {
     if (index !== null) {
       const stack = this.inventory.slots[index];
       if (this.isOpen && stack) this.startDrag({ from: index }, stack.id, e);
-      // 고른 칸을 한 번 더 누르면 가구를 돌린다(휴대폰에는 R 키가 없어서).
+      // 고른 칸을 한 번 더 누르면 가구를 돌리고(휴대폰에는 R 키가 없어서), 포션이면 마신다.
+      else if (index === this.inventory.selected && stack && isPotion(stack.id)) this.onUsePotion?.();
       else if (index === this.inventory.selected) this.inventory.rotateSelected();
       else this.inventory.select(index);
     } else if (item && this.isOpen) {
@@ -458,6 +470,8 @@ export class Hud {
         cell.classList.add('in-hotbar');
         element('slot-key', cell).textContent = String(at + 1);
       }
+      if (isPotion(id)) element('slot-count', cell).textContent = String(this.potionCount(id));
+      if (isSeed(id)) element('slot-count', cell).textContent = String(this.seedCount(id));
     }
   }
 
@@ -474,8 +488,8 @@ export class Hud {
       const dragged = this.drag !== null && 'from' in this.drag && this.drag.from === i;
       icon.hidden = !stack || dragged;
       if (stack) icon.src = this.icons[stack.id];
-      // 블록은 무제한이고 무기는 하나라 개수를 쓰지 않는다.
-      count.textContent = '';
+      // 블록은 무제한이고 무기는 하나라 개수를 쓰지 않는다. 포션만 가진 개수를 쓴다.
+      count.textContent = !stack ? '' : isPotion(stack.id) ? String(this.potionCount(stack.id)) : isSeed(stack.id) ? String(this.seedCount(stack.id)) : '';
       slot.classList.toggle('selected', i === this.inventory.selected);
     });
     this.memoSlot.classList.toggle('selected', this.inventory.memoSelected);

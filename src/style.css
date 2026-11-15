@@ -3110,3 +3110,58 @@ canvas {
   pointer-events: none;
   background: radial-gradient(ellipse at center, rgb(0 0 0 / 0%) 45%, rgb(20 0 4 / 45%) 75%, rgb(8 0 2 / 80%) 100%);
 }
+
+/* 포션으로 찬 체력 */
+.float-text.heal {
+  color: #8ff0a0;
+}
+
+/* 인벤토리 탭이 여섯 개라(포션 탭이 늘어남) 이름이 두 줄로 꺾이지 않게 한다. */
+.bag-tab {
+  white-space: nowrap;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+/* 농협 땅 지도(src/ui/coop.ts): 위에서 본 농장 46×46칸 */
+.land-map {
+  width: min(460px, 100%);
+}
+
+.land-canvas {
+  display: block;
+  width: 100%;
+  max-width: 414px;
+  margin: 0 auto;
+  image-rendering: pixelated;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.land-tip,
+.land-summary {
+  min-height: 1.4em;
+  font-size: 14px;
+  text-align: center;
+}
+
+.land-summary {
+  font-weight: 700;
+}
+
+/* 농협 씨앗: 이름 아래 한 줄에 1·10·100개 버튼과 직접 입력 칸 */
+.coop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-basis: 100%;
+}
+
+.coop-field {
+  flex: 1 1 140px;
+}
+
+.shop-stat:has(.coop-field) {
+  flex-wrap: wrap;
+}

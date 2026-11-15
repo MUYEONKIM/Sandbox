@@ -1,6 +1,6 @@
 import { spriteUrl } from '../art/sprites';
-import { RENAME_PRICE, type Economy, type ShopTool, type ShopWeapon } from '../game/economy';
-import { paintItem, WEAPONS, type WeaponId } from '../items';
+import { RENAME_PRICE, type Economy, type PotionInfo, type ShopTool, type ShopWeapon } from '../game/economy';
+import { paintItem, WEAPONS, type PotionId, type WeaponId } from '../items';
 import { element } from './dom';
 import { PLACE_ICONS } from './office';
 import { PurchaseWindow } from './purchase';
@@ -9,6 +9,7 @@ interface ShopActions {
   onBuyWeapon(id: WeaponId): Promise<void>;
   onBuyTool(tool: ShopTool): Promise<void>;
   onBuyRenameTicket(): Promise<void>;
+  onBuyPotion(id: PotionId, amount: number): Promise<void>;
   onSell(): void;
 }
 
@@ -41,6 +42,13 @@ export class ShopWindow extends PurchaseWindow {
     element('office-section', this.root).textContent = '작업 도구';
     this.toolList = element('shop-stats', this.root);
     for (const tool of economy.tools) this.addTool(tool);
+
+    // 체력 포션(2026-11-15 사용자 요청). 하나씩 또는 열 개씩 산다.
+    if (economy.potions.length) {
+      element('office-section', this.root).textContent = '포션';
+      const potionList = element('shop-stats', this.root);
+      for (const potion of economy.potions) this.addPotion(potionList, potion);
+    }
 
     element('office-section', this.root).textContent = '기타';
     this.addRenameTicket(element('shop-stats', this.root));
@@ -85,6 +93,28 @@ export class ShopWindow extends PurchaseWindow {
       const owned = this.economy.ownsTool(id);
       buy.textContent = owned ? '보유 중' : `${price.toLocaleString()}G`;
       buy.disabled = this.busy || owned || this.economy.gold < price;
+    });
+  }
+
+  private addPotion(list: HTMLElement, potion: PotionInfo) {
+    const { id, name, blurb, price } = potion;
+    const row = element('shop-stat', list);
+    const icon = element('shop-tool-icon', row, 'img') as HTMLImageElement;
+    icon.src = paintItem(id).toDataURL();
+    icon.alt = '';
+
+    const text = element('shop-stat-text', row);
+    element('shop-stat-name', text).textContent = name;
+    const note = element('shop-stat-blurb', text);
+
+    const one = this.buyButton(row, () => this.actions.onBuyPotion(id, 1));
+    const ten = this.buyButton(row, () => this.actions.onBuyPotion(id, 10));
+    this.refreshers.push(() => {
+      note.textContent = `${blurb} 가진 것 ${this.economy.potionCount(id).toLocaleString()}개`;
+      one.textContent = `1개 ${price.toLocaleString()}G`;
+      ten.textContent = `10개 ${(price * 10).toLocaleString()}G`;
+      one.disabled = this.busy || this.economy.gold < price;
+      ten.disabled = this.busy || this.economy.gold < price * 10;
     });
   }
 

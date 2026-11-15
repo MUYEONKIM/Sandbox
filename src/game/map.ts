@@ -4,6 +4,7 @@ import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, isDungeon, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
 import { layoutDungeon } from './dungeon';
+import { FARM_ROAD_TILES, isPlot } from './farm';
 import {
   ANNEX,
   ANNEX_PROPS,
@@ -74,10 +75,10 @@ export interface GameMap extends Scenery {
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
 const WORK_SITE = { x: 38, y: 38, w: 4, d: 4 };
 
-/** 작업장을 꾸미는 건물 */
+/** 작업장을 꾸미는 건물. 벌목장 오두막(cabin)은 시작마을 농협을 현대풍으로 다시 그리기 전의 초가집 그림이다(2026-11-15). */
 const WORK_BUILDINGS: Partial<Record<MapId, SpriteName>> = {
   quarry: 'watchtower',
-  logging: 'thatched',
+  logging: 'cabin',
   gathering: 'fruit',
   fishing: 'fish',
 };
@@ -216,6 +217,11 @@ export function generateMap(id: MapId): GameMap {
     battleWalls = battle.walls;
     for (const { kind, x, y } of battleProps) if (kind !== 'crater') solid[x + y * size] = 1;
     for (const { x, y } of battleWalls) solid[x + y * size] = 1;
+  } else if (id === 'farm') {
+    // 땅이 아닌 칸(구획 사이 2칸 길과 가장자리)은 흙길이다. 산 땅의 밭 그림은 FarmField가 덮는다.
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) if (!isPlot(x, y)) scenery.floorTiles.set(x + y * size, FARM_ROAD_TILES[(x * 7 + y * 13) % FARM_ROAD_TILES.length]);
+    }
   } else if (isDungeon(id)) {
     const dungeon = layoutDungeon(id);
     scenery.trees.push(...dungeon.trees);

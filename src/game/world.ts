@@ -149,8 +149,12 @@ export class World {
     return tiles;
   }
 
+  /** 이 맵에서 블록을 놓을 수 있는 칸을 더 좁힌다. 농장은 내 땅의 빈 칸에만 놓는다(서버 정책도 같음). */
+  buildFilter: ((x: number, y: number) => boolean) | null = null;
+
   private isFreeForBlock(target: Tile, player: Tile) {
     if (target.x === player.x && target.y === player.y) return false;
+    if (this.buildFilter && !this.buildFilter(target.x, target.y)) return false;
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     if (this.isPortalArea(target.x, target.y)) return false;
     if (this.map.reserved.some(({ x, y }) => x === target.x && y === target.y)) return false;
@@ -163,6 +167,7 @@ export class World {
     if (id && isLarge(id)) return false;
     if (!inBuildReach(player, target)) return false;
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
+    if (this.buildFilter && !this.buildFilter(target.x, target.y)) return false;
     const top = this.topAt(target.x, target.y);
     return top !== undefined && top.z + 1 < MAX_STACK && isCube(top.id);
   }

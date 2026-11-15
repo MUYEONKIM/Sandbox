@@ -5,7 +5,7 @@ import { GameScene } from './game/GameScene';
 import { Inventory } from './game/inventory';
 import { Keys } from './game/keys';
 import { Market } from './game/market';
-import { currentUser, loadDungeons, loadEconomy, loadProfile, signOut, type Profile } from './net/auth';
+import { currentUser, loadDungeons, loadEconomy, loadFarm, loadPotions, loadProfile, signOut, type Profile } from './net/auth';
 import { GameSession, type RenameFail } from './net/session';
 import { isConfigured } from './net/supabase';
 import { ChatBox } from './ui/chat';
@@ -26,6 +26,8 @@ import { CastleWindow } from './ui/castle';
 import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
 import { DungeonWindow } from './ui/dungeon';
+import { cropOfSeed } from './items';
+import { CoopWindow } from './ui/coop';
 import { OfficeWindow } from './ui/office';
 import { ShopWindow } from './ui/shop';
 import { GroundUi } from './ui/ground';
@@ -41,7 +43,13 @@ const PANEL_SIZE = 10;
 /** Tab 킬/데스 순위표에 보여 줄 인원 */
 const KILL_BOARD_SIZE = 10;
 
-function enterGame(profile: Profile, economyData: EconomyData, dungeonData: Awaited<ReturnType<typeof loadDungeons>>) {
+function enterGame(
+  profile: Profile,
+  economyData: EconomyData,
+  dungeonData: Awaited<ReturnType<typeof loadDungeons>>,
+  potionData: Awaited<ReturnType<typeof loadPotions>>,
+  farmData: Awaited<ReturnType<typeof loadFarm>>,
+) {
   const root = document.getElementById('hud')!;
   const session = new GameSession(profile);
   const inventory = new Inventory(profile.inventory, economyData.owned);
@@ -57,9 +65,14 @@ function enterGame(profile: Profile, economyData: EconomyData, dungeonData: Awai
   hud.setLevel(BigInt(profile.level), profile.exp);
 
   const economy = new Economy(economyData);
+  economy.setPotions(potionData.catalog, potionData.counts);
+  economy.setFarm(farmData.crops, farmData.stock);
+  hud.potionCount = (id) => economy.potionCount(id);
+  hud.seedCount = (id) => economy.seedCount(cropOfSeed(id));
   const showEconomy = () => {
     hud.setGold(economy.gold);
     hud.refreshInfo();
+    hud.refreshCounts();
   };
   showEconomy();
   economy.onChange(showEconomy);
@@ -106,9 +119,64 @@ function enterGame(profile: Profile, economyData: EconomyData, dungeonData: Awai
     loadRoster: () => session.fetchDungeonRoster(),
   });
 
+  // 농협(2026-11-15 사용자 요청, 기획 docs/balance/farm.md)
+  const farmFailText: Record<string, string> = {
+    taken: '그사이 다른 사람이 산 칸이 있어 모두 취소했습니다',
+    'not enough gold': '골드가 모자랍니다',
+    'cannot sell': '작물이나 블록이 있는 칸은 팔 수 없습니다',
+    'not a plot': '땅이 아닌 칸이 있습니다',
+  };
+  const coop = new CoopWindow(root, economy, profile.id, {
+    onBuySeeds: async (crop, amount) => {
+      const bought = await session.buySeeds(crop, amount);
+      if (typeof bought === 'string') {
+        hud.toast('살 수 없습니다', farmFailText[bought] ?? '잠시 후 다시 시도해 주세요');
+        return;
+      }
+      economy.setGold(bought.gold);
+      economy.setSeedCount(crop, bought.count);
+      hud.toast(`${economy.cropInfo(crop)?.name ?? ''} 씨앗 ${amount}개 구매`, '인벤토리(I)의 씨앗 탭에서 단축키 칸에 넣고, 농장의 내 땅을 좌클릭해 심습니다');
+    },
+    onSellCrops: async () => {
+      const sold = await session.sellCrops();
+      if (!sold) {
+        hud.toast('팔지 못했습니다', '잠시 후 다시 시도해 주세요');
+        return;
+      }
+      economy.setGold(sold.gold);
+      economy.clearCrops();
+      hud.toast(`작물을 모두 팔았습니다 (+${sold.earned.toLocaleString()}G)`, '');
+    },
+    loadFarm: () => session.readFarm(),
+    buyPlots: async (cells) => {
+      const result = await session.buyPlots(cells);
+      if (typeof result === 'string') return farmFailText[result] ?? '사지 못했습니다';
+      economy.setGold(result.gold);
+      hud.toast(`땅 ${cells.length}칸을 샀습니다 (-${result.cost.toLocaleString()}G)`, `내 땅 ${result.owned}칸`);
+      return null;
+    },
+    sellPlots: async (cells) => {
+      const result = await session.sellPlots(cells);
+      if (typeof result === 'string') return farmFailText[result] ?? '팔지 못했습니다';
+      economy.setGold(result.gold);
+      hud.toast(`땅 ${cells.length}칸을 팔았습니다 (+${result.refund.toLocaleString()}G)`, `내 땅 ${result.owned}칸`);
+      return null;
+    },
+  });
+
   const shop = new ShopWindow(root, economy, {
     onBuyWeapon: (id) => scene.buyWeapon(id),
     onBuyTool: (tool) => scene.buyTool(tool),
+    onBuyPotion: async (id, amount) => {
+      const bought = await session.buyPotion(id, amount);
+      if (!bought) {
+        hud.toast('살 수 없습니다', '골드가 모자라거나 잠시 문제가 있습니다');
+        return;
+      }
+      economy.setGold(bought.gold);
+      economy.setPotionCount(id, bought.count);
+      hud.toast(`${economy.potion(id)?.name ?? '포션'} ${amount}개 구매`, `가진 것 ${bought.count}개 · 인벤토리(I)의 포션 탭에서 단축키 칸에 넣습니다`);
+    },
     onBuyRenameTicket: async () => {
       const bought = await session.buyRenameTicket();
       if (!bought) {
@@ -178,6 +246,7 @@ function enterGame(profile: Profile, economyData: EconomyData, dungeonData: Awai
       hud.close();
       office.close();
       dungeon.close();
+      coop.close();
       shop.close();
       castle.close();
       fame.close();
@@ -188,7 +257,7 @@ function enterGame(profile: Profile, economyData: EconomyData, dungeonData: Awai
     },
     onChat: () => {
       const windowOpen =
-        hud.isOpen || office.isOpen || dungeon.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
+        hud.isOpen || office.isOpen || dungeon.isOpen || coop.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
       if (!windowOpen) chat.open();
     },
   });
@@ -200,8 +269,9 @@ function enterGame(profile: Profile, economyData: EconomyData, dungeonData: Awai
   hud.onDropGold = () => groundUi.openGoldDrop(economy.gold, (amount) => scene.dropGold(amount));
   void session.myMemos().then((memos) => groundUi.setHeld(memos));
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters, coop);
 
+  hud.onUsePotion = () => scene.drinkSelectedPotion();
   void session.announceJoin();
   watchNewVersion(root);
   showWhatsNew(root, profile.id);
@@ -219,7 +289,7 @@ function enterGame(profile: Profile, economyData: EconomyData, dungeonData: Awai
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, dungeon, shop, castle, fame, board, exchange, market, elevator, casino, groundUi } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, dungeon, coop, shop, castle, fame, board, exchange, market, elevator, casino, groundUi } });
   }
 }
 
@@ -237,8 +307,8 @@ async function main() {
     profile = await loadProfile((await showLogin(document.body)).id);
   }
   if (profile) {
-    const [economy, dungeons] = await Promise.all([loadEconomy(profile), loadDungeons(), loadSprites()]);
-    enterGame(profile, economy, dungeons);
+    const [economy, dungeons, potions, farm] = await Promise.all([loadEconomy(profile), loadDungeons(), loadPotions(), loadFarm(), loadSprites()]);
+    enterGame(profile, economy, dungeons, potions, farm);
   }
 }
 

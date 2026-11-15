@@ -1,4 +1,5 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { isCropId, type CropId, type Grade, type Plot } from '../game/farm';
 import { BLOCKS, type BlockId } from '../blocks';
 import { BASE_HP, MAX_MAP_SIZE, MAX_STACK, TEAM_SIZE } from '../config';
 import type { Slot } from '../game/inventory';
@@ -27,6 +28,32 @@ export interface HarvestResult {
 }
 
 export type HarvestFail = 'elsewhere' | 'failed';
+
+/** 농장 서버 함수가 거절한 까닭(서버 메시지 그대로) */
+function farmFail(message: string) {
+  for (const reason of ['taken', 'not enough gold', 'cannot sell', 'not a plot', 'no seed', 'cannot plant', 'not ripe', 'nothing to harvest', 'too soon', 'already ripe', 'nothing growing', 'not on the farm']) {
+    if (message.includes(reason)) return reason;
+  }
+  return 'failed';
+}
+
+function parsePlot(row: Record<string, unknown>): Plot | null {
+  const x = Number(row.x);
+  const y = Number(row.y);
+  if (!Number.isInteger(x) || !Number.isInteger(y) || typeof row.owner !== 'string') return null;
+  const crop = isCropId(row.crop) ? row.crop : null;
+  const planted = typeof row.planted_at === 'string' ? Date.parse(row.planted_at) : NaN;
+  return {
+    x,
+    y,
+    owner: row.owner,
+    nickname: typeof row.nickname === 'string' ? row.nickname : '',
+    crop,
+    plantedAt: crop && Number.isFinite(planted) ? planted : null,
+    praise: Number(row.praise) || 0,
+    blame: Number(row.blame) || 0,
+  };
+}
 
 /** 몬스터를 잡고 받은 것. level과 exp는 받은 뒤의 내 레벨과 경험치다. */
 export interface KillReward {
@@ -222,6 +249,10 @@ export interface SessionEvents {
   onConnection(connected: boolean, reason: string | null): void;
   /** 던전 몬스터 알림 */
   onMonster(message: MonsterMessage): void;
+  /** 농장 땅 한 칸이 바뀌었다(샀거나 심었거나 거뒀거나 칭찬·비난). 닉네임은 비어 온다. */
+  onFarmPlot(plot: Plot): void;
+  /** 농장 땅 한 칸이 팔려 빈 땅이 됐다. */
+  onFarmPlotRemoved(x: number, y: number): void;
 }
 
 interface ProfilePatch {
@@ -479,6 +510,17 @@ export class GameSession {
       .on('broadcast', { event: 'mhit' }, ({ payload }) => this.monsterIn(current, 'mhit', payload))
       .on('broadcast', { event: 'mdead' }, ({ payload }) => this.monsterIn(current, 'mdead', payload))
       .on('broadcast', { event: 'matk' }, ({ payload }) => this.monsterIn(current, 'matk', payload))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'farm_plots' }, (change) => {
+        if (!current() || mapId !== 'farm') return;
+        if (change.eventType === 'DELETE') {
+          const x = Number(change.old.x);
+          const y = Number(change.old.y);
+          if (Number.isInteger(x) && Number.isInteger(y)) events.onFarmPlotRemoved(x, y);
+          return;
+        }
+        const plot = parsePlot(change.new);
+        if (plot) events.onFarmPlot(plot);
+      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'blocks' }, ({ new: row }) => {
         const block = parseBlock(row);
         if (current() && block && row.map === mapId) events.onBlockPlaced(block);
@@ -649,6 +691,74 @@ export class GameSession {
     if (!this.joined || !this.channel) return;
     const { event, ...payload } = message;
     void this.channel.send({ type: 'broadcast', event, payload });
+  }
+
+  /** 농장의 모든 땅과 주인 닉네임. 실패하면 null이다. */
+  async readFarm(): Promise<Plot[] | null> {
+    const { data, error } = await supabase.rpc('read_farm');
+    if (error) return null;
+    return (data as Record<string, unknown>[]).map(parsePlot).filter((plot) => plot !== null);
+  }
+
+  /** 땅을 여러 칸 한 번에 산다. cells는 [[x, y], ...]. */
+  async buyPlots(cells: [number, number][]): Promise<{ gold: number; owned: number; cost: number } | string> {
+    const { data, error } = await supabase.rpc('buy_plots', { cells });
+    return error ? farmFail(error.message) : (data as { gold: number; owned: number; cost: number });
+  }
+
+  async sellPlots(cells: [number, number][]): Promise<{ gold: number; owned: number; refund: number } | string> {
+    const { data, error } = await supabase.rpc('sell_plots', { cells });
+    return error ? farmFail(error.message) : (data as { gold: number; owned: number; refund: number });
+  }
+
+  async buySeeds(seed: CropId, amount: number): Promise<{ gold: number; count: number } | string> {
+    const { data, error } = await supabase.rpc('buy_seeds', { seed, amount });
+    return error ? farmFail(error.message) : (data as { gold: number; count: number });
+  }
+
+  /** 내 빈 땅에 씨앗 하나를 심고 남은 씨앗 수를 돌려준다. */
+  async plantCrop(x: number, y: number, seed: CropId): Promise<number | string> {
+    const { data, error } = await supabase.rpc('plant_crop', { px: x, py: y, seed });
+    return error ? farmFail(error.message) : Number(data);
+  }
+
+  async harvestPlot(x: number, y: number): Promise<{ crop: CropId; grade: Grade; count: number } | string> {
+    const { data, error } = await supabase.rpc('harvest_plot', { px: x, py: y });
+    return error ? farmFail(error.message) : (data as { crop: CropId; grade: Grade; count: number });
+  }
+
+  async voteCrop(x: number, y: number, good: boolean): Promise<{ praise: number; blame: number; next_at: string } | string> {
+    const { data, error } = await supabase.rpc('vote_crop', { px: x, py: y, good });
+    return error ? farmFail(error.message) : (data as { praise: number; blame: number; next_at: string });
+  }
+
+  /** 이 작물에 내가 다시 누를 수 있는 시각(ms). 누른 적 없으면 null */
+  async myVoteNext(x: number, y: number): Promise<number | null> {
+    const { data, error } = await supabase.rpc('my_vote_next', { px: x, py: y });
+    return error || typeof data !== 'string' ? null : Date.parse(data);
+  }
+
+  async sellCrops(): Promise<{ gold: number; earned: number } | null> {
+    const { data, error } = await supabase.rpc('sell_crops');
+    return error ? null : (data as { gold: number; earned: number });
+  }
+
+  /** 포션을 amount개 산다. 새 골드와 그 포션 개수를 돌려준다. 실패하면 null이다. */
+  async buyPotion(kind: string, amount: number): Promise<{ gold: number; count: number } | null> {
+    const { data, error } = await supabase.rpc('buy_potion', { kind, amount });
+    return error ? null : (data as { gold: number; count: number });
+  }
+
+  /** 포션 하나를 마신다. 새 체력과 남은 개수, 또는 거절한 까닭을 돌려준다. */
+  async usePotion(kind: string): Promise<{ hp: number; count: number } | 'full' | 'none' | 'fast' | 'down' | 'failed'> {
+    const { data, error } = await supabase.rpc('use_potion', { kind });
+    if (!error) return data as { hp: number; count: number };
+    const message = error.message;
+    if (message.includes('hp is full')) return 'full';
+    if (message.includes('no potion')) return 'none';
+    if (message.includes('too fast')) return 'fast';
+    if (message.includes('player is down')) return 'down';
+    return 'failed';
   }
 
   /** 몬스터를 잡은 보상을 받는다. 서버가 거절하면 null이다. */

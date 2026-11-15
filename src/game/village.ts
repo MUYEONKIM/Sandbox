@@ -2,12 +2,11 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { BOARD, CASTLE, EXCHANGE, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, type Area } from './maps';
+import { BOARD, CASTLE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, TAVERN, type Area } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
 const PAVING = [63, 63, 63, 63, 61];
-const DIRT_ROAD = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const HEDGES = [27, 28];
 const FLOWERS = [41, 44, 46, 47];
 
@@ -30,39 +29,48 @@ const ALL_TREES: SpriteName[] = ['pinetree', 'firtree', 'oaktree'];
 const OAK_LINE = 30;
 
 
+/**
+ * 길은 모두 같은 돌길이다(2026-11-15 사용자 요청 "도로 색깔이 다르다"). 건물은 성 둘레 네 방향에 고루 나눴다(같은 날 "건물이 다
+ * 상단에 몰려 있다"): 위쪽 노동청, 오른쪽 농협(농장 길 옆), 아래쪽 도박장(던전 길 옆), 왼쪽 상점과 증권거래소(전쟁터 길 옆).
+ * 자리는 에이전트가 정했다.
+ */
 const STONE_ROADS: Area[] = [
   // 성문 앞 광장
   [29, 19, 33, 28],
-  // 상점으로 가는 길
-  [18, 12, 19, 13],
-  // 노동청 문으로 곧게 가는 길
-  [14, 1, 15, 13],
-  [5, 1, 13, 2],
-  // 도박장(오른쪽 끝 주점) 문 옆으로 가는 길
-  [34, 16, 45, 17],
-  // 증권거래소 정문으로 가는 길: 성을 두르는 길 오른쪽 아래 귀퉁이에서 내려가 오른쪽으로
-  [32, 34, 33, 40],
-  [34, 39, 41, 40],
+  // 명예의 전당과 게시판 간판 앞으로
+  [34, 21, 37, 22],
+  [34, 26, 37, 27],
   // 성을 두르는 길
   [14, 14, 33, 15],
   [14, 32, 33, 33],
   [14, 14, 15, 33],
   [32, 14, 33, 33],
-];
-
-/** 성을 두르는 길에서 다른 맵으로 나가는 포탈로 이어지는 길 */
-const DIRT_ROADS: Area[] = [
-  // 사막
+  // 노동청: 성을 두르는 길 왼쪽 위 귀퉁이에서 위로, 다시 왼쪽으로
+  [14, 6, 15, 13],
+  [10, 6, 13, 7],
+  // 상점: 왼쪽 변에서 왼쪽으로
+  [3, 25, 13, 26],
+  // 증권거래소: 전쟁터 길에서 왼쪽으로
+  [5, 39, 13, 40],
+  // 농협: 농장 길에서 오른쪽으로
+  [34, 10, 40, 11],
+  // 도박장: 던전 길에서 위로
+  [42, 37, 43, 42],
+  // 농장(오른쪽 귀퉁이)
   [32, 1, 33, 13],
   [32, 1, 44, 2],
-  // 숲
+  // 전쟁터(왼쪽 귀퉁이)
   [14, 34, 15, 44],
   [1, 43, 15, 44],
+  // 던전 입장(아래 귀퉁이)
+  [32, 34, 33, 44],
+  [34, 43, 44, 44],
 ];
 
 /** 아이티공간, 상점, 노동청 말고 세운 건물: 도박장이 된 주점, 증권거래소 */
 const BUILDINGS: Building[] = [
-  { sprite: 'tavern', x: 41, y: 12, w: 4, d: 4 },
+  { sprite: TAVERN.sprite, x: TAVERN.x, y: TAVERN.y, w: TAVERN.w, d: TAVERN.d },
+  { sprite: COOP.sprite, x: COOP.x, y: COOP.y, w: COOP.w, d: COOP.d },
   { sprite: EXCHANGE.sprite, x: EXCHANGE.x, y: EXCHANGE.y, w: EXCHANGE.w, d: EXCHANGE.d },
 ];
 
@@ -73,6 +81,8 @@ const FIXED_TREES: Tree[] = [
   // 광장 오른쪽 잔디밭의 명예의 전당 간판과 게시판
   { sprite: FAME.sprite, x: FAME.x, y: FAME.y },
   { sprite: BOARD.sprite, x: BOARD.x, y: BOARD.y },
+  // 귀퉁이 포탈 안내판
+  ...GUIDEPOSTS.map(({ x, y }) => ({ sprite: 'board' as const, x, y })),
 ];
 
 /** 울타리처럼 줄지어 심은 덤불: 성 앞 정원. 가운데는 지나다닐 수 있게 비운다. */
@@ -81,12 +91,14 @@ const HEDGE_ROWS: Area[] = [
   [24, 30, 28, 30],
 ];
 
-/** 나무를 심지 않는 구역: 상점 앞, 노동청 길, 도박장 길, 증권거래소 앞 */
+/** 나무를 심지 않는 구역: 건물과 그 앞길 둘레 */
 const TREELESS: Area[] = [
-  [16, 12, 31, 17],
-  [4, 3, 17, 13],
-  [34, 12, 45, 19],
-  [34, 31, 45, 42],
+  [3, 3, 16, 13],
+  [1, 14, 13, 28],
+  [2, 30, 13, 41],
+  [34, 3, 42, 12],
+  [34, 34, 45, 45],
+  [34, 19, 40, 28],
 ];
 
 
@@ -178,12 +190,6 @@ export function layoutVillage(): Village {
   for (const area of STONE_ROADS) {
     eachTile(area, (x, y) => {
       floorTiles.set(tileIndex(x, y), pickTile(PAVING, x, y));
-      mark(x, y);
-    });
-  }
-  for (const area of DIRT_ROADS) {
-    eachTile(area, (x, y) => {
-      floorTiles.set(tileIndex(x, y), pickTile(DIRT_ROAD, x, y));
       mark(x, y);
     });
   }
