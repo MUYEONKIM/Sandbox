@@ -4,6 +4,7 @@ import { paintItem, WEAPONS, type PotionId, type WeaponId } from '../items';
 import { element } from './dom';
 import { PLACE_ICONS } from './office';
 import { PurchaseWindow } from './purchase';
+import { goldText } from '../game/gold';
 
 interface ShopActions {
   onBuyWeapon(id: WeaponId): Promise<void>;
@@ -72,7 +73,7 @@ export class ShopWindow extends PurchaseWindow {
     const buy = this.buyButton(row, () => this.actions.onBuyWeapon(id));
     this.refreshers.push(() => {
       const owned = this.economy.owns(id);
-      buy.textContent = owned ? '보유 중' : `${price.toLocaleString()}G`;
+      buy.textContent = owned ? '보유 중' : goldText(price);
       buy.disabled = this.busy || owned || this.economy.gold < price;
     });
   }
@@ -91,7 +92,7 @@ export class ShopWindow extends PurchaseWindow {
     const buy = this.buyButton(row, () => this.actions.onBuyTool(tool));
     this.refreshers.push(() => {
       const owned = this.economy.ownsTool(id);
-      buy.textContent = owned ? '보유 중' : `${price.toLocaleString()}G`;
+      buy.textContent = owned ? '보유 중' : goldText(price);
       buy.disabled = this.busy || owned || this.economy.gold < price;
     });
   }
@@ -111,8 +112,8 @@ export class ShopWindow extends PurchaseWindow {
     const ten = this.buyButton(row, () => this.actions.onBuyPotion(id, 10));
     this.refreshers.push(() => {
       note.textContent = `${blurb} 가진 것 ${this.economy.potionCount(id).toLocaleString()}개`;
-      one.textContent = `1개 ${price.toLocaleString()}G`;
-      ten.textContent = `10개 ${(price * 10).toLocaleString()}G`;
+      one.textContent = `1개 ${goldText(price)}`;
+      ten.textContent = `10개 ${goldText(price * 10)}`;
       one.disabled = this.busy || this.economy.gold < price;
       ten.disabled = this.busy || this.economy.gold < price * 10;
     });
@@ -132,7 +133,7 @@ export class ShopWindow extends PurchaseWindow {
     const buy = this.buyButton(row, () => this.actions.onBuyRenameTicket());
     this.refreshers.push(() => {
       owned.textContent = `${this.economy.renameTickets.toLocaleString()}장`;
-      buy.textContent = `${RENAME_PRICE.toLocaleString()}G`;
+      buy.textContent = goldText(RENAME_PRICE);
       buy.disabled = this.busy || this.economy.gold < RENAME_PRICE;
     });
   }
@@ -146,10 +147,10 @@ export class ShopWindow extends PurchaseWindow {
     for (const { name, price, count } of entries) {
       const row = element('office-stash-row', this.stashList);
       element('office-stash-name', row, 'span').textContent = `${name} x${count}`;
-      element('office-stash-price', row, 'span').textContent = `${(price * count).toLocaleString()}G`;
+      element('office-stash-price', row, 'span').textContent = goldText(price * count);
     }
     const value = this.economy.stashValue;
     this.sellButton.disabled = value === 0;
-    this.sellButton.textContent = value ? `전부 팔기 (+${value.toLocaleString()}G)` : '팔 것이 없습니다';
+    this.sellButton.textContent = value ? `전부 팔기 (+${goldText(value)})` : '팔 것이 없습니다';
   }
 }

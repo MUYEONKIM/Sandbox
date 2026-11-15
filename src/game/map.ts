@@ -16,6 +16,7 @@ import {
   HIDEOUT,
   isTower,
   LOBBY_FURNITURE,
+  MART_PROPS,
   SNAIL_TRACK,
   type PartitionKind,
 } from './tower';
@@ -200,6 +201,7 @@ export function generateMap(id: MapId): GameMap {
         for (let x = tx0; x <= tx1; x++) solid[x + y * size] = 1;
       }
     }
+    if (id === 'mart') buildings.push(...MART_PROPS);
     if (id === 'exchange') {
       buildings.push({ ...BULL });
       scenery.trees.push(...EXCHANGE_FURNITURE);

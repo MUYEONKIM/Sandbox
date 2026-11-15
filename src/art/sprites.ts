@@ -39,6 +39,17 @@ const NAMES = [
   'monsters/soldier',
   'monsters/demon',
   'monsters/blood',
+  // 상점 안 소품(디자인 세션, art-source/interior/make-props.cjs). -x는 앞면이 +x로 돌아간 그림이다.
+  'mart-counter',
+  'mart-counter-x',
+  'mart-shelf-fruit',
+  'mart-shelf-fruit-x',
+  'mart-shelf-goods',
+  'mart-shelf-goods-x',
+  'mart-shelf-drinks',
+  'mart-shelf-drinks-x',
+  'mart-fridge',
+  'mart-fridge-x',
   // 체력 포션(newassets/포션의 potion86, 90, 87)
   'potions/small',
   'potions/medium',

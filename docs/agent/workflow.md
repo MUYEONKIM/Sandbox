@@ -7,6 +7,11 @@
 - 로컬 Supabase: `npx supabase start` (Docker 컨테이너 `supabase_db_iso-sandbox`). `.env.local`이 로컬 스택을 가리킨다.
 - 개발 서버: `npm run dev -- --host 127.0.0.1` (포트 5173). Claude 앱에서는 `preview_start`의 `iso-sandbox` 설정을 쓴다.
 - Claude 앱의 브라우저 패널이 숨겨지면 `requestAnimationFrame`이 멈춰 이동과 맵 전환이 진행되지 않는다. 시험 전에 preview 패널을 표시한다. 바꾼 직후 첫 스크린숏은 예전 화면일 수 있다.
+  - 패널을 보일 수 없으면 게임 시간을 손으로 돌린다. 걸음은 `game.loop.rawDelta`로 진행하므로 그 값도 같이 넣어야 한다(`GameScene.update`).
+    ```js
+    const g = sandbox.scene.game; let t = performance.now();
+    const pump = async (ms) => { const end = t + ms; while (t < end) { t += 16.7; g.loop.rawDelta = 16.7; g.step(t, 16.7); await new Promise((r) => setTimeout(r, 0)); } };
+    ```
 
 ## 2. 바꾼 뒤 확인 (끝: 타입 검사 통과, 바꾼 동작을 브라우저에서 직접 봄, 시험 계정 정리)
 

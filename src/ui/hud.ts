@@ -2,6 +2,7 @@ import { paintMemoPadIcon } from '../art/drops';
 import { BLOCK_IDS } from '../blocks';
 import { HOTBAR_SIZE, MEMO_SLOT, TABS, type Inventory, type TabId } from '../game/inventory';
 import { formatLevel, levelNeed } from '../game/level';
+import { goldText, type Gold } from '../game/gold';
 import { isPotion, isSeed, itemName, paintItem, POTION_IDS, SEED_IDS, WEAPON_IDS, type ItemId, type PotionId, type SeedId } from '../items';
 import { element } from './dom';
 import type { MyStatus } from './info';
@@ -297,9 +298,9 @@ export class Hud {
     this.accountName.textContent = nickname;
   }
 
-  setGold(gold: number) {
-    this.gold.textContent = `${gold.toLocaleString()}G`;
-    this.bagGold.textContent = `${gold.toLocaleString()}G`;
+  setGold(gold: Gold) {
+    this.gold.textContent = goldText(gold);
+    this.bagGold.textContent = goldText(gold);
   }
 
   /** 인벤토리 '메모' 탭을 그리는 함수를 받는다. */

@@ -1,5 +1,6 @@
 import type { Economy } from '../game/economy';
 import { element } from './dom';
+import { goldText } from '../game/gold';
 
 /** 골드를 내는 창의 공통 틀: 보유 골드 표시, 결제 중 버튼 잠금, 나가기 버튼 */
 export abstract class PurchaseWindow {
@@ -64,7 +65,7 @@ export abstract class PurchaseWindow {
   }
 
   protected render() {
-    this.wallet.textContent = `보유 골드 ${this.economy.gold.toLocaleString()}G`;
+    this.wallet.textContent = `보유 골드 ${goldText(this.economy.gold)}`;
     for (const refresh of this.refreshers) refresh();
   }
 }

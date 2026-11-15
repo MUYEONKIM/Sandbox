@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { loadSprites } from './art/sprites';
 import { Economy, type EconomyData } from './game/economy';
+import { goldText } from './game/gold';
 import { GameScene } from './game/GameScene';
 import { Inventory } from './game/inventory';
 import { Keys } from './game/keys';
@@ -145,21 +146,21 @@ function enterGame(
       }
       economy.setGold(sold.gold);
       economy.clearCrops();
-      hud.toast(`작물을 모두 팔았습니다 (+${sold.earned.toLocaleString()}G)`, '');
+      hud.toast(`작물을 모두 팔았습니다 (+${goldText(sold.earned)})`, '');
     },
     loadFarm: () => session.readFarm(),
     buyPlots: async (cells) => {
       const result = await session.buyPlots(cells);
       if (typeof result === 'string') return farmFailText[result] ?? '사지 못했습니다';
       economy.setGold(result.gold);
-      hud.toast(`땅 ${cells.length}칸을 샀습니다 (-${result.cost.toLocaleString()}G)`, `내 땅 ${result.owned}칸`);
+      hud.toast(`땅 ${cells.length}칸을 샀습니다 (-${goldText(result.cost)})`, `내 땅 ${result.owned}칸`);
       return null;
     },
     sellPlots: async (cells) => {
       const result = await session.sellPlots(cells);
       if (typeof result === 'string') return farmFailText[result] ?? '팔지 못했습니다';
       economy.setGold(result.gold);
-      hud.toast(`땅 ${cells.length}칸을 팔았습니다 (+${result.refund.toLocaleString()}G)`, `내 땅 ${result.owned}칸`);
+      hud.toast(`땅 ${cells.length}칸을 팔았습니다 (+${goldText(result.refund)})`, `내 땅 ${result.owned}칸`);
       return null;
     },
   });
@@ -208,7 +209,6 @@ function enterGame(
         const [title, detail] = {
           gold: ['골드가 모자랍니다', '가격이 막 바뀌었을 수도 있습니다'],
           shares: ['가진 주식이 모자랍니다', '없는 주식은 팔 수 없습니다'],
-          overflow: ['골드 주머니가 넘칩니다', '골드는 21억 G까지만 들 수 있습니다'],
           failed: ['거래하지 못했습니다', '잠시 후 다시 시도해 주세요'],
         }[result.reason];
         hud.toast(title, detail);
@@ -217,10 +217,10 @@ function enterGame(
       economy.setGold(result.gold);
       market.setTraded(stock, result.shares, result.cost, result.price);
       const count = Math.abs(amount).toLocaleString();
-      const total = (Math.abs(amount) * result.price).toLocaleString();
+      const total = goldText(BigInt(Math.abs(amount)) * BigInt(result.price));
       hud.toast(
         amount > 0 ? `${name} ${count}주를 샀습니다` : `${name} ${count}주를 팔았습니다`,
-        `주당 ${result.price.toLocaleString()}원 · ${amount > 0 ? '-' : '+'}${total}G`,
+        `주당 ${result.price.toLocaleString()}원 · ${amount > 0 ? '-' : '+'}${total}`,
       );
     },
   });
@@ -312,6 +312,7 @@ async function main() {
   }
 }
 
-main().catch(() => {
+main().catch((e) => {
+  console.error('[시작 실패]', e);
   document.getElementById('game')!.textContent = '서버에 연결하지 못했습니다. 잠시 후 새로고침해 주세요.';
 });

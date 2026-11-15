@@ -2,6 +2,10 @@ import { paintMemoPadIcon, paintNoteIcon } from '../art/drops';
 import type { DropFail, HeldMemo } from '../net/session';
 import { element } from './dom';
 import { Modal } from './modal';
+import { goldText, type Gold } from '../game/gold';
+
+/** 한 번에 버릴 수 있는 골드. 서버 drop_gold의 amount(integer)와 땅의 골드 칸이 integer라 약 21억이다(2026-11-15 에이전트가 정함). */
+const DROP_MAX = 2_147_483_647;
 
 /** 메모 한 장에 쓸 수 있는 글자 수. SQL memos.body와 같다. */
 export const MEMO_MAX = 200;
@@ -120,13 +124,13 @@ export class GroundUi {
   }
 
   /** 골드 버리기 창. 얼마를 버릴지 적는다. */
-  openGoldDrop(gold: number, drop: (amount: number) => Promise<string | null>) {
+  openGoldDrop(gold: Gold, drop: (amount: number) => Promise<string | null>) {
     const modal = new Modal(this.root, 'gold-drop', '골드 버리기');
-    element('modal-note', modal.box).textContent = `가진 골드 ${gold.toLocaleString()}G. 지금 선 자리에 떨어뜨리고, 먼저 줍는 사람이 임자입니다.`;
+    element('modal-note', modal.box).textContent = `가진 골드 ${goldText(gold)}. 지금 선 자리에 떨어뜨리고, 먼저 줍는 사람이 임자입니다. 한 번에 ${goldText(DROP_MAX)}까지 버립니다.`;
     const input = element('gold-drop-input', modal.box, 'input') as HTMLInputElement;
     input.type = 'number';
     input.min = '1';
-    input.max = String(gold);
+    input.max = String(gold < BigInt(DROP_MAX) ? gold : DROP_MAX);
     input.step = '1';
     input.inputMode = 'numeric';
     input.placeholder = '버릴 골드';
@@ -140,8 +144,12 @@ export class GroundUi {
           error.textContent = '1G 이상 정수로 적어 주세요.';
           return false;
         }
-        if (amount > gold) {
+        if (BigInt(amount) > gold) {
           error.textContent = '가진 것보다 많이 버릴 수는 없습니다.';
+          return false;
+        }
+        if (amount > DROP_MAX) {
+          error.textContent = `한 번에 ${goldText(DROP_MAX)}까지 버릴 수 있습니다.`;
           return false;
         }
         const fail = await drop(amount);

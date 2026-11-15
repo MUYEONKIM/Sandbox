@@ -73,6 +73,7 @@ import type { Economy, ShopTool } from './economy';
 import type { Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { formatLevel, levelNeed } from './level';
+import { goldText } from './gold';
 import { generateMap, type Building } from './map';
 import {
   arrivalFor,
@@ -1265,7 +1266,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     this.economy.setSold(gold);
-    this.hud.toast(`+${(gold - before).toLocaleString()}G`, '수고하셨습니다. 내일도 나오세요.');
+    this.hud.toast(`+${goldText(gold - before)}`, '수고하셨습니다. 내일도 나오세요.');
   }
 
   /** 상점에서 무기를 산다. 가격과 골드는 서버가 확인한다. */
@@ -1791,7 +1792,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const tile = this.canAct ? this.hoveredGround : null;
     const gold = tile ? this.drops.at(tile.x, tile.y).find((item) => item.amount !== null) : undefined;
     const pointer = this.input.activePointer;
-    const text = gold ? `${gold.amount!.toLocaleString()}G` : tile ? this.plotTip(tile.x, tile.y) : null;
+    const text = gold ? goldText(gold.amount!) : tile ? this.plotTip(tile.x, tile.y) : null;
     this.groundUi.setTip(text, pointer.x, pointer.y);
   }
 
@@ -1803,7 +1804,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.groundUi.setHint(null);
       return;
     }
-    const what = top.amount === null ? '메모' : `${top.amount.toLocaleString()}G`;
+    const what = top.amount === null ? '메모' : goldText(top.amount);
     this.groundUi.setHint(items.length > 1 ? `${what} 외 ${items.length - 1}개` : what);
   }
 
@@ -1824,8 +1825,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (result.reason === 'gone') {
         this.drops.remove(item.id);
         this.hud.toast('한발 늦었습니다', '누가 먼저 주워 갔습니다');
-      } else if (result.reason === 'overflow') {
-        this.hud.toast('주머니가 터지겠습니다', '골드가 너무 많아 더 들 수 없습니다');
       } else {
         this.hud.toast('줍지 못했습니다', '잠시 뒤 다시 해 보세요');
       }
@@ -1834,7 +1833,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.drops.remove(item.id);
     if (result.kind === 'gold') {
       this.economy.setGold(result.gold);
-      this.hud.toast(`${result.amount.toLocaleString()}G 줍줍`, '주인은 지금쯤 땅을 치고 있습니다', true);
+      this.hud.toast(`${goldText(result.amount)} 줍줍`, '주인은 지금쯤 땅을 치고 있습니다', true);
       return;
     }
     this.groundUi.addHeld(result.memo);
@@ -1864,7 +1863,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!result.ok) return dropFailText(result.reason);
     this.economy.setGold(result.gold);
     this.drops.add(result.item);
-    this.hud.toast(`${amount.toLocaleString()}G를 버렸습니다`, '발밑에서 반짝입니다. 먼저 줍는 사람이 임자');
+    this.hud.toast(`${goldText(amount)}를 버렸습니다`, '발밑에서 반짝입니다. 먼저 줍는 사람이 임자');
     return null;
   }
 
@@ -2227,7 +2226,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const me = this.session.profile.id;
     if (killer !== me && victim !== me) return;
     const count = items.reduce((sum, { count }) => sum + count, 0);
-    const what = [gold > 0 ? `${gold.toLocaleString()}G` : '', count > 0 ? `자원 ${count.toLocaleString()}개` : '']
+    const what = [gold > 0n ? goldText(gold) : '', count > 0 ? `자원 ${count.toLocaleString()}개` : '']
       .filter(Boolean)
       .join('와 ');
     if (killer === me) {
@@ -2236,7 +2235,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.hud.toast('현상금 획득!', what ? `${what}를 받았습니다` : '현상범 주머니가 텅 비어 있었습니다', true);
     } else {
       for (const { item, count } of items) this.economy.take(item, count);
-      this.economy.setGold(Math.max(0, this.economy.gold - gold));
+      this.economy.setGold(this.economy.gold > gold ? this.economy.gold - gold : 0n);
       this.hud.toast('현상금을 빼앗겼습니다', what ? `${what}를 잃었습니다` : '다행히 빼앗길 것이 없었습니다');
     }
   }
@@ -2331,7 +2330,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         send: (message) => this.session.sendMonster(message),
         onKillSeen: (kind, x, y) => {
           const p = gridToWorld(x + 0.5, y + 0.5);
-          this.floatGold(`+${kind.gold.toLocaleString()}G`, p.x, p.y);
+          this.floatGold(`+${goldText(kind.gold)}`, p.x, p.y);
         },
         onMyKill: (kind) => this.queueKillClaim(kind),
         onHitMe: (kind) => void this.hitByMonster(kind),
@@ -2353,8 +2352,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    * 서버 답이 오면 서버 값으로 맞춘다. 서버가 0.3초 안에 다시 부르면 거절하므로 여러 마리를 한꺼번에 잡으면 차례로 부른다.
    */
   private queueKillClaim(kind: MonsterKind) {
-    this.economy.setGold(this.economy.gold + kind.gold);
-    this.hud.toast(`${kind.name} 처치 · ${kind.gold.toLocaleString()}G`, `경험치 +${kind.exp.toLocaleString()}`);
+    this.economy.setGold(this.economy.gold + BigInt(kind.gold));
+    this.hud.toast(`${kind.name} 처치 · ${goldText(kind.gold)}`, `경험치 +${kind.exp.toLocaleString()}`);
     this.killClaims = this.killClaims.then(() => this.claimKill(kind));
   }
 
@@ -2364,7 +2363,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.lastKillClaimAt = performance.now();
     const reward = await this.session.killMonster(kind.id);
     if (!reward) {
-      this.economy.setGold(Math.max(0, this.economy.gold - kind.gold));
+      const taken = BigInt(kind.gold);
+      this.economy.setGold(this.economy.gold > taken ? this.economy.gold - taken : 0n);
       this.hud.toast('보상을 받지 못했습니다', '서버가 받아 주지 않았습니다. 던전 안에 살아 있는지 확인해 주세요');
       return;
     }

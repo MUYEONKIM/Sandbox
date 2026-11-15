@@ -1,4 +1,5 @@
 import { assetUrl } from '../assetUrl';
+import { goldText } from './gold';
 /**
  * 증권거래소의 종목과 내 주식(2026-11-12 사용자 요청). 가격과 보유 수는 서버(stocks, holdings 표)가 정하고
  * 여기서는 화면에 보여 줄 사본만 든다. 1원 = 1G.
@@ -120,5 +121,5 @@ export function profitText(value: number, cost: number) {
   const diff = value - cost;
   const rate = cost ? (diff / cost) * 100 : 0;
   const tone = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
-  return { tone, text: `${diff > 0 ? '+' : diff < 0 ? '-' : ''}${Math.abs(diff).toLocaleString()}G (${diff >= 0 ? '+' : '-'}${Math.abs(rate).toFixed(2)}%)` } as const;
+  return { tone, text: `${diff > 0 ? '+' : diff < 0 ? '-' : ''}${goldText(Math.abs(diff))} (${diff >= 0 ? '+' : '-'}${Math.abs(rate).toFixed(2)}%)` } as const;
 }

@@ -3,6 +3,7 @@ import type { Economy } from '../game/economy';
 import type { Color } from '../art/pixels';
 import { element } from './dom';
 import { PurchaseWindow } from './purchase';
+import { goldText } from '../game/gold';
 
 export type PlaceBet = (game: GameId, pick: string, amount: number) => Promise<BetResult | null>;
 
@@ -93,7 +94,7 @@ export abstract class BetWindow extends PurchaseWindow {
       });
     }
 
-    element('office-section', this.root).textContent = `거는 돈 (${BET_MIN}G ~ ${BET_MAX.toLocaleString()}G)`;
+    element('office-section', this.root).textContent = `거는 돈 (${BET_MIN}G ~ ${goldText(BET_MAX)})`;
     const row = element('casino-amount', this.root);
     // 금액은 직접 쳐서 넣는다. 숫자 말고는 지우고, 누르면 지금 금액이 모두 골라져 바로 새로 칠 수 있다. Enter를 치면 건다.
     const field = element('casino-field', row, 'label');
@@ -140,7 +141,7 @@ export abstract class BetWindow extends PurchaseWindow {
       });
     };
     for (const add of CHIPS) chip(`+${add.toLocaleString()}`, () => this.amount + add);
-    chip('최대', () => Math.min(this.economy.gold, BET_MAX));
+    chip('최대', () => (this.economy.gold < BigInt(BET_MAX) ? Number(this.economy.gold) : BET_MAX));
     chip('지우기', () => 0);
     this.refreshers.push(() => {
       this.input.disabled = this.busy;
@@ -153,7 +154,7 @@ export abstract class BetWindow extends PurchaseWindow {
       const problem = this.problem();
       bet.disabled = this.busy || problem !== null;
       if (this.busy) bet.textContent = '결과를 기다리는 중...';
-      else bet.textContent = problem ?? `${this.pick!.label}에 ${this.amount.toLocaleString()}G 걸기`;
+      else bet.textContent = problem ?? `${this.pick!.label}에 ${goldText(this.amount)} 걸기`;
     });
 
     this.finish();
@@ -174,7 +175,7 @@ export abstract class BetWindow extends PurchaseWindow {
   private problem() {
     if (!this.pick) return '걸 곳을 먼저 고르세요';
     if (this.amount < BET_MIN) return `${BET_MIN}G부터 걸 수 있습니다`;
-    if (this.amount > BET_MAX) return `한 판에 ${BET_MAX.toLocaleString()}G까지입니다`;
+    if (this.amount > BET_MAX) return `한 판에 ${goldText(BET_MAX)}까지입니다`;
     if (this.amount > this.economy.gold) return '골드가 모자랍니다';
     return null;
   }
@@ -196,11 +197,11 @@ export abstract class BetWindow extends PurchaseWindow {
         this.say('판이 엎어졌습니다. 잠시 후 다시 걸어 주세요.', 'lose');
         return;
       }
-      this.economy.setGold(result.gold - result.payout);
+      this.economy.setGold(result.gold - BigInt(result.payout));
       await this.play(result.outcome);
       const text = this.describe(result.outcome);
-      if (result.payout > 0) this.say(`${text} · ${result.payout.toLocaleString()}G를 받았습니다!`, 'win');
-      else this.say(`${text} · ${amount.toLocaleString()}G를 잃었습니다`, 'lose');
+      if (result.payout > 0) this.say(`${text} · ${goldText(result.payout)}를 받았습니다!`, 'win');
+      else this.say(`${text} · ${goldText(amount)}를 잃었습니다`, 'lose');
       this.economy.setGold(result.gold);
     } finally {
       this.busy = false;

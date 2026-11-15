@@ -4,6 +4,7 @@ import { paintItem, type SeedId } from '../items';
 import { element } from './dom';
 import { Modal } from './modal';
 import { PurchaseWindow } from './purchase';
+import { goldText } from '../game/gold';
 
 interface CoopActions {
   onBuySeeds(crop: CropId, amount: number): Promise<void>;
@@ -94,9 +95,9 @@ export class CoopWindow extends PurchaseWindow {
         }
       });
       this.refreshers.push(() => {
-        note.textContent = `${formatGrow(crop.growSeconds)}에 다 자람 · 작물 1개 ${crop.price.toLocaleString()}G · 가진 씨앗 ${economy.seedCount(crop.id).toLocaleString()}개`;
+        note.textContent = `${formatGrow(crop.growSeconds)}에 다 자람 · 작물 1개 ${goldText(crop.price)} · 가진 씨앗 ${economy.seedCount(crop.id).toLocaleString()}개`;
         for (const { amount, button } of buttons) {
-          button.textContent = `${amount}개 ${(crop.price * amount).toLocaleString()}G`;
+          button.textContent = `${amount}개 ${goldText(crop.price * amount)}`;
           button.disabled = this.busy || economy.gold < crop.price * amount;
         }
       });
@@ -131,7 +132,7 @@ export class CoopWindow extends PurchaseWindow {
   }
 
   private showLand() {
-    this.landLine.textContent = `내 땅 ${this.myPlots.toLocaleString()}칸 · 다음 칸 ${landPrice(this.myPlots + 1).toLocaleString()}G · 되팔면 마지막 칸 값의 절반`;
+    this.landLine.textContent = `내 땅 ${this.myPlots.toLocaleString()}칸 · 다음 칸 ${goldText(landPrice(this.myPlots + 1))} · 되팔면 마지막 칸 값의 절반`;
   }
 
   private showCrops() {
@@ -142,11 +143,11 @@ export class CoopWindow extends PurchaseWindow {
     for (const { crop, grade, count, value } of rows) {
       const row = element('office-stash-row', this.cropList);
       element('office-stash-name', row, 'span').textContent = `${GRADE_NAME[grade]}${crop.name} x${count}`;
-      element('office-stash-price', row, 'span').textContent = `${value.toLocaleString()}G`;
+      element('office-stash-price', row, 'span').textContent = goldText(value);
       total += value;
     }
     this.sellButton.disabled = total === 0;
-    this.sellButton.textContent = total ? `작물 전부 팔기 (+${total.toLocaleString()}G)` : '팔 작물이 없습니다';
+    this.sellButton.textContent = total ? `작물 전부 팔기 (+${goldText(total)})` : '팔 작물이 없습니다';
   }
 
   /** 농장을 위에서 본 지도. 빈 땅을 골라 사거나 내 땅을 골라 판다. 끌면 네모 안의 칸이 한꺼번에 골라진다. */
@@ -192,12 +193,12 @@ export class CoopWindow extends PurchaseWindow {
       if (mode === 'sell') {
         let refund = 0;
         for (let i = 0; i < cells.length; i++) refund += Math.floor(landPrice(this.myPlots - i) / 2);
-        summary.textContent = `고른 내 땅 ${cells.length}칸 · 받는 돈 약 ${refund.toLocaleString()}G · 내 땅 ${this.myPlots}칸`;
+        summary.textContent = `고른 내 땅 ${cells.length}칸 · 받는 돈 약 ${goldText(refund)} · 내 땅 ${this.myPlots}칸`;
         action.textContent = '팔기';
       } else {
         let cost = 0;
         for (let i = 1; i <= cells.length; i++) cost += landPrice(this.myPlots + i);
-        summary.textContent = `고른 칸 ${cells.length}개 · 합계 ${cost.toLocaleString()}G · 내 땅 ${this.myPlots}칸 · 보유 ${this.economy.gold.toLocaleString()}G`;
+        summary.textContent = `고른 칸 ${cells.length}개 · 합계 ${goldText(cost)} · 내 땅 ${this.myPlots}칸 · 보유 ${goldText(this.economy.gold)}`;
         action.textContent = '사기';
       }
       action.disabled = cells.length === 0;

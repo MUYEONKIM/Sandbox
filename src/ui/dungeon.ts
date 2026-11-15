@@ -1,6 +1,7 @@
 import type { DungeonInfo, MonsterKind } from '../game/dungeon';
 import type { DungeonId } from '../game/maps';
 import { element } from './dom';
+import { goldText } from '../game/gold';
 
 interface DungeonActions {
   onGo(dungeon: DungeonId): void;
@@ -35,7 +36,7 @@ export class DungeonWindow {
       element('office-place-name', button).textContent = dungeon.name;
       element('office-place-blurb', button).textContent = dungeon.blurb;
       const kinds = monsters.filter((m) => m.dungeon === dungeon.id);
-      element('office-place-rate', button).textContent = kinds.map((m) => `${m.name} ${m.gold.toLocaleString()}G`).join(' · ');
+      element('office-place-rate', button).textContent = kinds.map((m) => `${m.name} ${goldText(m.gold)}`).join(' · ');
       this.rosters.set(dungeon.id, element('office-place-roster', button));
       button.addEventListener('click', () => actions.onGo(dungeon.id));
     }

@@ -1,4 +1,5 @@
 import type { Color } from '../art/pixels';
+import type { Gold } from './gold';
 
 /**
  * 시작마을 도박장의 게임(2026-11-11 사용자 요청). 결과와 배당은 서버 함수 place_bet이 정하고,
@@ -77,7 +78,7 @@ export const SNAIL_COLORS: Color[] = [0xff9a3c, 0xa07ae8, 0x4fc3e8];
 /** 서버가 돌려주는 한 판의 결과 */
 export interface BetResult {
   /** 결과가 반영된 골드 */
-  gold: number;
+  gold: Gold;
   /** 사다리는 'L3'처럼 출발과 줄 수, 홀짝은 구슬 개수(1~10), 달팽이 경주는 1등 번호 */
   outcome: string;
   /** 돌려받은 골드(건 돈 포함). 지면 0이다. */

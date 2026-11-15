@@ -169,6 +169,16 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xc9b8ff,
     links: {},
   },
+  // 상점 안(2026-11-15 사용자 요청). 시작마을 가게라 공격이 막힌다(에이전트가 정함, 서버 hit_player에도 있음).
+  mart: {
+    name: '상점',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0xd9d4c8,
+    accent: 0xb58cff,
+    links: {},
+    safe: true,
+  },
   // 증권거래소 안
   exchange: {
     name: '증권거래소',
@@ -295,7 +305,10 @@ export const CASTLE = {
   accent: 0xff7ad9,
 };
 
-/** 아이티공간 오른쪽 위의 상점. 문 앞 칸이 포탈이고, 타면 상점 창이 열린다. */
+/**
+ * 시작마을 왼쪽의 상점. 문 앞 칸이 포탈이고, 타면 상점 안(mart 맵)으로 들어간다(2026-11-15 사용자 요청 "상점도 건물 내부로 들어가서").
+ * 사고파는 것은 안의 계산대 앞 창구에서 한다(src/game/tower.ts의 MART_PROPS).
+ */
 export const SHOP = {
   sprite: 'villa' as const,
   x: 3,
@@ -413,7 +426,7 @@ export function portalsOf(id: MapId): Portal[] {
   const portals = (Object.entries(MAPS[id].links) as [Corner, MapId][]).map(([corner, to]) => portalAt(corner, to));
   if (id === 'plains') {
     portals.push({ ...OFFICE.door, to: 'office', landing: OFFICE.landing });
-    portals.push({ ...SHOP.door, to: 'shop', landing: SHOP.landing });
+    portals.push({ ...SHOP.door, to: 'mart', landing: SHOP.landing });
     portals.push({ ...CASTLE.door, to: 'tower1', label: CASTLE.name, landing: CASTLE.landing });
     portals.push({ ...FAME.door, to: 'fame', landing: FAME.landing });
     portals.push({ ...BOARD.door, to: 'board', landing: BOARD.landing });

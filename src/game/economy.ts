@@ -2,6 +2,7 @@ import type { PotionId, WeaponId } from '../items';
 import { cropValue, type CropId, type CropInfo, type Grade } from './farm';
 import type { WorkId } from './maps';
 import type { StatId } from './stats';
+import type { Gold } from './gold';
 
 export interface LootItem {
   item: string;
@@ -44,7 +45,7 @@ export interface ShopStat {
 }
 
 export interface EconomyData {
-  gold: number;
+  gold: Gold;
   renameTickets: number;
   loot: LootItem[];
   workplaces: Workplace[];
@@ -80,7 +81,8 @@ const DEFAULT_COOLDOWN_MS = 250;
 
 /** 내 골드, 자원, 무기, 스텟. 값은 모두 서버가 정하고 여기서는 화면에 보여 줄 사본만 들고 있다. */
 export class Economy {
-  gold: number;
+  /** 끝이 없어 BigInt다(src/game/gold.ts). */
+  gold: Gold;
   /** 가진 닉네임 변경권 수 */
   renameTickets: number;
   readonly workplaces: Workplace[];
@@ -170,12 +172,12 @@ export class Economy {
   }
 
   /** 서버가 알려 준 골드로 맞춘다. 도박장에서 걸고 받을 때 쓴다. */
-  setGold(gold: number) {
+  setGold(gold: Gold) {
     this.gold = gold;
     this.changed();
   }
 
-  setSold(gold: number) {
+  setSold(gold: Gold) {
     this.gold = gold;
     this.stash.clear();
     this.changed();
@@ -284,18 +286,19 @@ export class Economy {
    * 스텟을 count포인트 한 번에 살 때의 값. 1포인트마다 priceStep씩 비싸지므로 그 합이다.
    * 서버의 buy_stat과 같은 계산이다.
    */
-  statPrice({ id, basePrice, priceStep }: ShopStat, count = 1) {
-    const owned = this.myStats[id];
-    return count * basePrice + priceStep * (count * owned + (count * (count - 1)) / 2);
+  statPrice({ id, basePrice, priceStep }: ShopStat, count = 1): Gold {
+    const n = BigInt(count);
+    const owned = BigInt(this.myStats[id]);
+    return n * BigInt(basePrice) + BigInt(priceStep) * (n * owned + (n * (n - 1n)) / 2n);
   }
 
-  setWeaponBought(id: WeaponId, gold: number) {
+  setWeaponBought(id: WeaponId, gold: Gold) {
     this.gold = gold;
     this.owned.add(id);
     this.changed();
   }
 
-  setToolBought(id: string, gold: number) {
+  setToolBought(id: string, gold: Gold) {
     this.gold = gold;
     this.ownedTools.add(id);
     this.changed();
@@ -307,7 +310,7 @@ export class Economy {
     this.changed();
   }
 
-  setStatBought(id: StatId, value: number, gold: number) {
+  setStatBought(id: StatId, value: number, gold: Gold) {
     this.gold = gold;
     this.myStats[id] = value;
     this.changed();

@@ -50,14 +50,25 @@ const GLYPHS: Record<string, string[]> = {
   '4': ['101', '101', '111', '001', '001'],
   '7': ['111', '001', '010', '010', '010'],
   '8': ['111', '101', '111', '101', '111'],
+  A: ['010', '101', '111', '101', '101'],
+  E: ['111', '100', '111', '100', '111'],
   F: ['111', '100', '110', '100', '100'],
+  G: ['111', '100', '101', '101', '111'],
   I: ['111', '010', '010', '010', '111'],
+  // M은 3칸으로 쓰면 H와 헷갈려 5칸으로 쓴다(글자 폭은 글자마다 다를 수 있다).
+  M: ['10001', '11011', '10101', '10001', '10001'],
+  T: ['111', '010', '010', '010', '010'],
   K: ['101', '101', '110', '101', '101'],
   O: ['111', '101', '101', '101', '111'],
   P: ['111', '101', '111', '100', '100'],
   R: ['110', '101', '110', '101', '101'],
   S: ['111', '100', '111', '001', '111'],
 };
+
+/** 글씨 한 줄의 너비(글자 사이 한 칸 포함, 배율 1) */
+function textColumns(text: string) {
+  return [...text].reduce((sum, ch) => sum + GLYPHS[ch][0].length + 1, -1);
+}
 
 /** 바닥 크기에 맞춘 도화지. 바닥은 W×D칸이고 오른쪽 벽이 W칸, 왼쪽 벽이 D칸이다. */
 class Painter {
@@ -100,12 +111,15 @@ class Painter {
 
   /** 글씨를 쓴다. 왼쪽 벽은 u가 커질수록 화면 왼쪽으로 가므로 글자 순서를 뒤집어야 바로 읽힌다. */
   text(wall: Wall, text: string, u0: number, v0: number, scale: number, c: Color) {
-    const columns = text.length * 4 - 1;
-    [...text].forEach((ch, i) => {
+    const columns = textColumns(text);
+    let left = 0;
+    [...text].forEach((ch) => {
+      const at = left;
+      left += GLYPHS[ch][0].length + 1;
       GLYPHS[ch].forEach((row, ry) => {
         [...row].forEach((bit, rx) => {
           if (bit !== '1') return;
-          const column = i * 4 + rx;
+          const column = at + rx;
           const u = u0 + (wall === 'left' ? columns - 1 - column : column) * scale;
           const v = v0 + (4 - ry) * scale;
           this.wallRect(wall, u, u + scale, v, v + scale, () => c);
@@ -325,7 +339,36 @@ function annexFloor(painter: Painter): FloorShader {
   };
 }
 
-const FLOOR_SHADERS = {
+/** 상점 안 바닥: 반 칸 크기의 밝은 회백색 매장 타일과 회색 줄눈 */
+function martFloor(): FloorShader {
+  return (gx, gy, sx, sy) => {
+    if (frac(gx * 2) < 0.05 || frac(gy * 2) < 0.05) return 0xc4c9d0;
+    const base = (Math.floor(gx * 2) + Math.floor(gy * 2)) & 1 ? 0xeef0f2 : 0xe2e6ea;
+    return hash2(sx >> 1, sy) > 0.96 ? shade(base, 0.96) : base;
+  };
+}
+
+const FLAGSTONE = [0x6f6a62, 0x7a756c, 0x666159];
+
+/** 대장간 안 바닥: 칸마다 크기가 다른 돌판 넷, 그 사이 흙 줄눈과 군데군데 흙 얼룩 */
+function smithyFloor(): FloorShader {
+  return (gx, gy, sx, sy) => {
+    const tx = Math.floor(gx);
+    const ty = Math.floor(gy);
+    const cutX = 0.35 + hash2(tx, ty) * 0.3;
+    const cutY = 0.35 + hash2(ty, tx + 7) * 0.3;
+    const fx = frac(gx);
+    const fy = frac(gy);
+    if (fx < 0.05 || fy < 0.05 || Math.abs(fx - cutX) < 0.035 || Math.abs(fy - cutY) < 0.035) return 0x3e3a35;
+    const piece = (fx > cutX ? 1 : 0) + (fy > cutY ? 2 : 0);
+    const base = FLAGSTONE[Math.floor(hash2(tx * 4 + piece, ty) * FLAGSTONE.length)];
+    const c = hash2(Math.floor(gx * 3), Math.floor(gy * 3) + 50) > 0.86 ? mix(base, 0x6b5136, 0.45) : base;
+    return hash2(sx, sy) > 0.93 ? shade(c, 0.88) : c;
+  };
+}
+
+/** 스타일마다 바닥. 상점(mart)과 대장간(smithy)은 tower.ts의 FloorPlan.style에 더해지면 쓰인다. */
+const FLOOR_SHADERS: Record<string, (painter: Painter, plan: FloorPlan) => FloorShader> = {
   lobby: lobbyFloor,
   office: officeFloor,
   roof: roofFloor,
@@ -334,6 +377,8 @@ const FLOOR_SHADERS = {
   casino: casinoFloor,
   exchange: exchangeFloor,
   annex: annexFloor,
+  mart: martFloor,
+  smithy: smithyFloor,
 };
 
 /** 건물 바깥 유리벽. 바깥 계단 뒤에 보인다. */
@@ -649,9 +694,93 @@ function paintSnailTrack(painter: Painter) {
   });
 }
 
+/**
+ * 상점 안 벽: 아래 회색 판, 빨강·흰 줄무늬 띠, 위 흰 벽, 맨 위 흰 테.
+ * 오른쪽 벽 가운데 빨간 판에 흰 MART 글씨, 왼쪽 벽에 노란 할인 포스터 둘(진열대와 냉장고보다 높게).
+ */
+function paintMartWalls(painter: Painter) {
+  for (const wall of ['left', 'right'] as Wall[]) {
+    painter.wallRect(wall, 0, painter.length(wall), 0, WALL_H, (u, v) => {
+      if (v < 5) return BASEBOARD;
+      if (v < 22) return u % 16 === 0 ? 0xb9bfc7 : v === 21 ? 0xe9ecef : 0xd3d8de;
+      if (v < 30) return v === 22 || v === 29 ? 0x9b1f1f : Math.floor(u / 6) & 1 ? 0xf6f7f8 : 0xd8413b;
+      if (v >= WALL_H - 3) return TRIM;
+      return 0xf2f3f1;
+    });
+  }
+  const signW = textColumns('MART') * 4 + 12;
+  const u0 = Math.round(painter.length('right') / 2 - signW / 2);
+  painter.wallRect('right', u0, u0 + signW, 42, 70, (u, v) => (u === u0 || u === u0 + signW - 1 || v === 42 || v === 69 ? 0x9b1f1f : 0xd8413b));
+  painter.text('right', 'MART', u0 + 6, 46, 4, 0xf6f7f8);
+  const length = painter.length('left');
+  for (const at of [0.3, 0.7]) {
+    const p0 = Math.round(length * at) - 14;
+    painter.wallRect('left', p0, p0 + 28, 48, 68, (u, v) => {
+      if (u === p0 || u === p0 + 27 || v === 48 || v === 67) return 0xd8a020;
+      if (v >= 58 && v <= 62 && u > p0 + 4 && u < p0 + 23) return 0xd8413b;
+      if ((v === 54 || v === 52) && u > p0 + 6 && u < p0 + 21) return 0x4a505a;
+      return 0xffd84d;
+    });
+  }
+}
+
+/**
+ * 대장간 안 벽: 아래 돌 띠, 위 붉은 벽돌, 맨 위 검은 철 들보.
+ * 오른쪽 벽 가운데 검은 철판에 불빛 색 FORGE 글씨, 왼쪽 벽에 나무 걸이에 건 집게와 망치(무기 걸이보다 높게).
+ */
+function paintSmithyWalls(painter: Painter) {
+  const MORTAR = 0x5e2f25;
+  for (const wall of ['left', 'right'] as Wall[]) {
+    painter.wallRect(wall, 0, painter.length(wall), 0, WALL_H, (u, v) => {
+      if (v < 8) return v === 7 ? 0x6a655d : (Math.floor(u / 12) + (v < 4 ? 1 : 0)) & 1 ? 0x57524b : 0x4d4842;
+      if (v >= WALL_H - 5) return v === WALL_H - 5 ? 0x1f2227 : 0x2d3138;
+      const row = Math.floor((v - 8) / 4);
+      if ((v - 8) % 4 === 3) return MORTAR;
+      const k = u + (row & 1) * 4;
+      if (k % 8 === 7) return MORTAR;
+      const r = hash2(Math.floor(k / 8) + (wall === 'left' ? 500 : 0), row);
+      return r < 0.25 ? 0x84402f : r > 0.92 ? 0xa65a42 : 0x9a4a35;
+    });
+  }
+  const signW = textColumns('FORGE') * 4 + 12;
+  const u0 = Math.round(painter.length('right') / 2 - signW / 2);
+  painter.wallRect('right', u0, u0 + signW, 42, 70, (u, v) => (u === u0 || u === u0 + signW - 1 || v === 42 || v === 69 ? 0x1f2227 : 0x2d3138));
+  painter.text('right', 'FORGE', u0 + 6, 46, 4, 0xffd27a);
+
+  // 왼쪽 벽 나무 걸이에 건 집게 둘과 망치 둘
+  const length = painter.length('left');
+  const r0 = Math.round(length / 2) - 40;
+  painter.wallRect('left', r0, r0 + 80, 62, 65, (_u, v) => (v === 64 ? 0xa97c4c : 0x7b4d2c));
+  for (let i = 0; i < 4; i++) {
+    const hook = r0 + 10 + i * 20;
+    if (i % 2 === 0) {
+      // 집게: 두 다리가 아래로 벌어진다.
+      painter.wallRect('left', hook - 4, hook + 5, 40, 62, (u, v) => {
+        const spread = Math.max(0, 52 - v) / 4;
+        return Math.abs(u - hook + spread) < 0.8 || Math.abs(u - hook - spread) < 0.8 ? 0x3a3f46 : null;
+      });
+    } else {
+      // 망치: 나무 자루 아래 쇠 머리
+      painter.wallRect('left', hook, hook + 2, 46, 62, () => 0x8a5c33);
+      painter.wallRect('left', hook - 4, hook + 6, 40, 46, (_u, v) => (v === 45 ? 0x8a9099 : 0x4a4f57));
+    }
+  }
+}
+
+/** 상점·대장간처럼 tower.ts의 FloorPlan.style에 아직 없을 수 있는 스타일의 벽 */
+const SHOP_WALLS: Partial<Record<string, (painter: Painter) => void>> = {
+  mart: paintMartWalls,
+  smithy: paintSmithyWalls,
+};
+
 /** 가장 먼저 그리는 벽면: 사무실 벽, 1층 로비 벽, 옥상 난간 */
 function paintWalls(painter: Painter, plan: FloorPlan) {
   const { style } = plan;
+  const shopWalls = SHOP_WALLS[style];
+  if (shopWalls) {
+    shopWalls(painter);
+    return;
+  }
   if (style === 'casino') {
     paintCasinoWalls(painter);
     return;
@@ -815,7 +944,7 @@ function paintDoor(painter: Painter, door: Doorway, floorNumber: number | null) 
   for (const u of [uc - 14, uc + 13]) painter.wallRect(wall, u, u + 2, 0, 22, (_, v) => (v > 19 ? 0x3a3a3a : 0xf2c14e));
 }
 
-const EDGE_COLORS = {
+const EDGE_COLORS: Record<string, number[]> = {
   lobby: [0x4f5560, 0x40454e],
   office: [0x4f5560, 0x40454e],
   roof: [0x7d7d78, 0x6a6a66],
@@ -824,6 +953,8 @@ const EDGE_COLORS = {
   casino: [0x3a1418, 0x2a0e12],
   exchange: [0x232a36, 0x1a1f29],
   annex: [0x5a4428, 0x4a3820],
+  mart: [0x5b626c, 0x4a505a],
+  smithy: [0x3e3a35, 0x2f2c28],
 };
 
 /** 바닥 윗면과 앞쪽 두께를 칠한다. */

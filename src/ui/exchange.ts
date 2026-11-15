@@ -2,6 +2,7 @@ import type { Economy } from '../game/economy';
 import { priceChange, profitText, STOCK_INFO, TRADE_MAX, type Market, type Quote } from '../game/market';
 import { element } from './dom';
 import { PurchaseWindow } from './purchase';
+import { goldText } from '../game/gold';
 
 interface ExchangeActions {
   /** amount > 0이면 사고, < 0이면 판다. */
@@ -175,8 +176,8 @@ export class ExchangeWindow extends PurchaseWindow {
         mine.textContent = '가진 주식 없음';
       }
       const amount = this.amount.toLocaleString();
-      buy.textContent = `사기 ${amount}주 · ${total.toLocaleString()}G`;
-      sell.textContent = `팔기 ${amount}주 · ${total.toLocaleString()}G`;
+      buy.textContent = `사기 ${amount}주 · ${goldText(total)}`;
+      sell.textContent = `팔기 ${amount}주 · ${goldText(total)}`;
       buy.disabled = this.busy || this.amount < 1 || this.economy.gold < total;
       sell.disabled = this.busy || this.amount < 1 || held.shares < this.amount;
     };

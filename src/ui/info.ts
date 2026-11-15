@@ -4,6 +4,7 @@ import { formatLevel, levelNeed } from '../game/level';
 import { profitText, STOCK_INFO, type Market } from '../game/market';
 import { statEffect } from '../game/stats';
 import { element } from './dom';
+import { goldText } from '../game/gold';
 
 /** 정보창에 보일 내 상태. HUD가 서버에서 받은 값을 들고 있다. */
 export interface MyStatus {
@@ -44,7 +45,7 @@ export class InfoView {
     const rename = element('info-rename', this.root);
     element('info-rename-count', rename, 'span').textContent = tickets
       ? `닉네임 변경권 ${tickets.toLocaleString()}장`
-      : `닉네임 변경권 없음 · 상점에서 ${RENAME_PRICE.toLocaleString()}G`;
+      : `닉네임 변경권 없음 · 상점에서 ${goldText(RENAME_PRICE)}`;
     const change = element('info-rename-button', rename, 'button') as HTMLButtonElement;
     change.type = 'button';
     change.textContent = '닉네임 바꾸기';
@@ -58,7 +59,7 @@ export class InfoView {
     };
     line('경험치', `${exp.toLocaleString()} / ${levelNeed(level).toLocaleString()}`);
     line('HP', `${hp.toLocaleString()} / ${maxHp.toLocaleString()}`);
-    line('골드', `${this.economy.gold.toLocaleString()}G`);
+    line('골드', goldText(this.economy.gold));
 
     element('info-section', this.root).textContent = '스텟';
     const stats = element('info-stats', this.root);
@@ -72,33 +73,33 @@ export class InfoView {
 
     const loot = this.economy.entries();
     const lootTitle = element('info-section', this.root);
-    lootTitle.textContent = loot.length ? `보유 자원 · 상점에 팔면 ${this.economy.stashValue.toLocaleString()}G` : '보유 자원';
+    lootTitle.textContent = loot.length ? `보유 자원 · 상점에 팔면 ${goldText(this.economy.stashValue)}` : '보유 자원';
     const lootList = element('info-list', this.root);
     if (!loot.length) element('info-empty', lootList).textContent = '주머니가 텅 비었습니다. 노동청에서 일거리를 찾아보세요.';
     for (const { name, count, price } of loot) {
       const row = element('info-row', lootList);
       element('info-row-name', row, 'span').textContent = name;
       element('info-row-count', row, 'span').textContent = `${count.toLocaleString()}개`;
-      element('info-row-value', row, 'span').textContent = `${(price * count).toLocaleString()}G`;
+      element('info-row-value', row, 'span').textContent = goldText(price * count);
     }
 
     // 거둔 농장 작물(2026-11-15 사용자 요청 "I 창에서도 보이게"). 칭찬·일반·비난이 따로 쌓인다. 씨앗은 인벤토리 '씨앗' 탭에 있다.
     const crops = this.economy.cropStock;
     const cropTitle = element('info-section', this.root);
     const cropValue = crops.reduce((sum, row) => sum + row.value, 0);
-    cropTitle.textContent = crops.length ? `거둔 작물 · 농협에 팔면 ${cropValue.toLocaleString()}G` : '거둔 작물';
+    cropTitle.textContent = crops.length ? `거둔 작물 · 농협에 팔면 ${goldText(cropValue)}` : '거둔 작물';
     const cropList = element('info-list', this.root);
     if (!crops.length) element('info-empty', cropList).textContent = '거둔 작물이 없습니다. 농장의 내 땅에 씨앗을 심어 거둡니다.';
     for (const { crop, grade, count, value } of crops) {
       const row = element('info-row', cropList);
       element('info-row-name', row, 'span').textContent = `${GRADE_NAME[grade]}${crop.name}`;
       element('info-row-count', row, 'span').textContent = `${count.toLocaleString()}개`;
-      element('info-row-value', row, 'span').textContent = `${value.toLocaleString()}G`;
+      element('info-row-value', row, 'span').textContent = goldText(value);
     }
 
     const owned = this.market.owned();
     const stockTitle = element('info-section', this.root);
-    stockTitle.textContent = owned.length ? `보유 주식 · 지금 팔면 ${this.market.value.toLocaleString()}G` : '보유 주식';
+    stockTitle.textContent = owned.length ? `보유 주식 · 지금 팔면 ${goldText(this.market.value)}` : '보유 주식';
     const stockList = element('info-list', this.root);
     if (!owned.length) element('info-empty', stockList).textContent = '가진 주식이 없습니다. 증권거래소는 게시판 아래쪽에 있습니다.';
     for (const { quote, shares, cost } of owned) {

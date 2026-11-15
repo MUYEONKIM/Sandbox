@@ -7,7 +7,7 @@ import type { Tile } from './world';
  * 엘리베이터는 7층까지 가고, 8층은 7층 사무실 안 계단으로, 옥상은 8층 바깥 계단으로 올라간다.
  * 시작마을 주점을 고친 도박장(casino)과 증권거래소 안(exchange)도 같은 방식으로 그리는 건물 안이라 여기에 함께 둔다.
  */
-export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino' | 'exchange' | 'annex';
+export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino' | 'exchange' | 'annex' | 'mart';
 
 /** 1층 로비 바닥. 블록 설치 구역도 이 범위다. */
 export const LOBBY: Area = [13, 13, 32, 32];
@@ -74,7 +74,7 @@ export interface Partition {
 export interface FloorPlan {
   /** 층 번호. 옥상, 바깥 계단, 엘리베이터 안은 null */
   number: number | null;
-  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange' | 'annex';
+  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange' | 'annex' | 'mart' | 'smithy';
   /** 바닥이 있는 칸 */
   area: Area;
   doorways: Doorway[];
@@ -313,6 +313,32 @@ export const EXCHANGE_FURNITURE: Furniture[] = [
 ];
 
 /**
+ * 상점 안(2026-11-15 사용자 요청 "상점도 건물 내부로 들어가서 팔거나 살 수 있도록"). 바닥 14×14칸(에이전트가 정함).
+ * 바닥과 벽은 src/art/interior.ts의 'mart' 스타일, 소품은 디자인 세션이 그린 public/sprites/mart-*.png다.
+ * 소품 자리는 디자인 세션이 그림으로 맞춰 본 배치를 그대로 썼다. 오른쪽 벽 가운데는 벽의 MART 판이 보이게 비운다.
+ */
+export const MART_HALL: Area = [15, 15, 28, 28];
+const mart = (x: number, y: number) => ({ x: MART_HALL[0] + x, y: MART_HALL[1] + y });
+/** 계산대(땅 3×1, 앞면 +y). 가운데 앞 칸이 상점 창을 여는 창구다. */
+export const MART_COUNTER = { sprite: 'mart-counter' as const, ...mart(6, 3), w: 3, d: 1 };
+const MART_TILL = { x: MART_COUNTER.x + 1, y: MART_COUNTER.y + 1 };
+/** 나가는 문: 앞-오른쪽 변(x 끝) 가운데. 밟으면 시작마을 상점 문 앞에 선다. */
+const MART_EXIT = { x: MART_HALL[2], y: mart(0, 7).y };
+/** 진열대와 냉장고(장식, 지나갈 수 없음). -x가 없는 것은 오른쪽 벽(y 처음)에, -x는 왼쪽 벽(x 처음)에 붙는다. */
+export const MART_PROPS = [
+  MART_COUNTER,
+  { sprite: 'mart-shelf-fruit' as const, ...mart(1, 0), w: 2, d: 1 },
+  { sprite: 'mart-shelf-goods' as const, ...mart(3, 0), w: 2, d: 1 },
+  { sprite: 'mart-shelf-drinks' as const, ...mart(9, 0), w: 2, d: 1 },
+  { sprite: 'mart-fridge' as const, ...mart(11, 0), w: 1, d: 1 },
+  { sprite: 'mart-fridge' as const, ...mart(12, 0), w: 1, d: 1 },
+  { sprite: 'mart-shelf-fruit-x' as const, ...mart(0, 3), w: 1, d: 2 },
+  { sprite: 'mart-shelf-drinks-x' as const, ...mart(0, 6), w: 1, d: 2 },
+  { sprite: 'mart-shelf-goods-x' as const, ...mart(0, 9), w: 1, d: 2 },
+  { sprite: 'mart-fridge-x' as const, ...mart(0, 12), w: 1, d: 1 },
+];
+
+/**
  * 어디와도 이어지지 않은 16×16칸 다다미방. 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
  * 나가는 포탈은 7층으로 가고, 7층에는 이 방으로 오는 포탈이 없어 엘리베이터 앞에 선다.
  */
@@ -452,6 +478,18 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
       { ...EXCHANGE_EXIT, to: 'plains', label: '시작마을', landing: { x: EXCHANGE_EXIT.x, y: EXCHANGE_EXIT.y - 2 } },
       // 전광판 가운데 앞 매매 창구. 밟으면 모든 종목이 있는 거래 창이 열린다.
       { x: EXCHANGE_HALL_SIGN.x, y: EXCHANGE_HALL[1] + 2, to: 'trade', landing: { x: EXCHANGE_HALL_SIGN.x, y: EXCHANGE_HALL[1] + 4 } },
+    ],
+  },
+  mart: {
+    ...plain,
+    number: null,
+    style: 'mart',
+    area: MART_HALL,
+    doorways: [],
+    portals: [
+      { ...MART_EXIT, to: 'plains', label: '시작마을', landing: { x: MART_EXIT.x - 2, y: MART_EXIT.y } },
+      // 계산대 앞 창구. 밟으면 상점 창(자원 팔기, 도구, 포션, 기타)이 열린다.
+      { ...MART_TILL, to: 'shop', label: '계산대', landing: { x: MART_TILL.x, y: MART_TILL.y + 2 } },
     ],
   },
   annex: {

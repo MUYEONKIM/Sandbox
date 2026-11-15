@@ -4,6 +4,7 @@ import { BLOCKS, type BlockId } from '../blocks';
 import { BASE_HP, MAX_MAP_SIZE, MAX_STACK, TEAM_SIZE } from '../config';
 import type { Slot } from '../game/inventory';
 import { parseLevel } from '../game/level';
+import { parseGold, toGold, type Gold } from '../game/gold';
 import type { BetResult, GameId } from '../game/casino';
 import type { StatId } from '../game/stats';
 import { isWeapon, type WeaponId } from '../items';
@@ -57,7 +58,7 @@ function parsePlot(row: Record<string, unknown>): Plot | null {
 
 /** 몬스터를 잡고 받은 것. level과 exp는 받은 뒤의 내 레벨과 경험치다. */
 export interface KillReward {
-  gold: number;
+  gold: Gold;
   level: string;
   exp: number;
   gained_gold: number;
@@ -136,13 +137,13 @@ export interface ChatMessage {
 export interface Bounty {
   killer: string;
   victim: string;
-  gold: number;
+  gold: Gold;
   items: { item: string; count: number }[];
 }
 
 export type TradeResult =
-  | { ok: true; gold: number; shares: number; cost: number; price: number }
-  | { ok: false; reason: 'gold' | 'shares' | 'overflow' | 'failed' };
+  | { ok: true; gold: Gold; shares: number; cost: number; price: number }
+  | { ok: false; reason: 'gold' | 'shares' | 'failed' };
 
 export interface KillEntry {
   nickname: string;
@@ -184,9 +185,9 @@ export interface HeldMemo {
 export type DropFail = 'wrong-map' | 'too-many' | 'gold' | 'failed';
 
 export type PickResult =
-  | { ok: true; kind: 'gold'; amount: number; gold: number }
+  | { ok: true; kind: 'gold'; amount: number; gold: Gold }
   | { ok: true; kind: 'memo'; memo: HeldMemo }
-  | { ok: false; reason: 'gone' | 'overflow' | 'failed' };
+  | { ok: false; reason: 'gone' | 'failed' };
 
 function parseGround(row: { id?: unknown; x?: unknown; y?: unknown; amount?: unknown }): GroundItem | null {
   const id = Number(row.id);
@@ -372,14 +373,15 @@ function parseNotice(value: unknown): Notice | null {
 }
 
 function parseBounty(value: unknown): Bounty | null {
-  const b = value as Partial<Bounty> | null;
-  if (!b || typeof b.killer !== 'string' || typeof b.victim !== 'string' || typeof b.gold !== 'number' || !Array.isArray(b.items)) {
+  const b = value as { killer?: unknown; victim?: unknown; gold?: unknown; items?: unknown } | null;
+  const gold = parseGold(b?.gold);
+  if (!b || typeof b.killer !== 'string' || typeof b.victim !== 'string' || gold === null || !Array.isArray(b.items)) {
     return null;
   }
   const items = b.items.filter(
     (i): i is { item: string; count: number } => typeof i?.item === 'string' && Number.isInteger(i?.count) && i.count > 0,
   );
-  return { killer: b.killer, victim: b.victim, gold: Math.max(0, Math.floor(b.gold)), items };
+  return { killer: b.killer, victim: b.victim, gold, items };
 }
 
 function parseChat(value: unknown, everyone: boolean): ChatMessage | null {
@@ -701,19 +703,25 @@ export class GameSession {
   }
 
   /** 땅을 여러 칸 한 번에 산다. cells는 [[x, y], ...]. */
-  async buyPlots(cells: [number, number][]): Promise<{ gold: number; owned: number; cost: number } | string> {
+  async buyPlots(cells: [number, number][]): Promise<{ gold: Gold; owned: number; cost: Gold } | string> {
     const { data, error } = await supabase.rpc('buy_plots', { cells });
-    return error ? farmFail(error.message) : (data as { gold: number; owned: number; cost: number });
+    if (error) return farmFail(error.message);
+    const d = data as { gold: unknown; owned: number; cost: unknown };
+    return { gold: toGold(d.gold), owned: Number(d.owned), cost: toGold(d.cost) };
   }
 
-  async sellPlots(cells: [number, number][]): Promise<{ gold: number; owned: number; refund: number } | string> {
+  async sellPlots(cells: [number, number][]): Promise<{ gold: Gold; owned: number; refund: Gold } | string> {
     const { data, error } = await supabase.rpc('sell_plots', { cells });
-    return error ? farmFail(error.message) : (data as { gold: number; owned: number; refund: number });
+    if (error) return farmFail(error.message);
+    const d = data as { gold: unknown; owned: number; refund: unknown };
+    return { gold: toGold(d.gold), owned: Number(d.owned), refund: toGold(d.refund) };
   }
 
-  async buySeeds(seed: CropId, amount: number): Promise<{ gold: number; count: number } | string> {
+  async buySeeds(seed: CropId, amount: number): Promise<{ gold: Gold; count: number } | string> {
     const { data, error } = await supabase.rpc('buy_seeds', { seed, amount });
-    return error ? farmFail(error.message) : (data as { gold: number; count: number });
+    if (error) return farmFail(error.message);
+    const d = data as { gold: unknown; count: number };
+    return { gold: toGold(d.gold), count: Number(d.count) };
   }
 
   /** 내 빈 땅에 씨앗 하나를 심고 남은 씨앗 수를 돌려준다. */
@@ -738,15 +746,19 @@ export class GameSession {
     return error || typeof data !== 'string' ? null : Date.parse(data);
   }
 
-  async sellCrops(): Promise<{ gold: number; earned: number } | null> {
+  async sellCrops(): Promise<{ gold: Gold; earned: Gold } | null> {
     const { data, error } = await supabase.rpc('sell_crops');
-    return error ? null : (data as { gold: number; earned: number });
+    if (error) return null;
+    const d = data as { gold: unknown; earned: unknown };
+    return { gold: toGold(d.gold), earned: toGold(d.earned) };
   }
 
   /** 포션을 amount개 산다. 새 골드와 그 포션 개수를 돌려준다. 실패하면 null이다. */
-  async buyPotion(kind: string, amount: number): Promise<{ gold: number; count: number } | null> {
+  async buyPotion(kind: string, amount: number): Promise<{ gold: Gold; count: number } | null> {
     const { data, error } = await supabase.rpc('buy_potion', { kind, amount });
-    return error ? null : (data as { gold: number; count: number });
+    if (error) return null;
+    const d = data as { gold: unknown; count: number };
+    return { gold: toGold(d.gold), count: Number(d.count) };
   }
 
   /** 포션 하나를 마신다. 새 체력과 남은 개수, 또는 거절한 까닭을 돌려준다. */
@@ -764,7 +776,9 @@ export class GameSession {
   /** 몬스터를 잡은 보상을 받는다. 서버가 거절하면 null이다. */
   async killMonster(kind: string): Promise<KillReward | null> {
     const { data, error } = await supabase.rpc('kill_monster', { kind });
-    return error ? null : (data as KillReward);
+    if (error) return null;
+    const d = data as Omit<KillReward, 'gold'> & { gold: unknown };
+    return { ...d, gold: toGold(d.gold) };
   }
 
   /** 몬스터에게 맞았다. 서버가 정한 남은 체력을 돌려준다. 던전 밖이거나 실패하면 null이다. */
@@ -796,21 +810,23 @@ export class GameSession {
   }
 
   /** 가진 자원을 모두 팔고 새 골드를 돌려준다. */
-  async sellAll(): Promise<number | null> {
+  async sellAll(): Promise<Gold | null> {
     const { data, error } = await supabase.rpc('sell_all');
-    return error ? null : (data as number);
+    return error ? null : parseGold(data);
   }
 
   /** 무기를 사고 새 골드를 돌려준다. 실패하면 null이다. */
-  async buyWeapon(weapon: WeaponId): Promise<number | null> {
+  async buyWeapon(weapon: WeaponId): Promise<Gold | null> {
     const { data, error } = await supabase.rpc('buy_weapon', { weapon });
-    return error ? null : (data as number);
+    return error ? null : parseGold(data);
   }
 
   /** 닉네임 변경권을 한 장 사고 새 골드와 변경권 수를 돌려준다. 실패하면 null이다. */
-  async buyRenameTicket(): Promise<{ gold: number; tickets: number } | null> {
+  async buyRenameTicket(): Promise<{ gold: Gold; tickets: number } | null> {
     const { data, error } = await supabase.rpc('buy_rename_ticket');
-    return error ? null : (data as { gold: number; tickets: number });
+    if (error) return null;
+    const d = data as { gold: unknown; tickets: number };
+    return { gold: toGold(d.gold), tickets: Number(d.tickets) };
   }
 
   /**
@@ -827,9 +843,9 @@ export class GameSession {
   }
 
   /** 작업 도구를 사고 새 골드를 돌려준다. 실패하면 null이다. */
-  async buyTool(tool: string): Promise<number | null> {
+  async buyTool(tool: string): Promise<Gold | null> {
     const { data, error } = await supabase.rpc('buy_tool', { tool });
-    return error ? null : (data as number);
+    return error ? null : parseGold(data);
   }
 
   /** 현상범 명단(지금 악업 1 이상). 실패하면 null이다. */
@@ -894,9 +910,11 @@ export class GameSession {
   }
 
   /** 스텟을 amount만큼 올리고 새 골드와 스텟 값을 돌려준다. 실패하면 null이다. */
-  async buyStat(stat: StatId, amount: number): Promise<{ gold: number; value: number } | null> {
+  async buyStat(stat: StatId, amount: number): Promise<{ gold: Gold; value: number } | null> {
     const { data, error } = await supabase.rpc('buy_stat', { stat, amount });
-    return error ? null : (data as { gold: number; value: number });
+    if (error) return null;
+    const d = data as { gold: unknown; value: number };
+    return { gold: toGold(d.gold), value: Number(d.value) };
   }
 
   /** 증권거래소 종목과 지금 가격. 실패하면 null이다. */
@@ -946,22 +964,21 @@ export class GameSession {
   }
 
   /** 골드를 amount만큼 (x, y)에 버린다. gold는 버린 뒤 남은 골드다. */
-  async dropGold(amount: number, x: number, y: number): Promise<{ ok: true; item: GroundItem; gold: number } | { ok: false; reason: DropFail }> {
+  async dropGold(amount: number, x: number, y: number): Promise<{ ok: true; item: GroundItem; gold: Gold } | { ok: false; reason: DropFail }> {
     const { data, error } = await supabase.rpc('drop_gold', { amount, map: this.mapId, x, y });
     const d = data as { item?: unknown; gold?: unknown } | null;
     const item = error || !d ? null : parseGround(d.item as Parameters<typeof parseGround>[0]);
-    return item ? { ok: true, item, gold: Number(d!.gold) } : { ok: false, reason: dropFail(error?.message ?? '') };
+    return item ? { ok: true, item, gold: toGold(d!.gold) } : { ok: false, reason: dropFail(error?.message ?? '') };
   }
 
   /** 땅의 것을 줍는다. 먼저 주운 사람만 받는다. */
   async pickUp(item: number): Promise<PickResult> {
     const { data, error } = await supabase.rpc('pick_up', { item });
     if (error) {
-      const reason = error.message.includes('gone') ? 'gone' : error.message.includes('too much gold') ? 'overflow' : 'failed';
-      return { ok: false, reason };
+      return { ok: false, reason: error.message.includes('gone') ? 'gone' : 'failed' };
     }
     const d = data as { amount?: unknown; gold?: unknown; memo?: Parameters<typeof parseMemo>[0] };
-    if (d.amount !== undefined && d.amount !== null) return { ok: true, kind: 'gold', amount: Number(d.amount), gold: Number(d.gold) };
+    if (d.amount !== undefined && d.amount !== null) return { ok: true, kind: 'gold', amount: Number(d.amount), gold: toGold(d.gold) };
     const memo = parseMemo(d.memo);
     return memo ? { ok: true, kind: 'memo', memo } : { ok: false, reason: 'failed' };
   }
@@ -977,23 +994,19 @@ export class GameSession {
   async tradeStock(stock: string, amount: number): Promise<TradeResult> {
     const { data, error } = await supabase.rpc('trade_stock', { stock, amount });
     if (error) {
-      const reason = error.message.includes('not enough gold')
-        ? 'gold'
-        : error.message.includes('not enough shares')
-          ? 'shares'
-          : error.message.includes('too much gold')
-            ? 'overflow'
-            : 'failed';
+      const reason = error.message.includes('not enough gold') ? 'gold' : error.message.includes('not enough shares') ? 'shares' : 'failed';
       return { ok: false, reason };
     }
-    const d = data as { gold: number; shares: number; cost: number; price: number };
-    return { ok: true, gold: Number(d.gold), shares: Number(d.shares), cost: Number(d.cost), price: Number(d.price) };
+    const d = data as { gold: unknown; shares: number; cost: number; price: number };
+    return { ok: true, gold: toGold(d.gold), shares: Number(d.shares), cost: Number(d.cost), price: Number(d.price) };
   }
 
   /** 도박장에서 골드를 건다. 결과와 배당은 서버가 정한다. 실패하면 null이다. */
   async placeBet(game: GameId, pick: string, amount: number): Promise<BetResult | null> {
     const { data, error } = await supabase.rpc('place_bet', { game, pick, amount });
-    return error ? null : (data as BetResult);
+    if (error) return null;
+    const d = data as Omit<BetResult, 'gold'> & { gold: unknown };
+    return { ...d, gold: toGold(d.gold), payout: Number(d.payout) };
   }
 
   /** 내 공격이 맞았음을 서버에 알린다. 피해량과 체력은 서버가 계산한다. */

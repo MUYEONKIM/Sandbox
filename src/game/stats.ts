@@ -17,7 +17,8 @@ const MAX_DODGE = 0.6;
 /** LUK 1포인트는 자원 개수 평균 +0.5%다(2026-11-11 사용자 요청). 서버 harvest의 0.005와 같다. */
 const LUK_RATE = 0.005;
 
-const percent = (ratio: number) => `${Number((ratio * 100).toFixed(1))}%`;
+/** 큰 값(스텟을 수억 포인트 산 경우)은 쉼표를 넣어 읽기 쉽게 한다. */
+const percent = (ratio: number) => `${Number((ratio * 100).toFixed(1)).toLocaleString()}%`;
 
 /** 아이티공간에 보여 줄 스텟 효과. 실제 계산은 서버의 hit_player와 harvest가 하므로 공식을 바꾸면 함께 바꾼다. */
 export function statEffect(id: StatId, value: number) {

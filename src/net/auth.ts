@@ -5,6 +5,7 @@ import { DUNGEON_IDS, type DungeonId } from '../game/maps';
 import type { EconomyData, PotionInfo } from '../game/economy';
 import { DEFAULT_MAP, isMapId, type WorkId } from '../game/maps';
 import { BASE_HP } from '../config';
+import { toGold } from '../game/gold';
 import { isStat } from '../game/stats';
 import { isPotion, isWeapon, type PotionId } from '../items';
 import { supabase } from './supabase';
@@ -18,7 +19,8 @@ export interface Profile {
   hp: number;
   /** 최대 체력. HP 스텟을 살 때마다 1씩 는다. */
   max_hp: number;
-  gold: number;
+  /** 골드도 끝이 없어 문자열로 받는다(gold::text). 화면에서는 BigInt로 다룬다(src/game/gold.ts). */
+  gold: string;
   /** 숫자가 아주 커질 수 있어 문자열로 받는다. */
   level: string;
   /** 지금 레벨에서 모은 경험치 */
@@ -92,7 +94,7 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
   if (error) throw new Error(error.message);
   const { gold, str, def, agi, luk, max_hp: maxHp, owned_weapons: owned, owned_tools: ownedTools, rename_tickets: renameTickets } = profile;
   return {
-    gold,
+    gold: toGold(gold),
     renameTickets,
     myStats: { str, def, agi, luk, hp: maxHp - BASE_HP },
     owned: owned.filter(isWeapon),
@@ -118,7 +120,7 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
 export async function loadProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nickname, map, x, y, hp, max_hp, gold, level::text, exp, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin, rename_tickets')
+    .select('id, nickname, map, x, y, hp, max_hp, gold::text, level::text, exp, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin, rename_tickets')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(error.message);
