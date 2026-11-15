@@ -3080,3 +3080,33 @@ canvas {
   pointer-events: auto;
   cursor: pointer;
 }
+
+/* 노동청·던전 창의 장소 버튼은 갈색 버튼이라 안의 글자도 밝게 쓴다. */
+#hud .office-place,
+#hud .office-place .office-place-name,
+#hud .office-place .office-place-blurb,
+#hud .office-place .office-place-rate,
+#hud .office-place .office-place-roster {
+  color: var(--button-text);
+}
+
+#hud .office-place .office-place-blurb {
+  opacity: 0.85;
+}
+
+#hud .office-place .office-place-roster.busy {
+  color: #ffe27a;
+}
+
+/* 지옥 던전처럼 분위기가 정해진 맵: 화면 가장자리를 검붉게 어둡게 한다(src/game/gloom.ts가 #game에 gloom을 붙임). */
+#game {
+  position: relative;
+}
+
+#game.gloom::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgb(0 0 0 / 0%) 45%, rgb(20 0 4 / 45%) 75%, rgb(8 0 2 / 80%) 100%);
+}

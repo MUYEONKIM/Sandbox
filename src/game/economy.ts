@@ -174,6 +174,15 @@ export class Economy {
     return this.weapons.find((weapon) => weapon.id === id)?.cooldownMs ?? DEFAULT_COOLDOWN_MS;
   }
 
+  /**
+   * 몬스터에게 주는 한 방의 피해: 무기 피해 × (1 + STR × 0.1%). 소수점 아래는 그 확률만큼 1을 더한다(서버 hit_player와 같은 식).
+   * 몬스터 체력은 서버가 모르고 같은 던전 사람끼리 나눠 보므로 피해도 클라이언트가 정한다.
+   */
+  monsterDamage(id: WeaponId) {
+    const base = this.weapons.find((weapon) => weapon.id === id)?.damage ?? 0;
+    return Math.max(1, Math.floor(base * (1 + this.stat('str') * 0.001) + Math.random()));
+  }
+
   owns(id: WeaponId) {
     return this.owned.has(id);
   }

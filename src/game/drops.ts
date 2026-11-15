@@ -29,7 +29,24 @@ export class GroundItems {
   private readonly shown = new Map<number, Shown>();
   private readonly arts = new Map<string, Art>();
 
-  constructor(private readonly scene: Phaser.Scene) {}
+  /**
+   * hidden(x, y)가 참인 칸의 것은 그리지 않고 줍기 안내에도 잡히지 않는다. 숨은 방 안에 놓인 것이 방 밖 사람 화면에서
+   * 반짝여 방 자리가 드러나지 않게 한다(2026-11-15 사용자 보고). 판단이 바뀌면 refresh를 부른다.
+   */
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly hidden: (x: number, y: number) => boolean = () => false,
+  ) {}
+
+  /** 숨길 칸이 바뀌었을 때(숨은 방이 열리거나 닫힐 때) 모든 것의 보임을 다시 정한다. */
+  refresh() {
+    for (const shown of this.shown.values()) this.applyHidden(shown);
+  }
+
+  private applyHidden(shown: Shown) {
+    const visible = !this.hidden(shown.item.x, shown.item.y);
+    for (const object of [shown.image, shown.glow, ...shown.sparkles]) object.setVisible(visible);
+  }
 
   private art(key: string, paint: () => Art) {
     let art = this.arts.get(key);
@@ -88,7 +105,9 @@ export class GroundItems {
       });
       return star;
     });
-    this.shown.set(item.id, { item, image, glow, sparkles });
+    const shown = { item, image, glow, sparkles };
+    this.shown.set(item.id, shown);
+    this.applyHidden(shown);
   }
 
   remove(id: number) {
@@ -108,6 +127,7 @@ export class GroundItems {
   /** 칸 (x, y)에 놓인 것, 나중에 놓인 것부터 */
   at(x: number, y: number): GroundItem[] {
     const items: GroundItem[] = [];
+    if (this.hidden(x, y)) return items;
     for (const { item } of this.shown.values()) if (item.x === x && item.y === y) items.push(item);
     return items.sort((a, b) => b.id - a.id);
   }

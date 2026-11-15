@@ -2,7 +2,8 @@ import { Rng } from '../art/pixels';
 import type { BlockId } from '../blocks';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
-import { CASTLE, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
+import { CASTLE, isDungeon, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
+import { layoutDungeon } from './dungeon';
 import {
   ANNEX,
   ANNEX_PROPS,
@@ -148,14 +149,15 @@ function digPond(terrain: Uint8Array): Tile[] {
   return spots;
 }
 
-/** 건물 층의 바닥 앞쪽에 남기는 빈칸 수. 4층 숨은 방이 이 자리에 있다. */
+/** 건물 층의 바닥 앞쪽에 남기는 빈칸 수 */
 const FRONT_GAP = 3;
 
-/** 맵 한 변의 칸 수. 건물 층은 바닥에 맞추고, 나머지 맵은 기본 크기다. */
+/** 맵 한 변의 칸 수. 건물 층은 바닥에 맞추고(4층은 바닥 밖 숨은 방까지), 나머지 맵은 기본 크기다. */
 export function mapSize(id: MapId) {
   if (!isTower(id)) return MAP_SIZE;
   const [, , x1, y1] = FLOORS[id].area;
-  return Math.max(MAP_SIZE, x1 + FRONT_GAP + 1, y1 + FRONT_GAP + 1);
+  const hideout = id === HIDEOUT.map ? Math.max(HIDEOUT.area[2], HIDEOUT.area[3]) + 1 : 0;
+  return Math.max(MAP_SIZE, x1 + FRONT_GAP + 1, y1 + FRONT_GAP + 1, hideout);
 }
 
 /** 맵은 기본적으로 평지다. 맵마다 바닥색이 다르고, 건물이나 자원이 있는 맵은 여기서 채운다. */
@@ -214,6 +216,11 @@ export function generateMap(id: MapId): GameMap {
     battleWalls = battle.walls;
     for (const { kind, x, y } of battleProps) if (kind !== 'crater') solid[x + y * size] = 1;
     for (const { x, y } of battleWalls) solid[x + y * size] = 1;
+  } else if (isDungeon(id)) {
+    const dungeon = layoutDungeon(id);
+    scenery.trees.push(...dungeon.trees);
+    battleWalls = dungeon.walls;
+    for (const { x, y } of battleWalls) solid[x + y * size] = 1;
   } else if (id === 'fishing') {
     spots = digPond(terrain);
   } else if (MAPS[id].work) {
@@ -247,8 +254,10 @@ export function generateMap(id: MapId): GameMap {
   const walls = MAPS[id].work ? workWalls(id as WorkId, terrain, solid) : battleWalls;
   const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, size - 1, size - 1];
   // 블록은 어느 맵이든 바닥 전체에 놓는다. 벽, 물, 포탈 둘레처럼 놓을 수 없는 칸은 World.canPlace가 거른다.
-  const buildZones = [bounds];
-  const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger] : [];
+  // 4층 숨은 방 안에도 놓는다. 방이 닫혀 있으면 허공이라 World.canPlace가 거른다. 입구와 통로는 막히지 않게 비운다.
+  // 던전에는 놓지 않는다(몬스터 길을 막지 않게, 에이전트가 정함).
+  const buildZones = isDungeon(id) ? [] : id === HIDEOUT.map ? [bounds, HIDEOUT.area] : [bounds];
+  const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger, HIDEOUT.passage] : [];
   return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved, battleProps };
 }
 

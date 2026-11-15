@@ -33,6 +33,11 @@ const NAMES = [
   'treehouse',
   'villa',
   'watchtower',
+  // 던전 몬스터(art-source/monsters/make-monsters.cjs)
+  'monsters/orc',
+  'monsters/soldier',
+  'monsters/demon',
+  'monsters/blood',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

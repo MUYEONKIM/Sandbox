@@ -110,27 +110,24 @@ export const LOBBY_FURNITURE: Furniture[] = [
 ];
 
 /**
- * 4층 오른쪽 아래 바닥 끝 바깥에 숨은 작은 방. 바닥 끝 칸 trigger를 밟으면 밟은 사람 화면에서만 드러나고,
- * 층을 나가면 다시 숨는다. 자리는 사용자가 정했다(2026-11-08, 실제 사이트 test 계정이 서 있던 칸).
+ * 4층 오른쪽 아래 바닥 끝 바깥에 숨은 방. 바닥 끝 칸 trigger를 밟으면 밟은 사람 화면에서만 드러나고,
+ * 벗어나면 다시 숨는다. 처음 자리는 사용자가 정했고(2026-11-08), 자리가 알려져서 입구를 바닥 끝을 따라 더 아래로
+ * 옮겼다(2026-11-15 사용자 요청). 방은 바닥에서 한 칸 떨어져 있고 입구 앞 통로 한 칸(passage)으로만 이어진다
+ * (같은 날 "그 좌표로만 진입하도록 한 칸 띄워 줘"). 크기는 8×12칸이고, 가구 없이 비워 두어 블록과 가구를 놓아
+ * 꾸민다(같은 날 "8*12로 바꾸고 사물을 뺀다", "자유롭게 꾸밀 수 있게"). 옮긴 거리는 에이전트가 정했다.
  */
 export const HIDEOUT = {
   map: 'tower4' as const,
-  trigger: { x: 42, y: 15 },
-  area: [43, 12, 45, 18] as Area,
+  trigger: { x: 42, y: 21 },
+  passage: { x: 43, y: 21 },
+  area: [44, 16, 51, 27] as Area,
   title: '진우씨가 유일하게 맘 편히 쉬었던 안식처',
-  /** 이불. 바닥 그림에 함께 그리고 칸만 막는다. */
-  futon: [44, 12, 45, 13] as Area,
-  lamp: { x: 43, y: 12 },
-  table: { x: 45, y: 16 },
-  plant: { x: 43, y: 18 },
 };
 
-/** 숨은 방에서 가구가 있어 지나갈 수 없는 칸 */
-export function hideoutSolid(): Tile[] {
-  const [x0, y0, x1, y1] = HIDEOUT.futon;
-  const tiles: Tile[] = [HIDEOUT.lamp, HIDEOUT.table, HIDEOUT.plant];
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) tiles.push({ x, y });
-  return tiles;
+/** 숨은 방이 열려 있는 동안 걸을 수 있는 칸: 통로와 방 */
+export function inHideout(x: number, y: number) {
+  const [x0, y0, x1, y1] = HIDEOUT.area;
+  return (x === HIDEOUT.passage.x && y === HIDEOUT.passage.y) || (x >= x0 && x <= x1 && y >= y0 && y <= y1);
 }
 
 /** 한 줄로 늘어선 난간 칸 */

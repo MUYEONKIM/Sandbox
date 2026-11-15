@@ -5,7 +5,7 @@ import { GameScene } from './game/GameScene';
 import { Inventory } from './game/inventory';
 import { Keys } from './game/keys';
 import { Market } from './game/market';
-import { currentUser, loadEconomy, loadProfile, signOut, type Profile } from './net/auth';
+import { currentUser, loadDungeons, loadEconomy, loadProfile, signOut, type Profile } from './net/auth';
 import { GameSession, type RenameFail } from './net/session';
 import { isConfigured } from './net/supabase';
 import { ChatBox } from './ui/chat';
@@ -25,6 +25,7 @@ import { InfoView } from './ui/info';
 import { CastleWindow } from './ui/castle';
 import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
+import { DungeonWindow } from './ui/dungeon';
 import { OfficeWindow } from './ui/office';
 import { ShopWindow } from './ui/shop';
 import { GroundUi } from './ui/ground';
@@ -40,7 +41,7 @@ const PANEL_SIZE = 10;
 /** Tab 킬/데스 순위표에 보여 줄 인원 */
 const KILL_BOARD_SIZE = 10;
 
-function enterGame(profile: Profile, economyData: EconomyData) {
+function enterGame(profile: Profile, economyData: EconomyData, dungeonData: Awaited<ReturnType<typeof loadDungeons>>) {
   const root = document.getElementById('hud')!;
   const session = new GameSession(profile);
   const inventory = new Inventory(profile.inventory, economyData.owned);
@@ -97,6 +98,12 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   const office = new OfficeWindow(root, economy, {
     onGo: (place) => scene.goToWork(place),
     loadRoster: () => session.fetchWorkplaceRoster(),
+  });
+
+  // 던전 입장 창(2026-11-15 사용자 요청)
+  const dungeon = new DungeonWindow(root, dungeonData.dungeons, dungeonData.monsters, {
+    onGo: (id) => scene.goToDungeon(id),
+    loadRoster: () => session.fetchDungeonRoster(),
   });
 
   const shop = new ShopWindow(root, economy, {
@@ -170,6 +177,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
       }
       hud.close();
       office.close();
+      dungeon.close();
       shop.close();
       castle.close();
       fame.close();
@@ -180,7 +188,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
     },
     onChat: () => {
       const windowOpen =
-        hud.isOpen || office.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
+        hud.isOpen || office.isOpen || dungeon.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
       if (!windowOpen) chat.open();
     },
   });
@@ -192,7 +200,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
   hud.onDropGold = () => groundUi.openGoldDrop(economy.gold, (amount) => scene.dropGold(amount));
   void session.myMemos().then((memos) => groundUi.setHeld(memos));
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters);
 
   void session.announceJoin();
   watchNewVersion(root);
@@ -211,7 +219,7 @@ function enterGame(profile: Profile, economyData: EconomyData) {
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, shop, castle, fame, board, exchange, market, elevator, casino, groundUi } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, dungeon, shop, castle, fame, board, exchange, market, elevator, casino, groundUi } });
   }
 }
 
@@ -229,8 +237,8 @@ async function main() {
     profile = await loadProfile((await showLogin(document.body)).id);
   }
   if (profile) {
-    const [economy] = await Promise.all([loadEconomy(profile), loadSprites()]);
-    enterGame(profile, economy);
+    const [economy, dungeons] = await Promise.all([loadEconomy(profile), loadDungeons(), loadSprites()]);
+    enterGame(profile, economy, dungeons);
   }
 }
 

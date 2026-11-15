@@ -890,72 +890,53 @@ export function hideoutOrigin(corner: { x: number; y: number }) {
   return originOf(HIDEOUT.area, corner);
 }
 
+/** 숨은 방 통로 한 칸의 자리 */
+const PASSAGE: Area = [HIDEOUT.passage.x, HIDEOUT.passage.y, HIDEOUT.passage.x, HIDEOUT.passage.y];
+
+export function hideoutPassageOrigin(corner: { x: number; y: number }) {
+  return originOf(PASSAGE, corner);
+}
+
 /** 두 색을 t만큼 섞는다. */
 function mix(a: Color, b: Color, t: number): Color {
   const channel = (shift: number) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t);
   return (channel(16) << 16) | (channel(8) << 8) | channel(0);
 }
 
+/** 스탠드 불빛 색(이름 없는 방 바닥) */
 const LAMP_LIGHT = 0xffd98a;
-const BLANKET = [0x4a78b8, 0x3f69a3];
 
-/** 숨은 방 바닥: 짙은 나무 바닥, 가운데 러그, 스탠드 불빛, 이불과 슬리퍼 */
+/** 숨은 방 바닥: 짙은 나무 바닥. 가구 없이 비워 두고 플레이어가 꾸민다(2026-11-15 사용자 요청). */
 export function paintHideoutFloor(): HTMLCanvasElement {
   const painter = new Painter(HIDEOUT.area);
-  const { p, x0, y0 } = painter;
-  const lampX = HIDEOUT.lamp.x - x0 + 0.5;
-  const lampY = HIDEOUT.lamp.y - y0 + 0.5;
-
   paintSlab(
     painter,
     (gx, gy) => {
-      let c: Color;
-      if (gx > 0.35 && gx < 2.65 && gy > 2.35 && gy < 5.65) {
-        const border = gx < 0.55 || gx > 2.45 || gy < 2.55 || gy > 5.45;
-        c = border ? 0xe9d8b4 : (Math.floor(gx * 3) + Math.floor(gy * 3)) & 1 ? 0xb5523b : 0xc8664a;
-      } else {
-        const row = Math.floor(gy * 2);
-        const seam = Math.floor((gx + (row % 3) * 1.3) / 2.6);
-        const onSeam = (gy * 2) % 1 < 0.12 || ((gx + (row % 3) * 1.3) / 2.6) % 1 < 0.03;
-        c = onSeam ? 0x5e3f24 : shade(PLANK[Math.floor(hash2(row, seam) * PLANK.length)], 0.82);
-      }
-      const glow = Math.max(0, 1 - Math.hypot(gx - lampX, gy - lampY) / 3.2);
-      return glow > 0 ? mix(shade(c, 1 + glow * 0.25), LAMP_LIGHT, glow * 0.3) : c;
+      const row = Math.floor(gy * 2);
+      const seam = Math.floor((gx + (row % 3) * 1.3) / 2.6);
+      const onSeam = (gy * 2) % 1 < 0.12 || ((gx + (row % 3) * 1.3) / 2.6) % 1 < 0.03;
+      return onSeam ? 0x5e3f24 : shade(PLANK[Math.floor(hash2(row, seam) * PLANK.length)], 0.82);
     },
     [0x5a3e28, 0x4a3220],
   );
+  painter.p.outlineOuter(OUTLINE);
+  return painter.p.toCanvas();
+}
 
-  // 이불: 바닥에서 조금 솟은 요 위에 베개와 덮은 이불
-  const [fx0, fy0, fx1, fy1] = HIDEOUT.futon;
-  const g0 = fx0 - x0 + 0.08;
-  const g1 = fx1 - x0 + 0.92;
-  const h0 = fy0 - y0 + 0.08;
-  const h1 = fy1 - y0 + 0.92;
-  const lift = 5;
-  const at = (gx: number, gy: number, z: number): [number, number] => [...painter.screen(gx, gy, z)];
-  const minus = (a: [number, number], b: [number, number]): [number, number] => [a[0] - b[0], a[1] - b[1]];
-  const top = at(g0, h0, -lift);
-  const side = (u: number, v: number) => (v < 0.45 ? 0xd8d0be : u > 0.4 ? BLANKET[1] : 0xd8d0be);
-  p.parallelogram(at(g0, h1, -lift), minus(at(g1, h1, -lift), at(g0, h1, -lift)), [0, lift], (u, v) => shade(side(u, v), 0.8));
-  p.parallelogram(at(g1, h0, -lift), minus(at(g1, h1, -lift), at(g1, h0, -lift)), [0, lift], (u, v) => shade(side(u, v), 0.7));
-  p.parallelogram(top, minus(at(g1, h0, -lift), top), minus(at(g0, h1, -lift), top), (u, v) => {
-    if (v < 0.3) return u > 0.22 && u < 0.78 && v > 0.06 ? (v > 0.24 ? 0xd9d3c6 : 0xf6f3ec) : 0xe6dfcf;
-    if (v < 0.4) return 0xe6dfcf;
-    if (v < 0.47) return 0xf0c86a;
-    const wrinkle = Math.sin(u * 9 + v * 4) > 0.75;
-    const check = (Math.floor(u * 6) + Math.floor(v * 6)) & 1;
-    return wrinkle ? shade(BLANKET[check], 0.85) : BLANKET[check];
-  });
-
-  // 이불 앞에 벗어 둔 슬리퍼 한 켤레
-  for (const k of [0, 1]) {
-    const [sx, sy] = at(g0 + 0.25 + k * 0.32, h1 + 0.35 + k * 0.05, 0);
-    p.ellipse(sx, sy, 3.2, 1.6, 0x6fa3c8);
-    p.set(sx - 1, sy, 0xf4f1ea);
-  }
-
-  p.outlineOuter(OUTLINE);
-  return p.toCanvas();
+/** 바닥 끝과 숨은 방을 잇는 통로 한 칸: 방 바닥과 같은 나무판 */
+export function paintHideoutPassage(): HTMLCanvasElement {
+  const painter = new Painter(PASSAGE);
+  paintSlab(
+    painter,
+    (gx, gy) => {
+      const row = Math.floor(gy * 2);
+      const onSeam = (gy * 2) % 1 < 0.12 || gx < 0.04;
+      return onSeam ? 0x5e3f24 : shade(PLANK[Math.floor(hash2(row, 7) * PLANK.length)], 0.82);
+    },
+    [0x5a3e28, 0x4a3220],
+  );
+  painter.p.outlineOuter(OUTLINE);
+  return painter.p.toCanvas();
 }
 
 /** 숨은 방 뒤쪽 벽: 줄무늬 벽지, 노을 지는 창, 작은 전구 줄. 칸보다 뒤에 그려야 해서 바닥과 따로 그린다. */

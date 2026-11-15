@@ -131,13 +131,14 @@ export class Avatar {
     return this.dir;
   }
 
-  /** 전쟁터에서 빛 밖에 있으면 캐릭터와 그림자, 무기를 숨긴다. */
+  /** 전쟁터에서 빛 밖에 있거나 닫힌 숨은 방 안에 있으면 캐릭터와 그림자, 무기를 숨긴다. 바뀌었으면 true */
   setHidden(hidden: boolean) {
-    if (hidden === this.hidden) return;
+    if (hidden === this.hidden) return false;
     this.hidden = hidden;
     this.image.setVisible(!hidden);
     this.shadow.setVisible(!hidden);
     if (hidden) this.gun.setVisible(false);
+    return true;
   }
 
   /** 지금 바라보는 화면 방향. 오른쪽이 1이다. */

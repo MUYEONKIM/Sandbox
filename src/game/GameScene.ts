@@ -3,8 +3,10 @@ import { paintJumpShadow, paintSmoke } from '../art/effects';
 import { DECOR_LIFT, paintGround, TILE_CELL, worldRect } from '../art/ground';
 import {
   hideoutOrigin,
+  hideoutPassageOrigin,
   interiorOrigin,
   paintHideoutFloor,
+  paintHideoutPassage,
   paintHideoutWall,
   paintInterior,
   paintLamp,
@@ -77,7 +79,7 @@ import {
   CASTLE,
   DEFAULT_MAP,
   EXCHANGE,
-  isInside,
+  type Area,
   isMapId,
   MAPS,
   OFFICE,
@@ -86,6 +88,8 @@ import {
   portalsOf,
   respawnTile,
   SHOP,
+  isDungeon,
+  type DungeonId,
   type MapId,
   type Portal,
   type WorkId,
@@ -103,7 +107,7 @@ import {
   EXCHANGE_HALL_SIGN,
   FLOORS,
   HIDEOUT,
-  hideoutSolid,
+  inHideout,
   isTower,
   TICKER_LIFT,
   type PartitionKind,
@@ -114,10 +118,15 @@ import { startTicker } from './ticker';
 import { WorkFx } from './workFx';
 import { Daylight } from './daylight';
 import { Flashlight } from './vision';
+import { Gloom } from './gloom';
 import type { BattleKind } from './battlefield';
 import { paintCrater, paintHedgehog, paintSandbags } from '../art/battlefield';
 import { inBuildReach, inReach, World, type Tile } from './world';
 import { HUSH_HOLD_MS, openHush } from './hush';
+import { inSafeZone, spawnCandidates, type MonsterKind } from './dungeon';
+import { isMonsterTarget, MonsterField, registerMonsterAnims } from './monsters';
+import type { DungeonWindow } from '../ui/dungeon';
+import type { MonsterMessage } from '../net/session';
 
 /** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
 const WORK_TICK_MS = 250;
@@ -127,6 +136,8 @@ const WORK_TICK_MS = 250;
  */
 const HARVEST_FAILS_TO_STOP = 2;
 
+/** 몬스터를 움직이는 간격(호스트만). 탭이 숨어도 도는 시계로 돈다. */
+const MONSTER_TICK_MS = 100;
 const DEPTH_GROUND = 0;
 const DEPTH_OVERLAY = 1;
 
@@ -275,9 +286,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private daylight!: Daylight;
   /** 전쟁터의 손전등 시야 */
   private flashlight!: Flashlight;
+  private gloom!: Gloom;
   private readonly workFx = new WorkFx(this);
   /** 땅에 놓인 메모와 골드 */
-  private readonly drops = new GroundItems(this);
+  /** 허공 칸(닫힌 숨은 방)의 것은 그리지 않는다. */
+  private readonly drops = new GroundItems(this, (x, y) => this.world.isVoid(x, y));
   /** 줍기를 서버에 묻는 중이면 true. F를 연달아 눌러도 한 번만 묻는다. */
   private picking = false;
   /** 칸별 자원 그림. 작업할 때 흔들린다. */
@@ -311,6 +324,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 휴대폰에서 다른 플레이어를 눌러 공격을 시작했으면 손을 뗄 때까지 연사한다. */
   private touchFiring = false;
 
+  /** 던전 몬스터. 던전이 아니면 null */
+  private monsters: MonsterField | null = null;
+  private stopMonsterTicker: (() => void) | null = null;
+
   /** 마우스가 가리키는 설치된 블록 */
   private hoveredBlock: Tile | null = null;
   /** 마우스가 가리키는 빈 바닥 칸 */
@@ -337,6 +354,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly exchange: ExchangeWindow,
     private readonly market: Market,
     private readonly groundUi: GroundUi,
+    private readonly dungeonWindow: DungeonWindow,
+    private readonly monsterKinds: MonsterKind[],
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -350,6 +369,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
     this.daylight = new Daylight(this, DEPTH_DAYLIGHT);
     this.flashlight = new Flashlight(this, DEPTH_DARKNESS);
+    this.gloom = new Gloom(this, DEPTH_DAYLIGHT + 0.5);
     this.showMap(this.mapId);
     this.market.onChange(() => this.paintTickers());
     this.groundUi.placeHeld = (memo) => this.placeHeldMemo(memo);
@@ -358,7 +378,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     };
     // 숨은 방 안에서 접속을 끊었다면 방이 열린 채로 시작한다.
     const saved = this.session.profile;
-    if (this.mapId === HIDEOUT.map && isInside(HIDEOUT.area, saved.x, saved.y)) this.showHideout(false);
+    if (this.mapId === HIDEOUT.map && inHideout(saved.x, saved.y)) this.showHideout(false);
 
     const { id, nickname, hp, max_hp: maxHp, skin } = this.session.profile;
     this.me = new Avatar(this, id, this.startTile(), hp, skin, maxHp);
@@ -421,6 +441,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.textures.addSpriteSheet('team-back', sprite('team-back'), { frameWidth: TEAM_W, frameHeight: TEAM_H });
     this.textures.addSpriteSheet('tiles', sprite('tiles'), { frameWidth: TILE_CELL, frameHeight: TILE_CELL });
     for (const name of SMOKE_FRAMES) this.spriteTexture(name);
+    registerMonsterAnims(this, (id) => sprite(`monsters/${id}` as SpriteName));
   }
 
   /** 가구 그림(furniture.png 한 장)을 등록하고 가구마다 그 안의 자리를 프레임으로 나눈다. 블록 id가 프레임 이름이다. */
@@ -571,6 +592,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private showMap(id: MapId) {
     this.mapId = id;
     this.hideoutShown = false;
+    this.hideoutBlocks.clear();
     const info = MAPS[id];
     this.world = new World(generateMap(id), portalsOf(id));
     // 7, 8층처럼 넓은 맵은 월드 범위가 왼쪽 아래로 더 나가서 바닥 그림과 카메라 범위를 맵마다 맞춘다.
@@ -584,7 +606,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     );
     this.minimap.setMap(info.name, info.color, this.world.map.bounds);
     this.cameras.main.setBackgroundColor(
-      info.dark ? DARK_BACKGROUND : id === 'rooftop' || id === 'stairs' ? ROOF_BACKGROUND : isTower(id) ? INDOOR_BACKGROUND : WORLD_BACKGROUND,
+      info.mood
+        ? info.mood.background
+        : info.dark
+          ? DARK_BACKGROUND
+          : id === 'rooftop' || id === 'stairs'
+            ? ROOF_BACKGROUND
+            : isTower(id)
+              ? INDOOR_BACKGROUND
+              : WORLD_BACKGROUND,
     );
     // 바깥 맵은 KST 시간대 색을 덮고, 전쟁터는 늘 어둡고 손전등 빛만 보인다(2026-11-13 사용자 요청).
     this.flashlight.setActive(info.dark === true, this.world.map.size);
@@ -594,8 +624,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       -DAYLIGHT_PAD,
       rect.width + DAYLIGHT_PAD * 2,
       rect.height + DAYLIGHT_PAD * 2,
+      info.mood ?? null,
     );
     if (isTower(id)) this.showInterior(id);
+    if (isDungeon(id)) this.startMonsters(id);
+    if (info.mood) this.gloom.show(this.world.map.walls.filter((wall) => wall.id === 'lava'));
+    else this.gloom.clear();
     this.chimneySmoke = null;
     for (const building of this.world.map.buildings) {
       const { left, top } = this.showBuilding(building);
@@ -760,13 +794,36 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
-  /** 숨은 방은 4층 바닥 끝의 정해진 칸이나 방 안을 밟고 있는 동안에만 보인다. */
+  /** 숨은 방 통로 한 칸 */
+  private readonly passageArea: Area = [HIDEOUT.passage.x, HIDEOUT.passage.y, HIDEOUT.passage.x, HIDEOUT.passage.y];
+
+  /** 숨은 방은 4층 바닥 끝의 정해진 칸이나 통로, 방 안을 밟고 있는 동안에만 보인다. */
   private checkHideout() {
     if (this.mapId !== HIDEOUT.map) return;
     const { x, y } = this.me.tile;
-    const inside = (x === HIDEOUT.trigger.x && y === HIDEOUT.trigger.y) || isInside(HIDEOUT.area, x, y);
+    const inside = (x === HIDEOUT.trigger.x && y === HIDEOUT.trigger.y) || inHideout(x, y);
     if (inside && !this.hideoutShown) this.showHideout(true);
     else if (!inside && this.hideoutShown) this.hideHideout();
+  }
+
+  /**
+   * 숨은 방 안에 놓인 블록과 가구. 방이 닫혀 있는 동안에는 World와 화면에 두지 않고 여기에만 둔다.
+   * World에 두면 방 밖 사람이 허공 칸을 가리켜 회수하거나 위에 쌓고, 미니맵 점과 총알 막힘으로 방 자리가 드러난다.
+   */
+  private readonly hideoutBlocks = new Map<string, PlacedBlock>();
+
+  private showHideoutBlocks() {
+    const blocks = [...this.hideoutBlocks.values()].sort((a, b) => a.z - b.z);
+    for (const { x, y, z, id } of blocks) if (!this.world.blockAtLevel(x, y, z)) this.spawnBlock({ x, y }, z, id);
+  }
+
+  private hideHideoutBlocks() {
+    for (const { x, y, z } of this.hideoutBlocks.values()) this.removeBlockAt(x, y, z);
+  }
+
+  /** 숨은 방 안의 칸인지(4층에서만) */
+  private inHideoutHere(x: number, y: number) {
+    return this.mapId === HIDEOUT.map && inHideout(x, y);
   }
 
   /** 숨은 방 그림을 지운다. 맵을 옮길 때 지워지도록 mapImages에서도 뺀다. */
@@ -781,7 +838,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 방을 벗어나면 서서히 사라지고 다시 걸을 수 없는 허공이 된다. */
   private hideHideout() {
     this.hideoutShown = false;
+    this.hideHideoutBlocks();
     this.world.closeFloor(HIDEOUT.area);
+    this.world.closeFloor(this.passageArea);
+    this.drops.refresh();
     this.tweens.killTweensOf(this.hideoutImages);
     this.tweens.add({
       targets: this.hideoutImages,
@@ -798,9 +858,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private showHideout(fadeIn: boolean) {
     this.dropHideoutImages();
     this.hideoutShown = true;
-    this.world.openFloor(HIDEOUT.area, hideoutSolid());
+    this.world.openFloor(HIDEOUT.area, []);
+    this.world.openFloor(this.passageArea, []);
+    this.drops.refresh();
     const [x0, y0] = HIDEOUT.area;
     const { left, top } = hideoutOrigin(gridToWorld(x0, y0));
+    const { passage } = HIDEOUT;
+    const bridge = hideoutPassageOrigin(gridToWorld(passage.x, passage.y));
     const texture = (key: string, paint: () => HTMLCanvasElement) => {
       if (!this.textures.exists(key)) this.textures.addCanvas(key, paint());
       return key;
@@ -811,15 +875,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .image(left, top, texture('hideout-wall', paintHideoutWall))
       .setOrigin(0, 0)
       .setDepth(depthOf(x0, y0) - 1);
-    this.mapImages.push(floor, wall);
-    const { lamp, table, plant } = HIDEOUT;
-    const images = [
-      floor,
-      wall,
-      this.addMapArt('hideout-lamp', paintLamp, lamp.x, lamp.y),
-      this.addMapArt('hideout-table', paintLowTable, table.x, table.y),
-      this.addSprite('plant', plant.x, plant.y),
-    ];
+    const path = this.add
+      .image(bridge.left, bridge.top, texture('hideout-passage', paintHideoutPassage))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH_HIDEOUT);
+    this.mapImages.push(floor, wall, path);
+    const images = [floor, wall, path];
+    this.showHideoutBlocks();
     this.hideoutImages = images;
     this.hud.announce(HIDEOUT.title);
     if (!fadeIn) return;
@@ -857,6 +919,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.mapImages = [];
     this.bullets.clear();
     this.drops.clear();
+    this.stopMonsters();
     this.groundUi.setHint(null);
     this.groundUi.setTip(null);
   }
@@ -870,6 +933,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const avatar of this.others.values()) avatar.update(delta);
     this.updateVision();
     this.bullets.update(delta);
+    this.monsters?.update(delta);
+    if (this.me) this.gloom.track(this.me.sprite);
     this.updateWork();
     this.workFx.update(delta);
     this.updateAim();
@@ -888,6 +953,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const windowOpen =
       this.hud.isOpen ||
       this.office.isOpen ||
+      this.dungeonWindow.isOpen ||
       this.shop.isOpen ||
       this.castle.isOpen ||
       this.fame.isOpen ||
@@ -928,6 +994,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const portal = wasMoving ? this.world.portalAt(this.me.tile.x, this.me.tile.y) : undefined;
     if (portal) {
       if (portal.to === 'office') this.office.open();
+      else if (portal.to === 'dungeon') this.dungeonWindow.open();
       else if (portal.to === 'shop') this.shop.open();
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
@@ -1101,6 +1168,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   goToWork(place: WorkId) {
     this.office.close();
     this.travel(place);
+  }
+
+  goToDungeon(dungeon: DungeonId) {
+    this.dungeonWindow.close();
+    this.travel(dungeon);
   }
 
   /** 가진 자원을 모두 판다. 금액은 서버가 계산한다. */
@@ -1302,9 +1374,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const { portal, image } of this.portalSprites) image.setTexture(this.portalTexture(portal, frame));
   }
 
-  /** 전쟁터: 손전등 빛을 다시 계산하고, 빛 밖에 있는 다른 플레이어와 이름표를 숨긴다. */
+  /**
+   * 전쟁터: 손전등 빛을 다시 계산하고, 빛 밖에 있는 다른 플레이어와 이름표를 숨긴다.
+   * 4층: 숨은 방 안에 선 다른 사람은 내가 방을 열지 않았으면(내 화면에서 그 칸이 허공이면) 숨긴다(2026-11-15).
+   */
   private updateVision() {
-    if (!this.flashlight.active) return;
+    if (!this.flashlight.active) {
+      if (this.mapId === HIDEOUT.map) this.hideOthersInVoid();
+      return;
+    }
     const me = this.me.position();
     const ox = me.x + 0.5;
     const oy = me.y + 0.5;
@@ -1321,6 +1399,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const seen = this.flashlight.sees(at.x + 0.5, at.y + 0.5);
       avatar.setHidden(!seen);
       this.tags.setHidden(id, !seen);
+    }
+  }
+
+  /** 내 화면에서 허공인 칸(닫힌 숨은 방)에 선 다른 사람과 이름표, 말풍선을 숨긴다. */
+  private hideOthersInVoid() {
+    for (const [id, avatar] of this.others) {
+      const hidden = this.world.isVoid(avatar.tile.x, avatar.tile.y);
+      if (avatar.setHidden(hidden)) this.tags.setHidden(id, hidden);
     }
   }
 
@@ -1360,7 +1446,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.minimap.draw({
       me: this.me.tile,
       // 전쟁터에서는 미니맵에도 다른 사람을 그리지 않는다(빛 밖의 사람이 들키지 않게).
-      others: MAPS[this.mapId].dark ? [] : [...this.others.values()].map((avatar) => avatar.tile),
+      // 숨은 방 안의 사람도 방을 열지 않은 사람의 미니맵에는 그리지 않는다.
+      others: MAPS[this.mapId].dark
+        ? []
+        : [...this.others.values()].map((avatar) => avatar.tile).filter(({ x, y }) => !this.world.isVoid(x, y)),
       blocks: [...this.world.blockTiles(), ...this.world.map.walls, ...this.world.map.partitions],
       portals: this.world.portals,
     });
@@ -1436,14 +1525,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const myId = this.session.profile.id;
     const { melee, auto, range } = WEAPONS[weapon];
 
+    // 몬스터를 맞히면 피해를 몬스터 쪽(src/game/monsters.ts)에 넘기고, 사람을 맞히면 서버가 판정한다.
+    const hit = (target: string) => {
+      if (isMonsterTarget(target)) this.monsters?.damage(target, this.economy.monsterDamage(weapon));
+      else void this.session.hitPlayer(target, weapon);
+    };
     if (melee) {
       const target = this.slash(myId, this.me, weapon, { x: fromX, y: fromY }, { x: aim.gx, y: aim.gy });
-      if (target) void this.session.hitPlayer(target, weapon);
+      if (target) hit(target);
     } else {
       const shot = this.scatter(weapon, fromX, fromY, aim.gx, aim.gy);
-      this.bullets.fire(myId, fromX, fromY, shot.x, shot.y, range, (target) => {
-        void this.session.hitPlayer(target, weapon);
-      });
+      this.bullets.fire(myId, fromX, fromY, shot.x, shot.y, range, hit);
     }
 
     if (!auto || this.shotsFired % BURST === 0) this.session.sendShot(weapon, fromX, fromY, aim.gx, aim.gy);
@@ -1474,6 +1566,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 공격이 날아온 방향으로 맞은 사람을 밀어낸다. 체력은 서버가 따로 처리한다. */
   private playHit(id: string, dx: number, dy: number) {
+    if (isMonsterTarget(id)) {
+      this.monsters?.flash(id);
+      return;
+    }
     const avatar = id === this.session.profile.id ? this.me : this.others.get(id);
     if (!avatar) return;
     const screenX = (dx - dy) * (TILE_W / 2);
@@ -1483,6 +1579,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   private bulletTargets(): BulletTarget[] {
+    // 던전에서는 몬스터만 맞는다. 같이 사냥하는 사람끼리 총알이 맞지 않게 한다(에이전트가 정함).
+    if (this.monsters) return this.monsters.targets();
     const targets: BulletTarget[] = [];
     const add = (id: string, avatar: Avatar) => {
       if (avatar.isDown) return;
@@ -1779,8 +1877,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 블록은 무제한이라 가방에서 빼지 않는다. 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
     const { mapId } = this;
     this.spawnBlock(spot, z, id);
+    const hidden = this.inHideoutHere(x, y);
+    if (hidden) this.hideoutBlocks.set(`${x},${y},${z}`, { x, y, z, id });
     void this.session.placeBlock(x, y, z, id).then((placed) => {
       if (placed || mapId !== this.mapId) return;
+      if (hidden) this.hideoutBlocks.delete(`${x},${y},${z}`);
       this.removeBlockAt(x, y, z);
       void this.session.syncBlocks();
     });
@@ -1807,7 +1908,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const { mapId } = this;
     const removed = await this.session.removeBlock(target.x, target.y, top.z);
     if (!removed) return;
-    if (mapId === this.mapId) this.removeBlockAt(target.x, target.y, top.z);
+    if (mapId !== this.mapId) return;
+    this.hideoutBlocks.delete(`${target.x},${target.y},${top.z}`);
+    this.removeBlockAt(target.x, target.y, top.z);
   }
 
   private spawnBlock({ x, y }: Tile, z: number, id: BlockId) {
@@ -2021,6 +2124,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   onRoster(ids: Set<string>) {
+    this.monsters?.setRoster(ids);
     for (const [id, avatar] of this.others) {
       if (ids.has(id)) continue;
       this.workFx.stop(id);
@@ -2049,6 +2153,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   onBlocksLoaded(blocks: PlacedBlock[]) {
+    this.hideoutBlocks.clear();
     const wanted = new Set(blocks.map(({ x, y, z }) => `${x},${y},${z}`));
     for (const key of [...this.blockImages.keys()]) {
       if (wanted.has(key)) continue;
@@ -2059,13 +2164,85 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   onBlockPlaced({ x, y, z, id }: PlacedBlock) {
+    // 숨은 방 안의 것은 따로 두고, 방이 열려 있을 때만 그린다.
+    if (this.inHideoutHere(x, y)) {
+      this.hideoutBlocks.set(`${x},${y},${z}`, { x, y, z, id });
+      if (!this.hideoutShown) return;
+    }
     // 층 구조가 바뀌어 벽이나 바닥 밖이 된 칸의 옛 블록은 그리지 않는다.
     if (!this.world.isOpenGround(x, y)) return;
     if (!this.world.blockAtLevel(x, y, z)) this.spawnBlock({ x, y }, z, id);
   }
 
   onBlockRemoved(x: number, y: number, z: number) {
+    this.hideoutBlocks.delete(`${x},${y},${z}`);
     this.removeBlockAt(x, y, z);
+  }
+
+  onMonster(message: MonsterMessage) {
+    this.monsters?.onMessage(message);
+  }
+
+  /** 던전에 들어왔다: 몬스터를 만들고, 호스트면 멈추지 않는 시계로 움직인다. */
+  private startMonsters(id: DungeonId) {
+    const kinds = this.monsterKinds.filter((kind) => kind.dungeon === id);
+    const myId = this.session.profile.id;
+    this.monsters = new MonsterField(
+      this,
+      kinds,
+      {
+        myId,
+        players: () => {
+          const list: { id: string; x: number; y: number }[] = [];
+          if (!this.down) list.push({ id: myId, ...this.me.tile });
+          for (const [other, avatar] of this.others) if (!avatar.isDown) list.push({ id: other, ...avatar.tile });
+          return list;
+        },
+        walkable: (x, y) => this.world.isWalkable(x, y),
+        safe: (x, y) => inSafeZone(id, x, y),
+        spawnTiles: spawnCandidates(id),
+        send: (message) => this.session.sendMonster(message),
+        onMyKill: (kind, x, y) => void this.claimKill(kind, x, y),
+        onHitMe: (kind) => void this.hitByMonster(kind),
+      },
+      DEPTH_OVERLAY + 0.5,
+    );
+    this.stopMonsterTicker = startTicker(MONSTER_TICK_MS, () => this.monsters?.tick());
+  }
+
+  private stopMonsters() {
+    this.stopMonsterTicker?.();
+    this.stopMonsterTicker = null;
+    this.monsters?.destroy();
+    this.monsters = null;
+  }
+
+  /** 내가 마지막 한 방을 친 몬스터의 보상을 받는다. */
+  private async claimKill(kind: MonsterKind, x: number, y: number) {
+    const reward = await this.session.killMonster(kind.id);
+    if (!reward) return;
+    this.economy.setGold(reward.gold);
+    this.hud.toast(`${kind.name} 처치 · ${reward.gained_gold.toLocaleString()}G`, `경험치 +${reward.gained_exp.toLocaleString()}`);
+    this.gainExp(BigInt(reward.level), reward.exp);
+    const p = gridToWorld(x + 0.5, y + 0.5);
+    this.floatGold(`+${reward.gained_gold.toLocaleString()}G`, p.x, p.y);
+  }
+
+  /** 몬스터에게 맞았다. 체력은 서버가 정하고, 다른 사람에게도 서버가 알린다. */
+  private async hitByMonster(kind: MonsterKind) {
+    if (this.down) return;
+    const hp = await this.session.monsterHit(kind.id);
+    if (hp !== null) this.onHp(this.session.profile.id, hp, null);
+  }
+
+  /** 몬스터를 잡은 자리에서 받은 골드가 떠오른다. */
+  private floatGold(text: string, x: number, y: number) {
+    const label = this.add
+      .text(x, y - 24, text, { fontFamily: 'Malgun Gothic, sans-serif', fontSize: '10px', color: '#ffe27a', stroke: '#3a2208', strokeThickness: 3 })
+      .setOrigin(0.5, 1)
+      .setDepth(DEPTH_DAYLIGHT - 1)
+      .setResolution(2);
+    this.tweens.add({ targets: label, y: y - 44, alpha: 0, duration: 1100, ease: 'Sine.easeOut', onComplete: () => label.destroy() });
   }
 
   onConnection(connected: boolean, reason: string | null) {

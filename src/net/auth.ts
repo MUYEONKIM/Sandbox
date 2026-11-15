@@ -1,4 +1,6 @@
 import type { AuthError, User } from '@supabase/supabase-js';
+import type { DungeonInfo, MonsterKind } from '../game/dungeon';
+import { DUNGEON_IDS, type DungeonId } from '../game/maps';
 import type { EconomyData } from '../game/economy';
 import { DEFAULT_MAP, isMapId, type WorkId } from '../game/maps';
 import { BASE_HP } from '../config';
@@ -122,4 +124,33 @@ export async function loadProfile(id: string): Promise<Profile | null> {
   if (!data) return null;
   // 없어진 맵(행복 아파트 등)에 저장된 플레이어는 시작마을에서 시작한다.
   return isMapId(data.map) ? data : { ...data, map: DEFAULT_MAP };
+}
+
+/** 던전과 몬스터 표를 읽는다. 표가 아직 없거나 실패하면 빈 목록이다(던전 창에 안내가 뜬다). */
+export async function loadDungeons(): Promise<{ dungeons: DungeonInfo[]; monsters: MonsterKind[] }> {
+  const [dungeons, monsters] = await Promise.all([
+    supabase.from('dungeons').select('id, name, blurb').order('sort'),
+    supabase.from('monsters').select('id, dungeon, name, hp, damage, speed, attack_ms, reach, sight, gold, exp, count').order('sort'),
+  ]);
+  if (dungeons.error || monsters.error) return { dungeons: [], monsters: [] };
+  const known = (id: string): id is DungeonId => (DUNGEON_IDS as readonly string[]).includes(id);
+  return {
+    dungeons: (dungeons.data as { id: string; name: string; blurb: string }[]).filter((d) => known(d.id)) as DungeonInfo[],
+    monsters: (monsters.data as Record<string, unknown>[])
+      .filter((m) => known(String(m.dungeon)))
+      .map((m) => ({
+        id: String(m.id),
+        dungeon: m.dungeon as DungeonId,
+        name: String(m.name),
+        hp: Number(m.hp),
+        damage: Number(m.damage),
+        speed: Number(m.speed),
+        attackMs: Number(m.attack_ms),
+        reach: Number(m.reach),
+        sight: Number(m.sight),
+        gold: Number(m.gold),
+        exp: Number(m.exp),
+        count: Number(m.count),
+      })),
+  };
 }

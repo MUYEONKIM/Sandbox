@@ -28,7 +28,10 @@ export type Area = readonly [number, number, number, number];
 export const isInside = ([x0, y0, x1, y1]: Area, x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
 
 export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
-export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | TowerId | WorkId;
+/** 던전(2026-11-15 사용자 요청). id는 서버 dungeons 표와 같다. */
+export type DungeonId = 'meadow' | 'inferno';
+export const DUNGEON_IDS: readonly DungeonId[] = ['meadow', 'inferno'];
+export type MapId = 'plains' | 'snow' | 'desert' | 'volcano' | 'forest' | TowerId | WorkId | DungeonId;
 
 /** tiles.png의 타일 번호. 왼쪽 위부터 오른쪽으로 센다. 번호를 여러 번 넣으면 더 자주 나온다. */
 const GRASS = [22, 23, 24];
@@ -61,6 +64,13 @@ export interface MapInfo {
   safe?: boolean;
   /** true면 늘 어둡고 내 손전등 시야만 보인다(전쟁터, 2026-11-13 사용자 요청). */
   dark?: boolean;
+  /** 던전이면 true. 몬스터가 나오고, 블록을 놓을 수 없고, 사람끼리는 총알이 맞지 않는다. */
+  dungeon?: boolean;
+  /**
+   * 늘 같은 분위기로 덮는 색(시간대 밝기 대신)과 맵 밖 배경색. 있으면 용암 불빛과 불똥, 화면 가장자리 어둠도 켠다(src/game/gloom.ts).
+   * 지옥 던전(2026-11-15 사용자 요청 "조금 더 음습하게").
+   */
+  mood?: { color: number; alpha: number; background: string };
 }
 
 /** 맵 목록. 평원을 중심으로 귀퉁이가 각 맵으로 이어지고, 작업장은 노동청에서 간다. 블록은 어느 맵이든 바닥 전체에 놓는다(2026-11-11 사용자 요청). */
@@ -231,6 +241,38 @@ export const MAPS: Record<MapId, MapInfo> = {
     links: { bottom: 'plains' },
     work: true,
   },
+  // 던전은 시작마을 아래 "던전 입장" 포탈의 창에서 고른다. 위쪽 귀퉁이 포탈로 시작마을에 돌아간다.
+  meadow: {
+    name: '평원 던전',
+    floor: GRASS,
+    floorTop: BLOCK_TOP,
+    color: 0x86b048,
+    accent: 0x9df08f,
+    links: { top: 'plains' },
+    dungeon: true,
+  },
+  inferno: {
+    name: '지옥 던전',
+    floor: SCORCHED_DIRT,
+    floorTop: BLOCK_TOP,
+    color: 0x5a2418,
+    accent: 0xff4a2a,
+    links: { top: 'plains' },
+    dungeon: true,
+    mood: { color: 0x1a0207, alpha: 0.5, background: '#0b0305' },
+  },
+};
+
+export function isDungeon(id: MapId): id is DungeonId {
+  return MAPS[id].dungeon === true;
+}
+
+/** 시작마을 아래쪽 귀퉁이의 던전 입장 포탈. 타면 던전 고르는 창이 열리고, 던전에서 돌아오면 이 앞에 선다. */
+export const DUNGEON_GATE = {
+  door: { x: END, y: END },
+  landing: { x: END - LANDING_ALONG, y: END - LANDING_ACROSS },
+  name: '던전 입장',
+  accent: 0xff5a5a,
 };
 
 export const DEFAULT_MAP: MapId = 'plains';
@@ -332,8 +374,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office', 'shop', 'counter', 'fame', 'board', 'trade', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'shop' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
+  /** 'office', 'dungeon', 'shop', 'counter', 'fame', 'board', 'trade', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'dungeon' | 'shop' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
@@ -356,12 +398,14 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...BOARD.door, to: 'board', landing: BOARD.landing });
     portals.push({ ...EXCHANGE.door, to: 'exchange', landing: EXCHANGE.landing });
     portals.push({ ...CASINO_DOOR.door, to: 'casino', landing: CASINO_DOOR.landing });
+    portals.push({ ...DUNGEON_GATE.door, to: 'dungeon', landing: DUNGEON_GATE.landing });
   }
   return portals;
 }
 
 function portalInfo({ to }: Portal) {
   if (to === 'office') return OFFICE;
+  if (to === 'dungeon') return DUNGEON_GATE;
   if (to === 'counter') return COUNTER_INFO;
   if (to === 'panel') return PANEL_INFO;
   if (to === 'fame') return FAME;
@@ -381,9 +425,10 @@ export function portalColor(portal: Portal) {
 
 /**
  * from에서 to로 넘어갔을 때 서는 칸: 돌아오는 포탈 앞이다.
- * 엘리베이터로 오면 엘리베이터 앞이고, 작업장에서 돌아오면 노동청 앞이다.
+ * 엘리베이터로 오면 엘리베이터 앞이고, 작업장에서 돌아오면 노동청 앞, 던전에서 돌아오면 던전 입장 포탈 앞이다.
  */
 export function arrivalFor(to: MapId, from: MapId) {
+  if (to === DEFAULT_MAP && isDungeon(from)) return DUNGEON_GATE.landing;
   const portals = portalsOf(to);
   const back =
     portals.find((p) => p.to === from) ??

@@ -28,6 +28,37 @@ export interface HarvestResult {
 
 export type HarvestFail = 'elsewhere' | 'failed';
 
+/** 몬스터를 잡고 받은 것. level과 exp는 받은 뒤의 내 레벨과 경험치다. */
+export interface KillReward {
+  gold: number;
+  level: string;
+  exp: number;
+  gained_gold: number;
+  gained_exp: number;
+}
+
+/** 던전 몬스터 알림. 몬스터를 움직이는 사람(호스트)과 나머지 사람이 맵 채널로 주고받는다(src/game/monsters.ts). */
+export type MonsterMessage =
+  | { event: 'mstate'; from: string; list: number[][] }
+  | { event: 'mhit'; id: number; damage: number; by: string }
+  | { event: 'mdead'; id: number; kind: string; by: string }
+  | { event: 'matk'; id: number; kind: string; target: string };
+
+const MONSTER_EVENTS = ['mstate', 'mhit', 'mdead', 'matk'] as const;
+
+function parseMonsterMessage(event: string, p: Record<string, unknown> | undefined): MonsterMessage | null {
+  if (!p) return null;
+  const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+  const str = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 64;
+  if (event === 'mstate' && str(p.from) && Array.isArray(p.list) && p.list.length <= 60 && p.list.every((row) => Array.isArray(row) && row.length <= 8 && row.every(num))) {
+    return { event, from: p.from as string, list: p.list as number[][] };
+  }
+  if (event === 'mhit' && num(p.id) && num(p.damage) && str(p.by)) return { event, id: p.id as number, damage: Math.max(0, Math.min(10_000, p.damage as number)), by: p.by as string };
+  if (event === 'mdead' && num(p.id) && str(p.kind) && str(p.by)) return { event, id: p.id as number, kind: p.kind as string, by: p.by as string };
+  if (event === 'matk' && num(p.id) && str(p.kind) && str(p.target)) return { event, id: p.id as number, kind: p.kind as string, target: p.target as string };
+  return null;
+}
+
 /** 닉네임을 못 바꾼 까닭: 이미 쓰는 이름, 지금 이름과 같음, 2~12자가 아님, 변경권 없음, 그 밖 */
 export type RenameFail = 'taken' | 'same' | 'bad' | 'ticket' | 'failed';
 
@@ -189,6 +220,8 @@ export interface SessionEvents {
   onGroundRemoved(id: number): void;
   /** 맵 채널 연결 상태. 끊겼으면 reason에 이유가 온다. */
   onConnection(connected: boolean, reason: string | null): void;
+  /** 던전 몬스터 알림 */
+  onMonster(message: MonsterMessage): void;
 }
 
 interface ProfilePatch {
@@ -442,6 +475,10 @@ export class GameSession {
       .on('broadcast', { event: 'harvest' }, ({ payload }) => {
         if (current() && typeof payload?.id === 'string' && payload.id !== this.profile.id) events.onHarvest(payload.id, payload.rare === true);
       })
+      .on('broadcast', { event: 'mstate' }, ({ payload }) => this.monsterIn(current, 'mstate', payload))
+      .on('broadcast', { event: 'mhit' }, ({ payload }) => this.monsterIn(current, 'mhit', payload))
+      .on('broadcast', { event: 'mdead' }, ({ payload }) => this.monsterIn(current, 'mdead', payload))
+      .on('broadcast', { event: 'matk' }, ({ payload }) => this.monsterIn(current, 'matk', payload))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'blocks' }, ({ new: row }) => {
         const block = parseBlock(row);
         if (current() && block && row.map === mapId) events.onBlockPlaced(block);
@@ -599,6 +636,37 @@ export class GameSession {
   sendHarvest(rare: boolean) {
     if (!this.joined || !this.channel) return;
     void this.channel.send({ type: 'broadcast', event: 'harvest', payload: { id: this.profile.id, rare } });
+  }
+
+  private monsterIn(current: () => boolean, event: (typeof MONSTER_EVENTS)[number], payload: Record<string, unknown> | undefined) {
+    if (!current()) return;
+    const message = parseMonsterMessage(event, payload);
+    if (message) this.events.onMonster(message);
+  }
+
+  /** 던전 몬스터 알림을 같은 맵 사람들에게 보낸다. */
+  sendMonster(message: MonsterMessage) {
+    if (!this.joined || !this.channel) return;
+    const { event, ...payload } = message;
+    void this.channel.send({ type: 'broadcast', event, payload });
+  }
+
+  /** 몬스터를 잡은 보상을 받는다. 서버가 거절하면 null이다. */
+  async killMonster(kind: string): Promise<KillReward | null> {
+    const { data, error } = await supabase.rpc('kill_monster', { kind });
+    return error ? null : (data as KillReward);
+  }
+
+  /** 몬스터에게 맞았다. 서버가 정한 남은 체력을 돌려준다. 던전 밖이거나 실패하면 null이다. */
+  async monsterHit(kind: string): Promise<number | null> {
+    const { data, error } = await supabase.rpc('monster_hit', { kind });
+    return error || typeof data !== 'number' ? null : data;
+  }
+
+  /** 던전마다 지금 있는 사람(최근 2분 안에 움직였거나 몬스터를 잡은 사람). 실패하면 null이다. */
+  async fetchDungeonRoster(): Promise<{ dungeon: string; nickname: string }[] | null> {
+    const { data, error } = await supabase.rpc('dungeon_roster');
+    return error ? null : (data as { dungeon: string; nickname: string }[]);
   }
 
   sendShot(weapon: WeaponId, fromX: number, fromY: number, toX: number, toY: number) {

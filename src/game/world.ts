@@ -175,6 +175,11 @@ export class World {
     for (const { x, y } of solid) this.map.solid[this.key(x, y)] = 1;
   }
 
+  /** 허공(바닥이 없는 칸)인지. 맵 밖도 허공으로 본다. 닫힌 숨은 방 칸이 여기에 든다. */
+  isVoid(x: number, y: number) {
+    return !this.inBounds(x, y) || this.map.terrain[this.key(x, y)] === Terrain.Void;
+  }
+
   /** openFloor로 연 바닥을 다시 허공으로 되돌린다. */
   closeFloor([x0, y0, x1, y1]: Area) {
     for (let y = y0; y <= y1; y++) {

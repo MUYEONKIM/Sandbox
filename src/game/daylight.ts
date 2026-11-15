@@ -33,6 +33,8 @@ export class Daylight {
   private readonly cover: Phaser.GameObjects.Rectangle;
   private phase: DayPhase = phaseOf(kstHour());
   private outdoor = false;
+  /** 시간대 대신 늘 덮는 색(지옥 던전처럼 분위기가 정해진 맵) */
+  private mood: { color: number; alpha: number } | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -42,9 +44,10 @@ export class Daylight {
     scene.time.addEvent({ delay: CHECK_MS, loop: true, callback: () => this.check() });
   }
 
-  /** 맵에 들어갈 때 부른다. outdoor면 그 맵 범위(월드 좌표)를 시간대 색으로 덮는다. */
-  setMap(outdoor: boolean, left: number, top: number, width: number, height: number) {
+  /** 맵에 들어갈 때 부른다. outdoor면 그 맵 범위(월드 좌표)를 시간대 색으로, mood가 있으면 그 색으로 덮는다. */
+  setMap(outdoor: boolean, left: number, top: number, width: number, height: number, mood: { color: number; alpha: number } | null = null) {
     this.outdoor = outdoor;
+    this.mood = mood;
     this.scene.tweens.killTweensOf(this.cover);
     this.cover.setPosition(left, top).setSize(width, height);
     this.paint(false);
@@ -58,8 +61,8 @@ export class Daylight {
   }
 
   private paint(fade: boolean) {
-    const { color, alpha } = LOOK[this.phase];
-    const target = this.outdoor ? alpha : 0;
+    const { color, alpha } = this.mood ?? LOOK[this.phase];
+    const target = this.mood ? alpha : this.outdoor ? alpha : 0;
     this.cover.setFillStyle(color, 1);
     this.scene.tweens.killTweensOf(this.cover);
     if (fade) this.scene.tweens.add({ targets: this.cover, alpha: target, duration: FADE_MS });
