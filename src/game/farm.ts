@@ -84,9 +84,9 @@ export function formatGrow(seconds: number) {
 /** 흙길 타일(tiles.png). 땅이 아닌 칸에 깐다. */
 export const FARM_ROAD_TILES = [0, 1, 2, 3, 4, 5];
 /** 산 땅에 덮는 갈아 놓은 밭 타일(tiles.png) */
-const FARMLAND_TILES = [25, 26];
+export const FARMLAND_TILES = [25, 26];
 /** 바닥 타일 그림에서 윗면이 시작하는 높이(maps.ts의 BLOCK_TOP) */
-const FLOOR_TOP = 8;
+export const FLOOR_TOP = 8;
 /** 자라는 단계를 다시 셈하는 간격 */
 const STAGE_CHECK_MS = 30_000;
 
@@ -130,8 +130,8 @@ function markCanvas(kind: 'heart' | 'cloud') {
   return canvas;
 }
 
-/** 작물 그림의 단계: 심은 직후 첫 장, 다 자라면 마지막 장(바구니), 그 사이는 자란 비율 */
-function stageOf(plot: Plot, crop: CropInfo, now: number) {
+/** 작물 그림의 단계: 심은 직후 첫 장, 다 자라면 마지막 장(바구니), 그 사이는 자란 비율. 농협 땅 지도도 쓴다. */
+export function stageOf(plot: Plot, crop: CropInfo, now: number) {
   const frames = CROP_ART[crop.id].frames;
   const grown = (now - (plot.plantedAt ?? now)) / (crop.growSeconds * 1000);
   if (grown >= 1) return frames - 1;

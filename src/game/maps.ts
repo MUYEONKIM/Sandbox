@@ -170,6 +170,16 @@ export const MAPS: Record<MapId, MapInfo> = {
     links: {},
   },
   // 상점 안(2026-11-15 사용자 요청). 시작마을 가게라 공격이 막힌다(에이전트가 정함, 서버 hit_player에도 있음).
+  // 대장간 안(2026-11-16). 시작마을 건물 안이라 공격이 막힌다(서버 hit_player도 'smithy'를 막음).
+  smithy: {
+    name: '대장간',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x6b4a3a,
+    accent: 0xff9a3c,
+    links: {},
+    safe: true,
+  },
   mart: {
     name: '상점',
     floor: [],
@@ -321,6 +331,26 @@ export const SHOP = {
   accent: 0xb58cff,
 };
 
+/**
+ * 대장간(2026-11-16, 사용자 "새 건물 + 포탈"). 성 아래쪽 길 너머 잔디밭(전쟁터 길과 던전 길 사이)에 선 벽돌 공방이다.
+ * 자리는 디자인 세션이 포탈·안내판을 가리지 않게 골랐다(PM을 거쳐 사용자가 "같이 넣기"로 정함, 공유 노트 occlusion.md).
+ * 그림은 디자인 세션이 그렸고(public/sprites/smithy.png, 땅 4×4), 문은 왼쪽 면 gx 1~2라 문 칸은 (x + 1, y + 4)다.
+ * 문 앞 칸이 포탈이고, 타면 대장간 안(smithy 맵)으로 들어간다. 사고, 강화하고, 파는 것은 안의 창구에서 한다.
+ */
+export const SMITHY = {
+  sprite: 'smithy' as const,
+  x: 22,
+  y: 36,
+  w: 4,
+  d: 4,
+  door: { x: 23, y: 40 },
+  landing: { x: 24, y: 42 },
+  name: '대장간',
+};
+
+/** 대장간 안 창구 포탈 */
+const FORGE_INFO = { name: '대장간', accent: 0xff9a3c };
+
 /** 시작마을 오른쪽 귀퉁이 주점(tavern)의 오른쪽 벽 문. 문 앞 칸이 포탈이고, 타면 도박장으로 들어간다. 맵 끝이라 벽을 따라 비껴 선다. */
 export const CASINO_DOOR = { door: { x: 41, y: 38 }, landing: { x: 43, y: 38 } };
 
@@ -408,8 +438,8 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office', 'dungeon', 'coop', 'shop', 'counter', 'fame', 'board', 'trade', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'dungeon' | 'coop' | 'shop' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
+  /** 'office', 'dungeon', 'coop', 'shop', 'forge-shop', 'forge-anvil', 'counter', 'fame', 'board', 'trade', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'dungeon' | 'coop' | 'shop' | 'forge-shop' | 'forge-anvil' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
@@ -434,6 +464,7 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...CASINO_DOOR.door, to: 'casino', landing: CASINO_DOOR.landing });
     portals.push({ ...DUNGEON_GATE.door, to: 'dungeon', landing: DUNGEON_GATE.landing });
     portals.push({ ...COOP.door, to: 'coop', landing: COOP.landing });
+    portals.push({ ...SMITHY.door, to: 'smithy', landing: SMITHY.landing });
   }
   return portals;
 }
@@ -447,6 +478,7 @@ function portalInfo({ to }: Portal) {
   if (to === 'fame') return FAME;
   if (to === 'board') return BOARD;
   if (to === 'trade') return TRADE_INFO;
+  if (to === 'forge-shop' || to === 'forge-anvil') return FORGE_INFO;
   if (isGame(to)) return GAMES[to];
   return to === 'shop' ? SHOP : MAPS[to];
 }

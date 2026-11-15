@@ -2,7 +2,7 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { BOARD, CASTLE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, TAVERN, type Area } from './maps';
+import { BOARD, CASTLE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, type Area } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
@@ -16,8 +16,10 @@ const SEED = 7919;
 /**
  * 시작마을은 중요한 건물만 두고 장식을 최소로 한다(2026-11-11 사용자 요청 "너무 많이 꾸며져 있다").
  * 블록과 꾸미기를 누구나 어디에나 놓을 수 있으니 빈 땅을 넉넉히 남긴다.
+ * 2026-11-16부터 나무는 정한 자리(FIXED_TREES)에만 심는다. 무작위로 심으면 건물이 하나만 늘어도 자리가 통째로 바뀌어
+ * 나무가 안내판을 가리거나 맵 귀퉁이 밖으로 걸쳐 보였다(사용자 "가려지면 안 되고 지형지물이 잘 조화되게", 자리는 디자인 세션이 정함).
  */
-const TREE_COUNT = 6;
+const TREE_COUNT = 0;
 const FLOWER_COUNT = 18;
 const SLIM_TREES: SpriteName[] = ['pinetree', 'firtree'];
 const ALL_TREES: SpriteName[] = ['pinetree', 'firtree', 'oaktree'];
@@ -54,6 +56,8 @@ const STONE_ROADS: Area[] = [
   [5, 39, 13, 40],
   // 농협: 농장 길에서 오른쪽으로
   [34, 10, 40, 11],
+  // 대장간: 문 앞에서 던전 길까지(2026-11-16)
+  [23, 41, 31, 42],
   // 도박장: 던전 길에서 위로
   [42, 37, 43, 42],
   // 농장(오른쪽 귀퉁이)
@@ -72,6 +76,7 @@ const BUILDINGS: Building[] = [
   { sprite: TAVERN.sprite, x: TAVERN.x, y: TAVERN.y, w: TAVERN.w, d: TAVERN.d },
   { sprite: COOP.sprite, x: COOP.x, y: COOP.y, w: COOP.w, d: COOP.d },
   { sprite: EXCHANGE.sprite, x: EXCHANGE.x, y: EXCHANGE.y, w: EXCHANGE.w, d: EXCHANGE.d },
+  { sprite: SMITHY.sprite, x: SMITHY.x, y: SMITHY.y, w: SMITHY.w, d: SMITHY.d },
 ];
 
 const FIXED_TREES: Tree[] = [
@@ -83,6 +88,13 @@ const FIXED_TREES: Tree[] = [
   { sprite: BOARD.sprite, x: BOARD.x, y: BOARD.y },
   // 귀퉁이 포탈 안내판
   ...GUIDEPOSTS.map(({ x, y }) => ({ sprite: 'board' as const, x, y })),
+  // 마을 나무 여섯 그루(2026-11-16 디자인 세션이 포탈·안내판을 가리지 않는 자리로 고름, occlusion.md)
+  { sprite: 'oaktree', x: 23, y: 7 },
+  { sprite: 'pinetree', x: 29, y: 4 },
+  { sprite: 'firtree', x: 39, y: 17 },
+  { sprite: 'pinetree', x: 41, y: 33 },
+  { sprite: 'firtree', x: 6, y: 13 },
+  { sprite: 'firtree', x: 21, y: 43 },
 ];
 
 /** 울타리처럼 줄지어 심은 덤불: 성 앞 정원. 가운데는 지나다닐 수 있게 비운다. */
@@ -99,6 +111,7 @@ const TREELESS: Area[] = [
   [34, 3, 42, 12],
   [34, 34, 45, 45],
   [34, 19, 40, 28],
+  [16, 34, 31, 44],
 ];
 
 

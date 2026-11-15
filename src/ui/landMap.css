@@ -1,0 +1,89 @@
+/*
+ * 농협 땅 지도(src/ui/landMap.ts, 2026-11-16, 기획 docs/balance/farm.md 9.1): 게임과 같은 마름모 농장.
+ * 코드 세션이 지도 모듈과 함께 따로 둔 스타일이다(src/style.css의 예전 .land-canvas 규칙은 더 쓰지 않는다).
+ */
+.modal.land-map {
+  width: min(1000px, 100%);
+}
+
+.land-board {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 지도 칸: 농장 그림 비율(1472 × 824 ≈ 0.56)로, PC는 화면 높이의 65%까지 */
+.land-view {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1472 / 824;
+  max-height: 65vh;
+  overflow: hidden;
+  background: #22303a;
+  border: 2px solid var(--slot-sunken);
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+
+.land-view.moving {
+  cursor: grab;
+}
+
+.land-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.land-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.land-stage.crisp .land-layer {
+  image-rendering: pixelated;
+}
+
+.land-mode,
+.land-zoom-button {
+  color: var(--text);
+  background: var(--panel);
+  border: 2px solid var(--panel-edge);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.land-mode {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  left: 6px;
+  padding: 3px 8px;
+}
+
+.land-zoom {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.land-zoom-button {
+  width: 30px;
+  height: 30px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+@media (max-width: 620px) {
+  .land-view {
+    max-height: none;
+  }
+}

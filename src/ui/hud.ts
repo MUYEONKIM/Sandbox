@@ -3,14 +3,14 @@ import { BLOCK_IDS } from '../blocks';
 import { HOTBAR_SIZE, MEMO_SLOT, TABS, type Inventory, type TabId } from '../game/inventory';
 import { formatLevel, levelNeed } from '../game/level';
 import { goldText, type Gold } from '../game/gold';
-import { isPotion, isSeed, itemName, paintItem, POTION_IDS, SEED_IDS, WEAPON_IDS, type ItemId, type PotionId, type SeedId } from '../items';
+import { isPotion, isSeed, paintItem, POTION_IDS, SEED_IDS, WEAPON_IDS, type GearRef, type ItemId, type PotionId, type SeedId } from '../items';
 import { element } from './dom';
 import type { MyStatus } from './info';
 
 /** 이미지를 읽은 뒤에 그릴 수 있어서 Hud를 만들 때 준비한다. */
 function paintIcons() {
   return Object.fromEntries([...BLOCK_IDS, ...WEAPON_IDS, ...POTION_IDS, ...SEED_IDS].map((id) => [id, paintItem(id).toDataURL()])) as Record<
-    ItemId,
+    Exclude<ItemId, GearRef>,
     string
   >;
 }
@@ -26,7 +26,7 @@ const HELP_ROWS: [string, string[], string?][] = [
   ['작업 · 줍기', ['F']],
   ['설치 · 공격', ['좌클릭']],
   ['회수', ['우클릭']],
-  ['가구 돌리기', ['R']],
+  ['재장전 · 가구 돌리기', ['R']],
   ['맵 이동', ['귀퉁이 포탈']],
   ['이 안내 닫기', ['H']],
 ];
@@ -63,6 +63,8 @@ export class Hud {
   readonly status: MyStatus = { level: 1n, exp: 0, hp: 0, maxHp: 0 };
   private readonly pickedName: HTMLElement;
   private readonly pickedIcon: HTMLImageElement;
+  /** 든 총의 남은 탄("12 / 12", 재장전 중). 든 것 이름 옆에 쓴다. */
+  private ammo: string | null = null;
   private readonly levelText: HTMLElement;
   private readonly expFill: HTMLElement;
   private readonly expText: HTMLElement;
@@ -86,6 +88,8 @@ export class Hud {
   seedCount: (id: SeedId) => number = () => 0;
   /** 휴대폰에서 고른 포션 칸을 한 번 더 눌렀다 */
   onUsePotion?: () => void;
+  /** 고른 칸을 한 번 더 눌렀을 때(포션 말고): 총은 재장전, 가구는 돌리기. 없으면 가구만 돌린다. */
+  onReselect?: () => void;
   /** 인벤토리의 골드 '버리기' 버튼을 누르면 부른다(main.ts가 정한다). */
   onDropGold: (() => void) | null = null;
   private readonly connection: HTMLElement;
@@ -399,9 +403,9 @@ export class Hud {
     if (index !== null) {
       const stack = this.inventory.slots[index];
       if (this.isOpen && stack) this.startDrag({ from: index }, stack.id, e);
-      // 고른 칸을 한 번 더 누르면 가구를 돌리고(휴대폰에는 R 키가 없어서), 포션이면 마신다.
+      // 고른 칸을 한 번 더 누르면 R처럼 총은 재장전하고 가구는 돌리며(휴대폰에는 R 키가 없어서), 포션이면 마신다.
       else if (index === this.inventory.selected && stack && isPotion(stack.id)) this.onUsePotion?.();
-      else if (index === this.inventory.selected) this.inventory.rotateSelected();
+      else if (index === this.inventory.selected) (this.onReselect ?? (() => this.inventory.rotateSelected()))();
       else this.inventory.select(index);
     } else if (item && this.isOpen) {
       this.startDrag({ item }, item, e);
@@ -410,7 +414,7 @@ export class Hud {
 
   private startDrag(drag: Drag, id: ItemId, e: PointerEvent) {
     this.drag = drag;
-    this.dragIcon.src = this.icons[id];
+    this.dragIcon.src = this.iconOf(id);
     this.dragIcon.hidden = false;
     this.moveDragIcon(e);
     this.render();
@@ -461,11 +465,11 @@ export class Hud {
     for (const id of this.inventory.catalog(this.tab)) {
       const cell = element('slot', this.bag);
       cell.dataset.item = id;
-      cell.title = itemName(id);
+      cell.title = this.inventory.nameOf(id);
       const icon = element('slot-icon', cell, 'img') as HTMLImageElement;
       icon.draggable = false;
       icon.alt = '';
-      icon.src = this.icons[id];
+      icon.src = this.iconOf(id);
       const at = this.inventory.hotbarIndexOf(id);
       if (at >= 0) {
         cell.classList.add('in-hotbar');
@@ -473,6 +477,8 @@ export class Hud {
       }
       if (isPotion(id)) element('slot-count', cell).textContent = String(this.potionCount(id));
       if (isSeed(id)) element('slot-count', cell).textContent = String(this.seedCount(id));
+      const gear = this.inventory.gearOf(id);
+      if (gear) element('slot-count', cell).textContent = `+${gear.level}`;
     }
   }
 
@@ -488,9 +494,9 @@ export class Hud {
       const count = slot.querySelector<HTMLElement>('.slot-count')!;
       const dragged = this.drag !== null && 'from' in this.drag && this.drag.from === i;
       icon.hidden = !stack || dragged;
-      if (stack) icon.src = this.icons[stack.id];
-      // 블록은 무제한이고 무기는 하나라 개수를 쓰지 않는다. 포션만 가진 개수를 쓴다.
-      count.textContent = !stack ? '' : isPotion(stack.id) ? String(this.potionCount(stack.id)) : isSeed(stack.id) ? String(this.seedCount(stack.id)) : '';
+      if (stack) icon.src = this.iconOf(stack.id);
+      // 블록은 무제한이고 무기는 하나라 개수를 쓰지 않는다. 포션과 씨앗은 가진 개수, 대장간 무기는 강화 단계를 쓴다.
+      count.textContent = !stack ? '' : this.countText(stack.id);
       slot.classList.toggle('selected', i === this.inventory.selected);
     });
     this.memoSlot.classList.toggle('selected', this.inventory.memoSelected);
@@ -501,8 +507,33 @@ export class Hud {
       return;
     }
     const selected = this.inventory.selectedStack;
-    this.pickedName.textContent = selected ? itemName(selected.id) : '빈손';
+    this.showPickedName();
     this.pickedIcon.hidden = !selected;
-    if (selected) this.pickedIcon.src = this.icons[selected.id];
+    if (selected) this.pickedIcon.src = this.iconOf(selected.id);
+  }
+
+  private iconOf(id: ItemId) {
+    return this.icons[this.inventory.iconKey(id)];
+  }
+
+  private countText(id: ItemId) {
+    if (isPotion(id)) return String(this.potionCount(id));
+    if (isSeed(id)) return String(this.seedCount(id));
+    const gear = this.inventory.gearOf(id);
+    return gear ? `+${gear.level}` : '';
+  }
+
+  private showPickedName() {
+    if (this.inventory.memoSelected) return;
+    const selected = this.inventory.selectedStack;
+    const name = selected ? this.inventory.nameOf(selected.id) : '빈손';
+    this.pickedName.textContent = this.ammo ? `${name} · ${this.ammo}` : name;
+  }
+
+  /** 든 총의 남은 탄. 쏠 때와 재장전이 끝날 때만 부른다. 총이 아니면 null */
+  setAmmo(text: string | null) {
+    if (text === this.ammo) return;
+    this.ammo = text;
+    this.showPickedName();
   }
 }

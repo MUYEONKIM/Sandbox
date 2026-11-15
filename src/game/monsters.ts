@@ -80,7 +80,8 @@ export interface MonsterHooks {
   spawnTiles: Tile[];
   send(message: MonsterMessage): void;
   /** 내 공격으로 몬스터가 쓰러지는 것이 보였다. 받을 골드를 바로 띄운다(몬스터마다 한 번). */
-  onKillSeen(kind: MonsterKind, x: number, y: number): void;
+  /** mine은 내가 마지막 한 방을 친 몬스터일 때다. */
+  onKillSeen(kind: MonsterKind, x: number, y: number, mine: boolean): void;
   /** 내가 마지막 한 방을 친 것이 확정됐다. 서버에서 보상을 받는다(몬스터마다 한 번). */
   onMyKill(kind: MonsterKind): void;
   /** 몬스터가 나를 때렸다 */
@@ -411,16 +412,16 @@ export class MonsterField {
   }
 
   private claim(m: Monster) {
-    this.seeKill(m);
+    this.seeKill(m, true);
     if (this.claimed.has(m.id)) return;
     this.claimed.add(m.id);
     this.hooks.onMyKill(m.kind);
   }
 
-  private seeKill(m: Monster) {
+  private seeKill(m: Monster, mine = false) {
     if (this.seenKills.has(m.id)) return;
     this.seenKills.add(m.id);
-    this.hooks.onKillSeen(m.kind, this.shownX(m), this.shownY(m));
+    this.hooks.onKillSeen(m.kind, this.shownX(m), this.shownY(m), mine);
   }
 
   // ───────── 모두가 하는 일 ─────────
@@ -444,7 +445,7 @@ export class MonsterField {
     m.state = 'dead';
     m.deadAt = now;
     m.predictedUntil = now + PREDICT_MS;
-    this.seeKill(m);
+    this.seeKill(m, true);
   }
 
   /** 누가 쏜 총알이든 몬스터에 닿으면 번쩍인다. */

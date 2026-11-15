@@ -1,5 +1,7 @@
 import type { Economy } from '../game/economy';
-import { formatGrow, GRADE_NAME, isPlot, landPrice, type CropId, type Plot } from '../game/farm';
+import { formatGrow, GRADE_NAME, landPrice, type CropId, type Plot } from '../game/farm';
+import type { PlacedBlock } from '../net/session';
+import { LandMap } from './landMap';
 import { paintItem, type SeedId } from '../items';
 import { element } from './dom';
 import { Modal } from './modal';
@@ -11,16 +13,14 @@ interface CoopActions {
   onSellCrops(): Promise<void>;
   /** 농장의 모든 땅. 실패하면 null */
   loadFarm(): Promise<Plot[] | null>;
+  /** 농장의 블록(땅 지도에 그리고, 블록이 있는 내 땅은 팔 수 없어 거른다). 실패하면 null */
+  loadBlocks(): Promise<PlacedBlock[] | null>;
   buyPlots(cells: [number, number][]): Promise<string | null>;
   sellPlots(cells: [number, number][]): Promise<string | null>;
 }
 
-const MAP_CELLS = 46;
-const CELL_PX = 9;
-const MAX_PICK = 100;
 /** 씨앗을 한 번에 살 수 있는 수(서버 buy_seeds와 같음) */
 const SEED_MAX = 1000;
-const COLORS = { road: '#9c7b55', empty: '#7fae4a', mine: '#e8b73a', other: '#7a4a2c', picked: '#fff3a0', grid: 'rgba(40, 24, 10, 0.25)' };
 
 /**
  * 농협 창(2026-11-15 사용자 요청 "시작마을에 농협, 땅과 씨앗을 산다", 기획 docs/balance/farm.md).
@@ -150,47 +150,35 @@ export class CoopWindow extends PurchaseWindow {
     this.sellButton.textContent = total ? `작물 전부 팔기 (+${goldText(total)})` : '팔 작물이 없습니다';
   }
 
-  /** 농장을 위에서 본 지도. 빈 땅을 골라 사거나 내 땅을 골라 판다. 끌면 네모 안의 칸이 한꺼번에 골라진다. */
+  /**
+   * 땅 사고팔기 지도(2026-11-16부터 게임과 같은 마름모 농장, src/ui/landMap.ts). 빈 땅을 골라 사거나 내 땅을 골라 판다.
+   * 누르면 한 칸, 끌면 두 칸을 모서리로 하는 격자 네모를 고른다. 작물이나 블록이 있는 내 땅, 남의 땅, 길은 건너뛴다.
+   */
   private async openLandMap() {
-    const plots = await this.actions.loadFarm();
-    if (!plots) return;
+    const [plots, blocks] = await Promise.all([this.actions.loadFarm(), this.actions.loadBlocks()]);
+    if (!plots || !blocks) return;
     const modal = new Modal(this.hostRoot, 'land-map', '농장 땅');
-    const owner = new Map<string, Plot>();
-    const k = (x: number, y: number) => `${x},${y}`;
-    const load = (list: Plot[]) => {
-      owner.clear();
-      for (const plot of list) owner.set(k(plot.x, plot.y), plot);
-      this.myPlots = list.filter((plot) => plot.owner === this.myId).length;
-    };
-    load(plots);
-
-    element('modal-note', modal.box).textContent = '빈 땅(초록)을 고르면 사고, 내 땅(노랑)을 고르면 팝니다. 누르면 고르고 다시 누르면 취소, 끌면 네모 안을 한꺼번에 고릅니다.';
-    const canvas = element('land-canvas', modal.box, 'canvas') as HTMLCanvasElement;
-    canvas.width = MAP_CELLS * CELL_PX;
-    canvas.height = MAP_CELLS * CELL_PX;
-    const tip = element('land-tip', modal.box);
+    element('modal-note', modal.box).textContent =
+      '빈 땅을 고르면 사고, 내 땅(노랑)을 고르면 팝니다. 누르면 고르고 다시 누르면 취소, 끌면 두 칸 사이의 네모를 한꺼번에 고릅니다. 휠이나 +/−로 확대합니다.';
     const summary = element('land-summary', modal.box);
-    const picked = new Set<string>();
-    let mode: 'buy' | 'sell' | null = null;
-
-    const kindOf = (x: number, y: number) => {
-      if (!isPlot(x, y)) return 'road';
-      const plot = owner.get(k(x, y));
-      if (!plot) return 'empty';
-      return plot.owner === this.myId ? 'mine' : 'other';
+    const map = new LandMap(modal.box, {
+      myId: this.myId,
+      crop: (id) => this.economy.cropInfo(id),
+      onPick: () => show(),
+    });
+    // 개발 중 브라우저 콘솔에서 지도를 재 보는 통로
+    if (import.meta.env.DEV) Object.assign(window, { landMap: map });
+    // 지도 아래 줄이 합계 줄 위에 오도록 옮긴다.
+    modal.box.append(summary);
+    const load = (fresh: Plot[], freshBlocks: PlacedBlock[]) => {
+      map.setData({ plots: fresh, blocks: freshBlocks });
+      this.myPlots = map.mine;
     };
-    const draw = () => {
-      const ctx = canvas.getContext('2d')!;
-      for (let y = 0; y < MAP_CELLS; y++) {
-        for (let x = 0; x < MAP_CELLS; x++) {
-          ctx.fillStyle = picked.has(k(x, y)) ? COLORS.picked : COLORS[kindOf(x, y)];
-          ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
-          ctx.strokeStyle = COLORS.grid;
-          ctx.strokeRect(x * CELL_PX + 0.5, y * CELL_PX + 0.5, CELL_PX - 1, CELL_PX - 1);
-        }
-      }
-      const cells = [...picked].map((c) => c.split(',').map(Number) as [number, number]);
-      if (mode === 'sell') {
+    load(plots, blocks);
+
+    const show = () => {
+      const cells = map.cells;
+      if (map.mode === 'sell') {
         let refund = 0;
         for (let i = 0; i < cells.length; i++) refund += Math.floor(landPrice(this.myPlots - i) / 2);
         summary.textContent = `고른 내 땅 ${cells.length}칸 · 받는 돈 약 ${goldText(refund)} · 내 땅 ${this.myPlots}칸`;
@@ -202,77 +190,34 @@ export class CoopWindow extends PurchaseWindow {
         action.textContent = '사기';
       }
       action.disabled = cells.length === 0;
+      clear.disabled = cells.length === 0;
     };
 
-    const cellAt = (e: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = Math.floor(((e.clientX - rect.left) / rect.width) * MAP_CELLS);
-      const y = Math.floor(((e.clientY - rect.top) / rect.height) * MAP_CELLS);
-      return x >= 0 && y >= 0 && x < MAP_CELLS && y < MAP_CELLS ? { x, y } : null;
-    };
-    /** 고를 수 있는 칸: 아무것도 안 골랐으면 빈 땅이나 내 땅, 고르기 시작했으면 같은 종류만 */
-    const pickable = (x: number, y: number) => {
-      const kind = kindOf(x, y);
-      if (mode === 'buy') return kind === 'empty';
-      if (mode === 'sell') return kind === 'mine' && !owner.get(k(x, y))?.crop;
-      return kind === 'empty' || (kind === 'mine' && !owner.get(k(x, y))?.crop);
-    };
-    const toggle = (x: number, y: number, on?: boolean) => {
-      if (!pickable(x, y)) return;
-      const id = k(x, y);
-      const next = on ?? !picked.has(id);
-      if (next && picked.size >= MAX_PICK) return;
-      if (next) {
-        mode ??= kindOf(x, y) === 'mine' ? 'sell' : 'buy';
-        picked.add(id);
-      } else picked.delete(id);
-      if (!picked.size) mode = null;
-    };
-
-    let dragFrom: { x: number; y: number } | null = null;
-    canvas.addEventListener('pointerdown', (e) => {
-      dragFrom = cellAt(e);
-      canvas.setPointerCapture(e.pointerId);
+    const clear = modal.button('모두 취소', () => {
+      map.clearPicks();
+      return false;
     });
-    canvas.addEventListener('pointerup', (e) => {
-      const to = cellAt(e);
-      if (dragFrom && to) {
-        if (dragFrom.x === to.x && dragFrom.y === to.y) toggle(to.x, to.y);
-        else {
-          for (let y = Math.min(dragFrom.y, to.y); y <= Math.max(dragFrom.y, to.y); y++) {
-            for (let x = Math.min(dragFrom.x, to.x); x <= Math.max(dragFrom.x, to.x); x++) toggle(x, y, true);
-          }
-        }
-        draw();
-      }
-      dragFrom = null;
-    });
-    canvas.addEventListener('pointermove', (e) => {
-      const at = cellAt(e);
-      const plot = at && owner.get(k(at.x, at.y));
-      if (!at || !isPlot(at.x, at.y)) tip.textContent = at ? '길' : '';
-      else if (!plot) tip.textContent = `빈 땅 (${at.x}, ${at.y})`;
-      else tip.textContent = `${plot.owner === this.myId ? '내 땅' : `${plot.nickname}의 땅`} (${at.x}, ${at.y})${plot.crop ? ' · 작물이 자라는 중' : ''}`;
-    });
-
     const action = modal.button(
       '사기',
       async () => {
-        const cells = [...picked].map((c) => c.split(',').map(Number) as [number, number]);
-        const fail = mode === 'sell' ? await this.actions.sellPlots(cells) : await this.actions.buyPlots(cells);
-        const fresh = await this.actions.loadFarm();
-        if (fresh) load(fresh);
-        picked.clear();
-        mode = null;
-        if (fail) tip.textContent = fail;
-        draw();
+        const cells = map.cells;
+        const fail = map.mode === 'sell' ? await this.actions.sellPlots(cells) : await this.actions.buyPlots(cells);
+        const [fresh, freshBlocks] = await Promise.all([this.actions.loadFarm(), this.actions.loadBlocks()]);
+        if (fresh && freshBlocks) load(fresh, freshBlocks);
+        map.clearPicks();
+        if (fail) map.tip.textContent = fail;
         this.render();
         return false;
       },
       true,
     );
     modal.button('닫기', () => undefined);
-    modal.whenClosed(() => this.render());
-    draw();
+    modal.whenClosed(() => {
+      map.destroy();
+      this.render();
+    });
+    show();
+    // 창이 화면에 붙어 크기가 정해진 뒤 전체 배율로 맞춘다.
+    requestAnimationFrame(() => map.fit());
   }
 }

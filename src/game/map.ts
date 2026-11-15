@@ -17,6 +17,7 @@ import {
   isTower,
   LOBBY_FURNITURE,
   MART_PROPS,
+  SMITHY_PROPS,
   SNAIL_TRACK,
   type PartitionKind,
 } from './tower';
@@ -202,6 +203,7 @@ export function generateMap(id: MapId): GameMap {
       }
     }
     if (id === 'mart') buildings.push(...MART_PROPS);
+    if (id === 'smithy') buildings.push(...SMITHY_PROPS);
     if (id === 'exchange') {
       buildings.push({ ...BULL });
       scenery.trees.push(...EXCHANGE_FURNITURE);

@@ -33,6 +33,8 @@ interface Bullet {
   left: number;
   ownerId: string;
   onHit?: (targetId: string) => void;
+  /** 맞았든 아니든 총알이 사라질 때 불린다(산탄 알 수를 모아 보낼 때). */
+  onDone?: () => void;
   image: Phaser.GameObjects.Image;
 }
 
@@ -45,7 +47,7 @@ export class Bullets {
     private readonly world: BulletWorld,
   ) {}
 
-  /** (fromX, fromY)에서 (toX, toY) 쪽으로 쏜다. onHit은 내가 쏜 총알에만 준다. */
+  /** (fromX, fromY)에서 (toX, toY) 쪽으로 쏜다. onHit, onDone은 내가 쏜 총알에만 준다. */
   fire(
     ownerId: string,
     fromX: number,
@@ -54,9 +56,13 @@ export class Bullets {
     toY: number,
     range: number,
     onHit?: (targetId: string) => void,
+    onDone?: () => void,
   ) {
     const length = Math.hypot(toX - fromX, toY - fromY);
-    if (length === 0) return;
+    if (length === 0) {
+      onDone?.();
+      return;
+    }
     const dx = (toX - fromX) / length;
     const dy = (toY - fromY) / length;
 
@@ -65,7 +71,7 @@ export class Bullets {
     const image = this.scene.add.image(0, 0, 'bullet');
     image.setRotation(Math.atan2(ahead.y - start.y, ahead.x - start.x));
 
-    const bullet = { x: fromX, y: fromY, dx, dy, left: range, ownerId, onHit, image };
+    const bullet = { x: fromX, y: fromY, dx, dy, left: range, ownerId, onHit, onDone, image };
     this.bullets.push(bullet);
     this.place(bullet);
   }
@@ -82,7 +88,10 @@ export class Bullets {
     this.bullets = this.bullets.filter((bullet) => {
       const alive = this.advance(bullet, travel);
       if (alive) this.place(bullet);
-      else bullet.image.destroy();
+      else {
+        bullet.image.destroy();
+        bullet.onDone?.();
+      }
       return alive;
     });
   }
@@ -110,7 +119,10 @@ export class Bullets {
   }
 
   clear() {
-    for (const bullet of this.bullets) bullet.image.destroy();
+    for (const bullet of this.bullets) {
+      bullet.image.destroy();
+      bullet.onDone?.();
+    }
     this.bullets = [];
   }
 }

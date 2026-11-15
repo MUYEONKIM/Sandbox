@@ -7,6 +7,7 @@ import { DEFAULT_MAP, isMapId, type WorkId } from '../game/maps';
 import { BASE_HP } from '../config';
 import { toGold } from '../game/gold';
 import { isStat } from '../game/stats';
+import { parseCents, type ForgeStep, type Gear } from '../game/forge';
 import { isPotion, isWeapon, type PotionId } from '../items';
 import { supabase } from './supabase';
 
@@ -30,7 +31,6 @@ export interface Profile {
   def: number;
   agi: number;
   luk: number;
-  owned_weapons: string[];
   owned_tools: string[];
   /** 회원가입 때 고른 캐릭터. 옛 계정은 null이다. */
   skin: number | null;
@@ -86,21 +86,20 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
     supabase.from('workplaces').select('id, name, blurb, gather_ms').order('sort'),
     supabase.from('loot').select('item, workplace, name, blurb, price, weight'),
     supabase.from('stash').select('item, count'),
-    supabase.from('weapons').select('id, blurb, price, damage, cooldown_ms').order('sort'),
+    supabase.from('weapons').select('id, blurb, price, damage, cooldown_ms, magazine, reload_ms, pellets').order('sort'),
     supabase.from('tools').select('id, workplace, name, blurb, price').order('sort'),
     supabase.from('stats').select('id, name, blurb, base_price, price_step').order('sort'),
   ]);
   const error = workplaces.error ?? loot.error ?? stash.error ?? weapons.error ?? tools.error ?? stats.error;
   if (error) throw new Error(error.message);
-  const { gold, str, def, agi, luk, max_hp: maxHp, owned_weapons: owned, owned_tools: ownedTools, rename_tickets: renameTickets } = profile;
+  const { gold, str, def, agi, luk, max_hp: maxHp, owned_tools: ownedTools, rename_tickets: renameTickets } = profile;
   return {
     gold: toGold(gold),
     renameTickets,
     myStats: { str, def, agi, luk, hp: maxHp - BASE_HP },
-    owned: owned.filter(isWeapon),
     ownedTools,
-    weapons: (weapons.data ?? []).flatMap(({ id, cooldown_ms: cooldownMs, ...rest }) =>
-      isWeapon(id) ? [{ ...rest, id, cooldownMs }] : [],
+    weapons: (weapons.data ?? []).flatMap(({ id, cooldown_ms: cooldownMs, reload_ms: reloadMs, magazine, pellets, ...rest }) =>
+      isWeapon(id) ? [{ ...rest, id, cooldownMs, reloadMs, magazine: magazine ?? null, pellets: pellets ?? 1 }] : [],
     ),
     tools: (tools.data ?? []).map(({ workplace, ...rest }) => ({ ...rest, workplace: workplace as WorkId })),
     stats: (stats.data ?? []).flatMap(({ id, base_price: basePrice, price_step: priceStep, ...rest }) =>
@@ -120,7 +119,7 @@ export async function loadEconomy(profile: Profile): Promise<EconomyData> {
 export async function loadProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nickname, map, x, y, hp, max_hp, gold::text, level::text, exp, inventory, str, def, agi, luk, owned_weapons, owned_tools, skin, rename_tickets')
+    .select('id, nickname, map, x, y, hp, max_hp, gold::text, level::text, exp, inventory, str, def, agi, luk, owned_tools, skin, rename_tickets')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -155,6 +154,29 @@ export async function loadDungeons(): Promise<{ dungeons: DungeonInfo[]; monster
         exp: Number(m.exp),
         count: Number(m.count),
       })),
+  };
+}
+
+/**
+ * 대장간 단계표와 내 자루(2026-11-16). 표가 아직 없거나 실패하면 빈 목록이다(대장간 창에 안내가 뜬다).
+ * 판매가는 글자로 받는다(+99는 10^42를 넘는다).
+ */
+export async function loadForge(): Promise<{ steps: ForgeStep[]; gear: Gear[] }> {
+  const [steps, gear] = await Promise.all([
+    supabase.from('forge_steps').select('level, success, keep, fall, destroy, price::text').order('level'),
+    supabase.from('gear').select('id, kind, level').order('id'),
+  ]);
+  if (steps.error || gear.error) return { steps: [], gear: [] };
+  return {
+    steps: (steps.data as { level: number; success: number; keep: number; fall: number; destroy: number; price: string }[]).flatMap(
+      ({ price, ...rest }) => {
+        const cents = parseCents(price);
+        return cents === null ? [] : [{ ...rest, cents }];
+      },
+    ),
+    gear: (gear.data as { id: number; kind: string; level: number }[]).flatMap(({ id, kind, level }) =>
+      isWeapon(kind) && kind !== 'pistol' ? [{ id: Number(id), kind, level }] : [],
+    ),
   };
 }
 

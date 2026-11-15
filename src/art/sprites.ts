@@ -56,6 +56,23 @@ const NAMES = [
   'potions/large',
   // 농장 작물(art-source/farm/make-crops.cjs)
   'farm/crops',
+  // 대장간 건물과 안 소품(디자인 세션, 2026-11-15). 이름에 -x가 붙은 소품은 앞면이 오른쪽 면이다.
+  'smithy',
+  'smithy-forge',
+  'smithy-forge-x',
+  'smithy-anvil',
+  'smithy-anvil-x',
+  'smithy-weapon-rack',
+  'smithy-weapon-rack-x',
+  'smithy-armor-stand',
+  'smithy-armor-stand-x',
+  'smithy-case',
+  'smithy-case-x',
+  'smithy-barrel',
+  'smithy-coal',
+  // 대장간 무기: 손에 든 그림과 아이콘(src/art/forgeArt.ts가 칸 자리)
+  'forge/held',
+  'forge/icons',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

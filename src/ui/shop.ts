@@ -1,22 +1,23 @@
 import { spriteUrl } from '../art/sprites';
-import { RENAME_PRICE, type Economy, type PotionInfo, type ShopTool, type ShopWeapon } from '../game/economy';
-import { paintItem, WEAPONS, type PotionId, type WeaponId } from '../items';
+import { RENAME_PRICE, type Economy, type PotionInfo, type ShopTool } from '../game/economy';
+import { paintItem, type PotionId } from '../items';
 import { element } from './dom';
 import { PLACE_ICONS } from './office';
 import { PurchaseWindow } from './purchase';
 import { goldText } from '../game/gold';
 
 interface ShopActions {
-  onBuyWeapon(id: WeaponId): Promise<void>;
   onBuyTool(tool: ShopTool): Promise<void>;
   onBuyRenameTicket(): Promise<void>;
   onBuyPotion(id: PotionId, amount: number): Promise<void>;
   onSell(): void;
 }
 
-/** 상점 창: 캐 온 전리품을 팔고(맨 위), 무기와 작업 도구를 산다. 블록과 꾸미기는 누구나 무제한으로 가져서 팔지 않는다. 실제 거래는 서버가 한다. */
+/**
+ * 상점 창: 캐 온 전리품을 팔고(맨 위), 작업 도구와 포션을 산다. 블록과 꾸미기는 누구나 무제한으로 가져서 팔지 않는다. 실제 거래는 서버가 한다.
+ * 무기는 2026-11-16부터 대장간에서만 판다(src/ui/forge.ts).
+ */
 export class ShopWindow extends PurchaseWindow {
-  private readonly weaponList: HTMLElement;
   private readonly toolList: HTMLElement;
   private readonly stashList: HTMLElement;
   private readonly sellButton: HTMLButtonElement;
@@ -36,10 +37,6 @@ export class ShopWindow extends PurchaseWindow {
     this.stashList = element('office-stash', this.root);
     this.refreshers.push(() => this.showStash());
 
-    element('office-section', this.root).textContent = '무기';
-    this.weaponList = element('shop-weapons', this.root);
-    for (const weapon of economy.forSale) this.addWeapon(weapon);
-
     element('office-section', this.root).textContent = '작업 도구';
     this.toolList = element('shop-stats', this.root);
     for (const tool of economy.tools) this.addTool(tool);
@@ -55,27 +52,6 @@ export class ShopWindow extends PurchaseWindow {
     this.addRenameTicket(element('shop-stats', this.root));
 
     this.finish();
-  }
-
-  private addWeapon(weapon: ShopWeapon) {
-    const { id, blurb, damage, price, cooldownMs } = weapon;
-    const info = WEAPONS[id];
-    const row = element('shop-weapon', this.weaponList);
-    const icon = element('shop-weapon-icon', row, 'img') as HTMLImageElement;
-    icon.src = paintItem(id).toDataURL();
-    icon.alt = '';
-    element('shop-weapon-name', row).textContent = info.name;
-    element('shop-weapon-blurb', row).textContent = blurb;
-    element('shop-weapon-spec', row).textContent = info.melee
-      ? `피해 ${damage} · 근접`
-      : `피해 ${damage} · 초당 ${Math.round(1000 / cooldownMs)}발`;
-
-    const buy = this.buyButton(row, () => this.actions.onBuyWeapon(id));
-    this.refreshers.push(() => {
-      const owned = this.economy.owns(id);
-      buy.textContent = owned ? '보유 중' : goldText(price);
-      buy.disabled = this.busy || owned || this.economy.gold < price;
-    });
   }
 
   private addTool(tool: ShopTool) {

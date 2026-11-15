@@ -36,7 +36,7 @@ import {
   ZOOM,
 } from '../config';
 import { depthOf, gridToWorld, tileCenter, worldToGrid } from '../iso';
-import { cropOfSeed, isBlockItem, isPotion, isSeed, isWeapon, WEAPON_IDS, WEAPONS, type PotionId, type WeaponId } from '../items';
+import { cropOfSeed, isBlockItem, isGearRef, isPotion, isSeed, WEAPON_IDS, WEAPONS, type ItemId, type PotionId, type WeaponId } from '../items';
 import type {
   Bounty,
   ChatMessage,
@@ -66,11 +66,13 @@ import type { ExchangeWindow } from '../ui/exchange';
 import type { FameWindow } from '../ui/fame';
 import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
+import type { ForgeWindow } from '../ui/forge';
 import { Avatar, TEAM_H, TEAM_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
 import { CoverFader } from './covers';
+import { KEEP_CLEAR_ALPHA, KeepClear } from './keepClear';
 import type { Economy, ShopTool } from './economy';
-import type { Inventory } from './inventory';
+import type { Arm, Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { formatLevel, levelNeed } from './level';
 import { goldText } from './gold';
@@ -89,6 +91,7 @@ import {
   portalsOf,
   respawnTile,
   SHOP,
+  SMITHY,
   COOP,
   GUIDEPOSTS,
   isDungeon,
@@ -175,8 +178,8 @@ const HEAD_HEIGHT = 40;
 const PORTAL_TAG_HEIGHT = 44;
 const PORTAL_FRAME_MS = 100;
 
-/** 노동청 옥상 배기통 꼭대기의 위치 (건물 그림 기준 픽셀)와 연기 그림 수 */
-const CHIMNEY = { x: 91, y: 3 };
+/** 연기가 나는 굴뚝 꼭대기의 위치 (건물 그림 기준 픽셀): 노동청 옥상 배기통, 대장간 벽돌 굴뚝(forge-art.md) */
+const CHIMNEYS: Partial<Record<string, { x: number; y: number }>> = { inn: { x: 91, y: 3 }, smithy: { x: 93, y: 7 } };
 const SMOKE_FRAMES = ['Smoke0000', 'Smoke0001', 'Smoke0002'] as const;
 const SMOKE_FRAME_MS = 240;
 /** 클릭을 연달아 해도 안내가 쌓이지 않게 하는 간격 */
@@ -194,6 +197,7 @@ const PLAIN_SIGNS: Partial<Record<string, { name: string; x: number; y: number }
   inn: { name: OFFICE.name, x: 64, y: 14 },
   tavern: { name: '인생한방 도박장', x: 64, y: 7 },
   thatched: { name: COOP.name, x: 66, y: 8 },
+  smithy: { name: SMITHY.name, x: 64, y: 27 },
 };
 /** 증권거래소: 옥상 가운데 */
 const EXCHANGE_SIGN = { x: 99, y: 55 };
@@ -248,6 +252,10 @@ const TURN_WINDOW = 0.5;
 const REMOTE_AIM_MS = 700;
 /** 연사 무기는 이 수만큼 쏠 때 한 번만 알린다. 받는 쪽이 그만큼 나눠 그려서 통신량을 줄인다. */
 const BURST = 3;
+/** 재장전 원: 캐릭터 오른쪽 위에 지름 8(아트 픽셀). 진행을 12단계로 끊어 단계가 바뀔 때만 다시 그린다(forge-art.md 이펙트 5). */
+const RELOAD_RING = { dx: 12, dy: -34, radius: 4, steps: 12 };
+/** 산탄 한 알이 부채꼴 자리에서 더 틀어지는 폭 (라디안, 에이전트가 정함) */
+const PELLET_JITTER = 0.035;
 const RESPAWN_MS = 3000;
 /** 휴대폰에서 다른 플레이어를 눌렀다고 보는 거리 (칸) */
 const TAP_TARGET_TILES = 1.5;
@@ -316,6 +324,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private readonly blockImages = new Map<string, Phaser.GameObjects.Image>();
   /** 맵에 박힌 장식 벽 그림 */
   private portalSprites: PortalSprite[] = [];
+  /** 포탈과 안내판을 덮는 블록을 반투명하게 한다(src/game/keepClear.ts). */
+  private readonly keepClear = new KeepClear();
   private signs: Sign[] = [];
   /** 건물과 자원처럼 맵을 옮길 때 지워야 하는 그림 */
   private mapImages: Phaser.GameObjects.Image[] = [];
@@ -333,7 +343,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private picking = false;
   /** 칸별 자원 그림. 작업할 때 흔들린다. */
   private readonly spotImages = new Map<string, Phaser.GameObjects.Image>();
-  private chimneySmoke: Phaser.GameObjects.Image | null = null;
+  private chimneySmoke: Phaser.GameObjects.Image[] = [];
   private readonly paintedArt = new Map<string, Art>();
   /** 작업 중이면 시작 시각, 아니면 null */
   /** 작업을 시작한(또는 마지막으로 자원을 얻은) 시각. performance.now 기준이라 탭이 숨어도 흐른다. */
@@ -345,9 +355,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private portalFrame = 0;
   private traveling = false;
   private down = false;
-  /** 지금 들고 있는 무기. 없으면 null */
-  private armedWith: WeaponId | null = null;
+  /** 지금 들고 있는 무기의 단축키 칸 id(기본 권총 'pistol', 자루 'gear:<id>'). 없으면 null */
+  private armedWith: ItemId | null = null;
   private nextShotAt = 0;
+  /** 사격 번호. 서버가 산탄 한 번을 한 발로 센다(hit_player의 shot). 새로고침해도 겹치지 않게 시각에서 시작한다. */
+  private shotSeq = Date.now();
+  /** 총마다(단축키 칸 id) 남은 탄과 재장전이 끝나는 시각(this.time.now 기준) */
+  private readonly mags = new Map<ItemId, { left: number; reloadUntil: number }>();
+  private reloadRing: Phaser.GameObjects.Graphics | null = null;
+  private reloadStep = -1;
   private nextNoticeAt = 0;
   private shotsFired = 0;
   private nextMinimapAt = 0;
@@ -408,6 +424,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly dungeonWindow: DungeonWindow,
     private readonly monsterKinds: MonsterKind[],
     private readonly coop: CoopWindow,
+    private readonly forge: ForgeWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -646,13 +663,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return { left, top };
   }
 
-  /** 노동청 굴뚝에서 연기가 피어오른다. */
-  private showChimneySmoke(left: number, top: number) {
-    this.chimneySmoke = this.add
-      .image(left + CHIMNEY.x, top + CHIMNEY.y, SMOKE_FRAMES[0])
+  /** 노동청과 대장간 굴뚝에서 연기가 피어오른다. */
+  private showChimneySmoke(left: number, top: number, at: { x: number; y: number }) {
+    const smoke = this.add
+      .image(left + at.x, top + at.y, SMOKE_FRAMES[0])
       .setOrigin(0.5, 1)
       .setDepth(depthOf(MAP_SIZE, MAP_SIZE));
-    this.mapImages.push(this.chimneySmoke);
+    this.chimneySmoke.push(smoke);
+    this.mapImages.push(smoke);
   }
 
   /** 맵 하나를 화면에 올린다. 블록과 다른 플레이어는 서버에서 받아 채운다. */
@@ -704,10 +722,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     if (info.mood) this.gloom.show(this.world.map.walls.filter((wall) => wall.id === 'lava'));
     else this.gloom.clear();
-    this.chimneySmoke = null;
+    this.chimneySmoke = [];
     for (const building of this.world.map.buildings) {
       const { left, top } = this.showBuilding(building);
-      if (building.sprite === OFFICE.sprite) this.showChimneySmoke(left, top);
+      const chimney = id === DEFAULT_MAP ? CHIMNEYS[building.sprite] : undefined;
+      if (chimney) this.showChimneySmoke(left, top, chimney);
       if (building.sprite === CASTLE.sprite) this.addSign(CASTLE.name, left + CASTLE_SIGN.x, top + CASTLE_SIGN.y);
       if (building.sprite === SHOP.sprite) this.addSign(SHOP.name, left + SHOP_SIGN.x, top + SHOP_SIGN.y);
       if (building.sprite === EXCHANGE.sprite) this.addSign(EXCHANGE.name, left + EXCHANGE_SIGN.x, top + EXCHANGE_SIGN.y);
@@ -717,9 +736,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     this.showSpots(id);
     this.showWalls();
+    const boards: Phaser.GameObjects.Image[] = [];
     for (const { sprite, x, y } of this.world.map.trees) {
       const tree = this.addSprite(sprite, x, y);
       if (info.dark) tree.setTint(BURNT_TINT);
+      if (sprite === 'board') boards.push(tree);
     }
     for (const { tile, x, y } of this.world.map.props) this.addTileProp(tile, x, y);
     for (const { kind, x, y } of this.world.map.battleProps) {
@@ -737,6 +758,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.tags.add(tag, `→ ${portalName(portal)}`, 'portal');
       return { portal, image, tag };
     });
+    // 블록은 이 뒤에 서버에서 받아 놓는다(spawnBlock이 덮는지 본다).
+    this.keepClear.guard([...this.portalSprites.map(({ image }) => image), ...boards]);
   }
 
   /** 작업장의 장식 벽 */
@@ -980,6 +1003,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.others.clear();
     for (const image of this.blockImages.values()) image.destroy();
     this.blockImages.clear();
+    this.keepClear.clear();
     for (const { image, tag } of this.portalSprites) {
       image.destroy();
       this.tags.remove(tag);
@@ -1018,6 +1042,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.updateWork();
     this.workFx.update(delta);
     this.updateAim();
+    this.updateReload();
     this.updateAutoFire();
     this.animatePortals(time);
     this.covers.update(time, this.me.sprite);
@@ -1036,6 +1061,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.dungeonWindow.isOpen ||
       this.coop.isOpen ||
       this.shop.isOpen ||
+      this.forge.isOpen ||
       this.castle.isOpen ||
       this.fame.isOpen ||
       this.board.isOpen ||
@@ -1078,6 +1104,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'dungeon') this.dungeonWindow.open();
       else if (portal.to === 'coop') this.coop.open();
       else if (portal.to === 'shop') this.shop.open();
+      else if (portal.to === 'forge-shop') this.forge.openAt('buy');
+      else if (portal.to === 'forge-anvil') this.forge.openAt('anvil');
       else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
       else if (portal.to === 'board') this.board.open();
@@ -1102,11 +1130,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    */
   private tap() {
     const w = this.pointerWorld();
-    const weapon = this.selectedWeapon;
-    if (weapon && !this.isSafeMap && this.workStartedAt === null && this.tappedPlayer(w.x, w.y)) {
+    const arm = this.inventory.selectedArm;
+    if (arm && !this.isSafeMap && this.workStartedAt === null && this.tappedPlayer(w.x, w.y)) {
       this.clearRoute();
       this.touchFiring = true;
-      this.attack(weapon);
+      this.attack(arm);
       return;
     }
     const g = worldToGrid(w.x, w.y);
@@ -1267,18 +1295,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     this.economy.setSold(gold);
     this.hud.toast(`+${goldText(gold - before)}`, '수고하셨습니다. 내일도 나오세요.');
-  }
-
-  /** 상점에서 무기를 산다. 가격과 골드는 서버가 확인한다. */
-  async buyWeapon(id: WeaponId) {
-    const gold = await this.session.buyWeapon(id);
-    if (gold === null) {
-      this.hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
-      return;
-    }
-    this.economy.setWeaponBought(id, gold);
-    const placed = this.inventory.addWeapon(id);
-    this.hud.toast(`${WEAPONS[id].name} 구매 완료`, placed ? '단축키 칸에 넣었습니다' : '인벤토리(I)의 무기 탭에 있습니다');
   }
 
   /** 상점에서 작업 도구를 산다. 효과는 서버의 harvest가 적용한다. */
@@ -1448,7 +1464,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private animatePortals(time: number) {
     const smokeFrame = Math.floor(time / SMOKE_FRAME_MS) % SMOKE_FRAMES.length;
-    this.chimneySmoke?.setTexture(SMOKE_FRAMES[smokeFrame]);
+    for (const smoke of this.chimneySmoke) smoke.setTexture(SMOKE_FRAMES[smokeFrame]);
 
     const frame = Math.floor(time / PORTAL_FRAME_MS) % PORTAL_FRAMES;
     if (frame === this.portalFrame) return;
@@ -1542,21 +1558,18 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.cameras.main.getWorldPoint(pointer.x, pointer.y);
   }
 
-  private get selectedWeapon(): WeaponId | null {
-    const stack = this.inventory.selectedStack;
-    return stack && isWeapon(stack.id) ? stack.id : null;
-  }
-
   /** 무기를 들고 있으면 마우스 쪽으로 겨누고 커서를 조준점으로 바꾼다. */
   private updateAim() {
-    const weapon = this.down || this.isSafeMap || this.workStartedAt !== null ? null : this.selectedWeapon;
-    if (weapon !== this.armedWith) {
-      this.armedWith = weapon;
-      this.input.setDefaultCursor(weapon ? 'crosshair' : 'default');
-      if (weapon) this.me.setWeapon(weapon);
+    const arm = this.down || this.isSafeMap || this.workStartedAt !== null ? null : this.inventory.selectedArm;
+    const key = arm?.key ?? null;
+    if (key !== this.armedWith) {
+      this.armedWith = key;
+      this.input.setDefaultCursor(arm ? 'crosshair' : 'default');
+      if (arm) this.me.setWeapon(arm.kind);
       else this.me.lowerGun();
+      this.showAmmo();
     }
-    if (!weapon) return;
+    if (!arm) return;
     const w = this.pointerWorld();
     const { x, y } = this.me.sprite;
     this.me.aim(Math.atan2(w.y - (y - BULLET_HEIGHT), w.x - x));
@@ -1564,11 +1577,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 연사 무기는 누르고 있는 동안 계속 쏜다. */
   private updateAutoFire() {
-    const weapon = this.selectedWeapon;
-    if (!weapon || !WEAPONS[weapon].auto || !this.canAct || this.isSafeMap) return;
+    const arm = this.inventory.selectedArm;
+    if (!arm || !WEAPONS[arm.kind].auto || !this.canAct || this.isSafeMap) return;
     // 휴대폰은 걸으려고 누른 손가락으로 쏘지 않도록 플레이어를 눌렀을 때만 연사한다.
     if (this.input.activePointer.wasTouch && !this.touchFiring) return;
-    if (this.input.activePointer.leftButtonDown()) this.attack(weapon);
+    if (this.input.activePointer.leftButtonDown()) this.attack(arm);
   }
 
   private useSelectedItem() {
@@ -1582,10 +1595,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     if (this.farmAction(true)) return;
-    const weapon = this.selectedWeapon;
-    if (weapon && this.isSafeMap) this.notice(`${this.safeName}은 비무장지대입니다`, '이곳에서는 무기를 쓸 수 없습니다.');
-    else if (weapon) this.attack(weapon);
-    else this.placeBlock();
+    const arm = this.inventory.selectedArm;
+    if (arm && this.isSafeMap) this.notice(`${this.safeName}은 비무장지대입니다`, '이곳에서는 무기를 쓸 수 없습니다.');
+    else if (arm) this.attack(arm);
+    else if (!isGearRef(this.inventory.selectedStack?.id)) this.placeBlock();
   }
 
   /** 고른 칸의 포션을 마신다(휴대폰에서 고른 포션 칸을 한 번 더 눌렀을 때). */
@@ -1629,8 +1642,89 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.hud.toast(title, detail);
   }
 
-  private attack(weapon: WeaponId) {
+  /** 총의 탄창. 처음 들면 가득 차 있고, 재장전이 끝났으면 채운다. 근접 무기는 null이다. */
+  private magOf(arm: Arm) {
+    const size = this.economy.weapon(arm.kind)?.magazine ?? null;
+    if (size === null) return null;
+    let mag = this.mags.get(arm.key);
+    if (!mag) {
+      mag = { left: size, reloadUntil: 0 };
+      this.mags.set(arm.key, mag);
+    }
+    if (mag.reloadUntil && this.time.now >= mag.reloadUntil) {
+      mag.left = size;
+      mag.reloadUntil = 0;
+    }
+    return { mag, size };
+  }
+
+  /** 재장전을 시작한다. 이미 하는 중이거나 탄이 가득하면 하지 않는다. */
+  private reload(arm: Arm) {
+    const found = this.magOf(arm);
+    if (!found || found.mag.reloadUntil || found.mag.left >= found.size) return false;
+    found.mag.reloadUntil = this.time.now + (this.economy.weapon(arm.kind)?.reloadMs ?? 0);
+    this.showAmmo();
+    return true;
+  }
+
+  /** R: 총을 들었으면 재장전, 아니면 가구 돌리기(weapons.md 6장) */
+  reloadOrRotate() {
+    const arm = this.inventory.selectedArm;
+    if (arm && this.magOf(arm)) {
+      if (this.canAct) this.reload(arm);
+      return;
+    }
+    this.inventory.rotateSelected();
+  }
+
+  /** 화면 아래 든 것 이름 옆에 남은 탄을 쓴다. 쏠 때, 재장전을 시작하고 끝낼 때, 무기를 바꿀 때만 부른다. */
+  private showAmmo() {
+    const arm = this.armedWith ? this.inventory.selectedArm : null;
+    const found = arm ? this.magOf(arm) : null;
+    if (!found) {
+      this.hud.setAmmo(null);
+      return;
+    }
+    this.hud.setAmmo(found.mag.reloadUntil ? '재장전 중' : `${found.mag.left} / ${found.size}`);
+  }
+
+  /** 재장전 원을 캐릭터 옆에 그린다. 진행이 12단계 가운데 다음 단계로 넘어갈 때만 다시 그린다. */
+  private updateReload() {
+    const arm = this.armedWith ? this.inventory.selectedArm : null;
+    const found = arm ? this.magOf(arm) : null;
+    const reloading = found?.mag.reloadUntil ? found.mag.reloadUntil : 0;
+    if (!reloading) {
+      if (this.reloadStep >= 0) {
+        this.reloadRing?.clear();
+        this.reloadStep = -1;
+        this.showAmmo();
+      }
+      return;
+    }
+    const total = this.economy.weapon(arm!.kind)?.reloadMs ?? 1;
+    const done = 1 - (reloading - this.time.now) / total;
+    const step = Math.min(RELOAD_RING.steps, Math.max(0, Math.floor(done * RELOAD_RING.steps)));
+    if (!this.reloadRing) this.reloadRing = this.add.graphics();
+    const { x, y } = this.me.sprite;
+    this.reloadRing.setPosition(x + RELOAD_RING.dx, y + RELOAD_RING.dy).setDepth(this.me.sprite.depth + 1);
+    if (step === this.reloadStep) return;
+    this.reloadStep = step;
+    const g = this.reloadRing.clear();
+    g.fillStyle(0x1f1a24, 0.75).fillCircle(0, 0, RELOAD_RING.radius + 1);
+    g.fillStyle(0xffd84d, 1).slice(0, 0, RELOAD_RING.radius, -Math.PI / 2, -Math.PI / 2 + (step / RELOAD_RING.steps) * Math.PI * 2, false).fillPath();
+  }
+
+  private attack(arm: Arm) {
     if (this.time.now < this.nextShotAt) return;
+    const weapon = arm.kind;
+    const found = this.magOf(arm);
+    if (found) {
+      if (found.mag.reloadUntil) return;
+      if (found.mag.left <= 0) {
+        this.reload(arm);
+        return;
+      }
+    }
     this.stopWork();
     this.nextShotAt = this.time.now + this.economy.cooldownOf(weapon);
 
@@ -1647,22 +1741,57 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.me.face(Math.sign(dx), Math.sign(dy));
     const myId = this.session.profile.id;
     const { melee, auto, range } = WEAPONS[weapon];
+    const level = arm.gear?.level ?? 0;
+    const gearId = arm.gear?.id ?? null;
+    const shot = ++this.shotSeq;
+    if (found) {
+      found.mag.left--;
+      // 탄이 0이 되면 저절로 재장전한다(weapons.md 6장 이펙트 2).
+      if (found.mag.left <= 0) this.reload(arm);
+      else this.showAmmo();
+    }
 
     // 몬스터를 맞히면 피해를 몬스터 쪽(src/game/monsters.ts)에 넘기고, 사람을 맞히면 서버가 판정한다.
-    const hit = (target: string) => {
-      if (isMonsterTarget(target)) this.monsters?.damage(target, this.economy.monsterDamage(weapon));
-      else void this.session.hitPlayer(target, weapon);
+    // 산탄은 한 번 쏜 것에서 같은 사람에게 맞은 알 수를 한 번에 보낸다(서버가 사격 번호로 한 발로 센다).
+    const hit = (target: string, pellets = 1) => {
+      if (isMonsterTarget(target)) {
+        for (let i = 0; i < pellets; i++) this.monsters?.damage(target, this.economy.monsterDamage(weapon, level));
+      } else void this.session.hitPlayer(target, weapon, gearId, shot, pellets);
     };
     if (melee) {
       const target = this.slash(myId, this.me, weapon, { x: fromX, y: fromY }, { x: aim.gx, y: aim.gy });
       if (target) hit(target);
     } else {
-      const shot = this.scatter(weapon, fromX, fromY, aim.gx, aim.gy);
-      this.bullets.fire(myId, fromX, fromY, shot.x, shot.y, range, hit);
+      const pellets = this.economy.weapon(weapon)?.pellets ?? 1;
+      if (pellets > 1) {
+        const counts = new Map<string, number>();
+        let left = pellets;
+        const done = () => {
+          if (--left > 0) return;
+          for (const [target, count] of counts) hit(target, count);
+        };
+        for (const p of this.fan(weapon, pellets, fromX, fromY, aim.gx, aim.gy)) {
+          this.bullets.fire(myId, fromX, fromY, p.x, p.y, range, (target) => counts.set(target, (counts.get(target) ?? 0) + 1), done);
+        }
+      } else {
+        const shotAt = this.scatter(weapon, fromX, fromY, aim.gx, aim.gy);
+        this.bullets.fire(myId, fromX, fromY, shotAt.x, shotAt.y, range, hit);
+      }
     }
 
-    if (!auto || this.shotsFired % BURST === 0) this.session.sendShot(weapon, fromX, fromY, aim.gx, aim.gy);
+    if (!auto || this.shotsFired % BURST === 0) this.session.sendShot(weapon, level, fromX, fromY, aim.gx, aim.gy);
     this.shotsFired++;
+  }
+
+  /** 산탄 알들의 목표: 조준한 방향을 가운데로 부채꼴에 고르게 나누고 조금씩 틀어 준다. */
+  private fan(weapon: WeaponId, pellets: number, fromX: number, fromY: number, toX: number, toY: number) {
+    const width = WEAPONS[weapon].fan ?? 0;
+    const center = Math.atan2(toY - fromY, toX - fromX);
+    const length = Math.hypot(toX - fromX, toY - fromY);
+    return Array.from({ length: pellets }, (_, i) => {
+      const angle = center + (pellets > 1 ? (i / (pellets - 1) - 0.5) * width : 0) + (Math.random() - 0.5) * PELLET_JITTER;
+      return { x: fromX + Math.cos(angle) * length, y: fromY + Math.sin(angle) * length };
+    });
   }
 
   /** 앞쪽을 베고 맞은 사람의 id를 돌려준다. 다른 플레이어의 공격도 같은 방법으로 보여 준다. */
@@ -1673,7 +1802,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     const targets = this.bulletTargets().filter(({ id }) => id !== ownerId);
     const isSolid = (x: number, y: number) => this.world.blocksShots(x, y);
-    const target = meleeTarget(from, to, WEAPONS[weapon].range, targets, isSolid);
+    const { range, arc = 45 } = WEAPONS[weapon];
+    const target = meleeTarget(from, to, range, arc, targets, isSolid);
     if (!target) return null;
     this.playHit(target.id, target.x - from.x, target.y - from.y);
     return target.id;
@@ -2043,6 +2173,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.world.place(x, y, z, id);
     const image = this.dressBlock(this.add.image(0, 0, 'tiles'), id, x, y, z);
     this.blockImages.set(`${x},${y},${z}`, image);
+    // 포탈이나 안내판을 덮으면 늘 반투명하게 그린다(2026-11-16 사용자 "가려지면 안 된다").
+    if (this.keepClear.covers(image)) {
+      image.setAlpha(KEEP_CLEAR_ALPHA);
+      return;
+    }
     const art = blockArt(id);
     // 나무, 가구, 높이 쌓은 상자는 뒤에 선 캐릭터를 가리므로 반투명하게 할 대상에 넣는다.
     if (art.kind === 'sprite') this.covers.add(art.sprite, [image]);
@@ -2170,6 +2305,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const to = gridToWorld(toX, toY);
     avatar.aim(Math.atan2(to.y - from.y, to.x - from.x), REMOTE_AIM_MS);
 
+    const pellets = this.economy.weapon(weapon)?.pellets ?? 1;
+    if (pellets > 1) {
+      for (const p of this.fan(weapon, pellets, fromX, fromY, toX, toY)) this.bullets.fire(id, fromX, fromY, p.x, p.y, range);
+      return;
+    }
     const cooldown = this.economy.cooldownOf(weapon);
     for (let i = 0; i < (auto ? BURST : 1); i++) {
       this.time.delayedCall(i * cooldown, () => {
@@ -2328,9 +2468,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         safe: (x, y) => inSafeZone(id, x, y),
         spawnTiles: spawnCandidates(id),
         send: (message) => this.session.sendMonster(message),
-        onKillSeen: (kind, x, y) => {
+        onKillSeen: (kind, x, y, mine) => {
           const p = gridToWorld(x + 0.5, y + 0.5);
-          this.floatGold(`+${goldText(kind.gold)}`, p.x, p.y);
+          // 내가 잡은 것은 내 LUK 배율을 붙인 값, 남이 잡은 것은 표의 값이다(남의 LUK는 모른다).
+          this.floatGold(`+${goldText(mine ? this.economy.killGold(kind.gold) : kind.gold)}`, p.x, p.y);
         },
         onMyKill: (kind) => this.queueKillClaim(kind),
         onHitMe: (kind) => void this.hitByMonster(kind),
@@ -2352,19 +2493,20 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    * 서버 답이 오면 서버 값으로 맞춘다. 서버가 0.3초 안에 다시 부르면 거절하므로 여러 마리를 한꺼번에 잡으면 차례로 부른다.
    */
   private queueKillClaim(kind: MonsterKind) {
-    this.economy.setGold(this.economy.gold + BigInt(kind.gold));
-    this.hud.toast(`${kind.name} 처치 · ${goldText(kind.gold)}`, `경험치 +${kind.exp.toLocaleString()}`);
-    this.killClaims = this.killClaims.then(() => this.claimKill(kind));
+    // 처치 골드 = 몬스터 골드 × (1 + LUK/300)(서버 kill_monster와 같은 식)
+    const gold = this.economy.killGold(kind.gold);
+    this.economy.setGold(this.economy.gold + gold);
+    this.hud.toast(`${kind.name} 처치 · ${goldText(gold)}`, `경험치 +${kind.exp.toLocaleString()}`);
+    this.killClaims = this.killClaims.then(() => this.claimKill(kind, gold));
   }
 
-  private async claimKill(kind: MonsterKind) {
+  private async claimKill(kind: MonsterKind, predicted: bigint) {
     const wait = this.lastKillClaimAt + KILL_CLAIM_GAP_MS - performance.now();
     if (wait > 0) await new Promise((resolve) => window.setTimeout(resolve, wait));
     this.lastKillClaimAt = performance.now();
     const reward = await this.session.killMonster(kind.id);
     if (!reward) {
-      const taken = BigInt(kind.gold);
-      this.economy.setGold(this.economy.gold > taken ? this.economy.gold - taken : 0n);
+      this.economy.setGold(this.economy.gold > predicted ? this.economy.gold - predicted : 0n);
       this.hud.toast('보상을 받지 못했습니다', '서버가 받아 주지 않았습니다. 던전 안에 살아 있는지 확인해 주세요');
       return;
     }

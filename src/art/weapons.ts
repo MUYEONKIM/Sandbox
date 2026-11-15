@@ -1,4 +1,6 @@
+import { FORGE_HELD, FORGE_HELD_SIZE, FORGE_ICON_SIZE, FORGE_ICONS, type ForgeIconId, type ForgeWeaponArtId } from './forgeArt';
 import { Pixels } from './pixels';
+import { sprite } from './sprites';
 
 /** 무기 그림. 오른쪽을 향한 정사각형 캔버스에 그리고, grip은 손으로 잡는 위치다. */
 export interface WeaponArt {
@@ -25,21 +27,6 @@ function paintPistol() {
   return p.toCanvas();
 }
 
-function paintSword() {
-  const p = new Pixels(24, 24);
-  p.rect(8, 11, 13, 3, 0xc9d1d9);
-  p.rect(8, 11, 13, 1, 0xf4f7fa);
-  p.rect(8, 13, 13, 1, 0x7f8a96);
-  p.rect(21, 12, 2, 1, 0xf4f7fa);
-  p.rect(6, 8, 2, 9, 0xe0b23c);
-  p.rect(6, 8, 1, 9, 0xf7d774);
-  p.rect(3, 11, 3, 3, 0x6b4628);
-  p.rect(3, 11, 3, 1, 0x9c6c3f);
-  p.rect(1, 10, 2, 5, 0xe0b23c);
-  p.outlineOuter(OUTLINE);
-  return p.toCanvas();
-}
-
 function paintMachineGun() {
   const p = new Pixels(24, 24);
   p.rect(1, 10, 4, 4, 0x6b4628);
@@ -58,8 +45,35 @@ function paintMachineGun() {
 }
 
 export const PISTOL_ART: WeaponArt = { size: 16, grip: { x: 5, y: 9 }, paint: paintPistol };
-export const SWORD_ART: WeaponArt = { size: 24, grip: { x: 4, y: 12 }, paint: paintSword };
 export const MACHINE_GUN_ART: WeaponArt = { size: 24, grip: { x: 7, y: 15 }, paint: paintMachineGun };
+
+/** 대장간 무기의 손에 든 그림: public/sprites/forge/held.png의 32×32 칸 하나(디자인 세션, forgeArt.ts). */
+export function forgeHeldArt(id: ForgeWeaponArtId): WeaponArt {
+  const { col, grip } = FORGE_HELD[id];
+  const size = FORGE_HELD_SIZE;
+  return {
+    size,
+    grip,
+    paint() {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      canvas.getContext('2d')!.drawImage(sprite('forge/held'), col * size, 0, size, size, 0, 0, size, size);
+      return canvas;
+    },
+  };
+}
+
+/** 대장간 아이콘(무기, 방어구, 두루마리, 장신구): public/sprites/forge/icons.png의 32×32 칸 하나 */
+export function paintForgeIcon(id: ForgeIconId) {
+  const { col, row } = FORGE_ICONS[id];
+  const size = FORGE_ICON_SIZE;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  canvas.getContext('2d')!.drawImage(sprite('forge/icons'), col * size, row * size, size, size, 0, 0, size, size);
+  return canvas;
+}
 
 /** 날아가는 총알. 진행 방향으로 돌려서 그린다. */
 export function paintBullet(): HTMLCanvasElement {

@@ -7,7 +7,7 @@ import type { Tile } from './world';
  * 엘리베이터는 7층까지 가고, 8층은 7층 사무실 안 계단으로, 옥상은 8층 바깥 계단으로 올라간다.
  * 시작마을 주점을 고친 도박장(casino)과 증권거래소 안(exchange)도 같은 방식으로 그리는 건물 안이라 여기에 함께 둔다.
  */
-export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino' | 'exchange' | 'annex' | 'mart';
+export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino' | 'exchange' | 'annex' | 'mart' | 'smithy';
 
 /** 1층 로비 바닥. 블록 설치 구역도 이 범위다. */
 export const LOBBY: Area = [13, 13, 32, 32];
@@ -339,6 +339,37 @@ export const MART_PROPS = [
 ];
 
 /**
+ * 대장간 안(2026-11-16, 사용자 "대장간도 안으로"). 상점 안과 같은 14×14칸이고 바닥과 벽은 src/art/interior.ts의 'smithy' 스타일,
+ * 소품은 디자인 세션이 그린 public/sprites/smithy-*.png다. 소품 자리는 디자인 세션이 그림으로 맞춰 본 배치(interior-art.md)를 그대로 썼다.
+ * 창구는 둘이다: 왼쪽 벽 무기 걸이 앞(사기 탭)과 모루 앞(강화·팔기 탭). 장신구 진열장 앞 창구는 장신구 배포(D)에서 더한다.
+ */
+export const SMITHY_HALL: Area = [15, 15, 28, 28];
+const smithy = (x: number, y: number) => ({ x: SMITHY_HALL[0] + x, y: SMITHY_HALL[1] + y });
+/** 모루(땅 1×1, 앞면 +y). 앞 칸이 강화·팔기 창구다. */
+const SMITHY_ANVIL = { sprite: 'smithy-anvil' as const, ...smithy(2, 3), w: 1, d: 1 };
+/** 왼쪽 벽 무기 걸이(땅 1×2, 앞면 +x). 첫 걸이의 아래 칸 앞이 사기 창구다. */
+const SMITHY_RACK = { sprite: 'smithy-weapon-rack-x' as const, ...smithy(0, 5), w: 1, d: 2 };
+const SMITHY_COUNTERS = {
+  anvil: { x: SMITHY_ANVIL.x, y: SMITHY_ANVIL.y + 1 },
+  rack: { x: SMITHY_RACK.x + 1, y: SMITHY_RACK.y + 1 },
+};
+/** 나가는 문: 상점 안과 같은 앞-오른쪽 변(x 끝) 가운데. 밟으면 시작마을 대장간 문 앞에 선다. */
+const SMITHY_EXIT = { x: SMITHY_HALL[2], y: smithy(0, 7).y };
+/** 화로, 숯, 모루, 물통, 무기 걸이, 방어구 받침대, 장신구 진열장(지나갈 수 없음). -x가 붙은 것은 왼쪽 벽(x 처음)에 붙는다. */
+export const SMITHY_PROPS = [
+  { sprite: 'smithy-forge' as const, ...smithy(1, 0), w: 2, d: 2 },
+  { sprite: 'smithy-coal' as const, ...smithy(3, 0), w: 1, d: 1 },
+  SMITHY_ANVIL,
+  { sprite: 'smithy-barrel' as const, ...smithy(4, 2), w: 1, d: 1 },
+  SMITHY_RACK,
+  { sprite: 'smithy-weapon-rack-x' as const, ...smithy(0, 8), w: 1, d: 2 },
+  { sprite: 'smithy-forge-x' as const, ...smithy(0, 11), w: 2, d: 2 },
+  { sprite: 'smithy-armor-stand' as const, ...smithy(10, 0), w: 1, d: 1 },
+  { sprite: 'smithy-armor-stand' as const, ...smithy(11, 0), w: 1, d: 1 },
+  { sprite: 'smithy-case' as const, ...smithy(12, 1), w: 2, d: 1 },
+];
+
+/**
  * 어디와도 이어지지 않은 16×16칸 다다미방. 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
  * 나가는 포탈은 7층으로 가고, 7층에는 이 방으로 오는 포탈이 없어 엘리베이터 앞에 선다.
  */
@@ -490,6 +521,19 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
       { ...MART_EXIT, to: 'plains', label: '시작마을', landing: { x: MART_EXIT.x - 2, y: MART_EXIT.y } },
       // 계산대 앞 창구. 밟으면 상점 창(자원 팔기, 도구, 포션, 기타)이 열린다.
       { ...MART_TILL, to: 'shop', label: '계산대', landing: { x: MART_TILL.x, y: MART_TILL.y + 2 } },
+    ],
+  },
+  smithy: {
+    ...plain,
+    number: null,
+    style: 'smithy',
+    area: SMITHY_HALL,
+    doorways: [],
+    portals: [
+      { ...SMITHY_EXIT, to: 'plains', label: '시작마을', landing: { x: SMITHY_EXIT.x - 2, y: SMITHY_EXIT.y } },
+      // 창구 둘은 같은 대장간 창을 다른 탭으로 연다(src/ui/forge.ts).
+      { ...SMITHY_COUNTERS.rack, to: 'forge-shop', label: '무기 사기', landing: { x: SMITHY_COUNTERS.rack.x + 2, y: SMITHY_COUNTERS.rack.y } },
+      { ...SMITHY_COUNTERS.anvil, to: 'forge-anvil', label: '강화 · 팔기', landing: { x: SMITHY_COUNTERS.anvil.x, y: SMITHY_COUNTERS.anvil.y + 2 } },
     ],
   },
   annex: {

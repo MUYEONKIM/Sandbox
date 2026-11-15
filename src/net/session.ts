@@ -8,6 +8,7 @@ import { parseGold, toGold, type Gold } from '../game/gold';
 import type { BetResult, GameId } from '../game/casino';
 import type { StatId } from '../game/stats';
 import { isWeapon, type WeaponId } from '../items';
+import { LEVEL_MAX, type ForgeOutcome, type Gear, type ScrollId } from '../game/forge';
 import type { Profile } from './auth';
 import type { BoardPost, PostCategory, WriteResult } from '../ui/board';
 import type { Notice } from '../ui/notice';
@@ -61,8 +62,38 @@ export interface KillReward {
   gold: Gold;
   level: string;
   exp: number;
-  gained_gold: number;
+  gained_gold: Gold;
   gained_exp: number;
+}
+
+/** 대장간에서 산 자루 */
+export interface BoughtGear {
+  gear: Gear;
+  gold: Gold;
+  paid: Gold;
+}
+
+/** 망치질 한 번의 결과(서버 forge_gear). saved는 두루마리가 결과를 유지로 바꿨을 때다. level은 파괴면 null이다. */
+export interface ForgeResult {
+  result: ForgeOutcome;
+  saved: 'guard' | 'hold' | null;
+  level: number | null;
+  gold: Gold;
+  paid: Gold;
+  /** 새 판매가. 파괴면 0이다. */
+  price: Gold;
+}
+
+/** 대장간 요청이 거절된 까닭 */
+export type ForgeFail = 'gold' | 'too-many' | 'fast' | 'elsewhere' | 'gone' | 'failed';
+
+function forgeFail(message: string): ForgeFail {
+  if (message.includes('not enough gold')) return 'gold';
+  if (message.includes('too many')) return 'too-many';
+  if (message.includes('too fast')) return 'fast';
+  if (message.includes('not at the smithy')) return 'elsewhere';
+  if (message.includes('not owned')) return 'gone';
+  return 'failed';
 }
 
 /** 던전 몬스터 알림. 몬스터를 움직이는 사람(호스트)과 나머지 사람이 맵 채널로 주고받는다(src/game/monsters.ts). */
@@ -119,6 +150,8 @@ export interface PlayerMove {
 export interface PlayerShot {
   id: string;
   weapon: WeaponId;
+  /** 쏜 자루의 강화 단계(기본 권총 0). E 배포의 강화 빛에 쓴다. */
+  level: number;
   fromX: number;
   fromY: number;
   toX: number;
@@ -348,7 +381,8 @@ function parseShot(value: unknown): PlayerShot | null {
   if (!s || typeof s.id !== 'string') return null;
   if (!isGridCoord(s.fromX) || !isGridCoord(s.fromY) || !isGridCoord(s.toX) || !isGridCoord(s.toY)) return null;
   const weapon = isWeapon(s.weapon) ? s.weapon : 'pistol';
-  return { id: s.id, weapon, fromX: s.fromX, fromY: s.fromY, toX: s.toX, toY: s.toY };
+  const level = Number.isInteger(s.level) && s.level! >= 0 && s.level! <= LEVEL_MAX ? s.level! : 0;
+  return { id: s.id, weapon, level, fromX: s.fromX, fromY: s.fromY, toX: s.toX, toY: s.toY };
 }
 
 const isName = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
@@ -359,6 +393,10 @@ function parseNotice(value: unknown): Notice | null {
   const r = value as { id?: unknown; from?: unknown; to?: unknown } | null;
   if (n?.kind === 'rename' && typeof r?.id === 'string' && isName(r.from) && isName(r.to)) {
     return { kind: 'rename', id: r.id, from: r.from.slice(0, MAX_NAME), to: r.to.slice(0, MAX_NAME) };
+  }
+  const forge = value as { name?: unknown; item?: unknown; level?: unknown } | null;
+  if (n?.kind === 'forge' && isName(forge?.name) && isWeapon(forge.item) && Number.isInteger(forge.level)) {
+    return { kind: 'forge', name: forge.name.slice(0, MAX_NAME), item: forge.item, level: Number(forge.level) };
   }
   if (n?.kind === 'kill' && isName(n.killer) && isName(n.victim)) {
     const wanted = (n as { wanted?: unknown }).wanted;
@@ -617,6 +655,13 @@ export class GameSession {
    */
   async syncBlocks() {
     const { mapId } = this;
+    const blocks = await this.readBlocks(mapId);
+    if (!blocks || mapId !== this.mapId) return;
+    this.events.onBlocksLoaded(blocks);
+  }
+
+  /** 한 맵의 블록을 모두 읽는다(1,000줄씩 나눠). 농협 땅 지도는 농장 블록을 이것으로 읽는다. 실패하면 null */
+  async readBlocks(mapId: string): Promise<PlacedBlock[] | null> {
     const rows: Parameters<typeof parseBlock>[0][] = [];
     for (;;) {
       // 기본 키 순서로 읽어야 쪽이 겹치거나 빠지지 않는다.
@@ -628,11 +673,11 @@ export class GameSession {
         .order('y')
         .order('z')
         .range(rows.length, rows.length + BLOCK_PAGE - 1);
-      if (error || !data || mapId !== this.mapId) return;
+      if (error || !data) return null;
       rows.push(...data);
       if (data.length < BLOCK_PAGE) break;
     }
-    this.events.onBlocksLoaded(rows.map(parseBlock).filter((block) => block !== null));
+    return rows.map(parseBlock).filter((block) => block !== null);
   }
 
   /** 이동 알림과 접속 명단에 싣는 내 위치와 상태 */
@@ -777,8 +822,8 @@ export class GameSession {
   async killMonster(kind: string): Promise<KillReward | null> {
     const { data, error } = await supabase.rpc('kill_monster', { kind });
     if (error) return null;
-    const d = data as Omit<KillReward, 'gold'> & { gold: unknown };
-    return { ...d, gold: toGold(d.gold) };
+    const d = data as Omit<KillReward, 'gold' | 'gained_gold'> & { gold: unknown; gained_gold: unknown };
+    return { ...d, gold: toGold(d.gold), gained_gold: toGold(d.gained_gold) };
   }
 
   /** 몬스터에게 맞았다. 서버가 정한 남은 체력을 돌려준다. 던전 밖이거나 실패하면 null이다. */
@@ -793,9 +838,9 @@ export class GameSession {
     return error ? null : (data as { dungeon: string; nickname: string }[]);
   }
 
-  sendShot(weapon: WeaponId, fromX: number, fromY: number, toX: number, toY: number) {
+  sendShot(weapon: WeaponId, level: number, fromX: number, fromY: number, toX: number, toY: number) {
     if (!this.joined || !this.channel) return;
-    const payload = { id: this.profile.id, weapon, fromX, fromY, toX, toY };
+    const payload = { id: this.profile.id, weapon, level, fromX, fromY, toX, toY };
     void this.channel.send({ type: 'broadcast', event: 'shot', payload });
   }
 
@@ -815,10 +860,33 @@ export class GameSession {
     return error ? null : parseGold(data);
   }
 
-  /** 무기를 사고 새 골드를 돌려준다. 실패하면 null이다. */
-  async buyWeapon(weapon: WeaponId): Promise<Gold | null> {
-    const { data, error } = await supabase.rpc('buy_weapon', { weapon });
-    return error ? null : parseGold(data);
+  /** 대장간에서 무기를 한 자루 산다(+0). 값(무기값 × LUK 배율)과 5자루 상한은 서버가 본다. */
+  async buyGear(weapon: WeaponId): Promise<BoughtGear | ForgeFail> {
+    const { data, error } = await supabase.rpc('buy_gear', { weapon });
+    if (error) return forgeFail(error.message);
+    const d = data as { id: unknown; gold: unknown; paid: unknown };
+    return { gear: { id: Number(d.id), kind: weapon, level: 0 }, gold: toGold(d.gold), paid: toGold(d.paid) };
+  }
+
+  /** 자루 하나를 지금 판매가에 판다. */
+  async sellGear(id: number): Promise<{ gold: Gold; earned: Gold } | ForgeFail> {
+    const { data, error } = await supabase.rpc('sell_gear', { item: id });
+    if (error) return forgeFail(error.message);
+    const d = data as { gold: unknown; earned: unknown };
+    return { gold: toGold(d.gold), earned: toGold(d.earned) };
+  }
+
+  /** 망치질 한 번. 결과는 서버가 정한다. 대장간 안에 있어야 하고, 3초 × 무기값/1,000마다 한 번이다. */
+  async forgeGear(id: number, scrolls: ReadonlySet<ScrollId>): Promise<ForgeResult | ForgeFail> {
+    const { data, error } = await supabase.rpc('forge_gear', {
+      item: id,
+      guard: scrolls.has('guard'),
+      hold: scrolls.has('hold'),
+      boost: scrolls.has('boost'),
+    });
+    if (error) return forgeFail(error.message);
+    const d = data as { result: ForgeOutcome; saved: 'guard' | 'hold' | null; level: number | null; gold: unknown; paid: unknown; price: unknown };
+    return { result: d.result, saved: d.saved ?? null, level: d.level ?? null, gold: toGold(d.gold), paid: toGold(d.paid), price: toGold(d.price) };
   }
 
   /** 닉네임 변경권을 한 장 사고 새 골드와 변경권 수를 돌려준다. 실패하면 null이다. */
@@ -1009,9 +1077,12 @@ export class GameSession {
     return { ...d, gold: toGold(d.gold), payout: Number(d.payout) };
   }
 
-  /** 내 공격이 맞았음을 서버에 알린다. 피해량과 체력은 서버가 계산한다. */
-  async hitPlayer(target: string, weapon: WeaponId) {
-    await supabase.rpc('hit_player', { target, weapon });
+  /**
+   * 내 공격이 맞았음을 서버에 알린다. 피해량과 체력은 서버가 계산한다.
+   * gear는 쏜 자루(기본 권총은 null), shot은 한 번 쏜 것의 번호, pellets는 이 사람에게 맞은 알 수(산탄총 1~5)다.
+   */
+  async hitPlayer(target: string, weapon: WeaponId, gear: number | null, shot: number, pellets: number) {
+    await supabase.rpc('hit_player', { target, weapon, gear, shot, pellets });
   }
 
   /** 쓰러진 뒤 체력을 되찾는다. 실패하면 false를 돌려준다. */

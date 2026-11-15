@@ -1,7 +1,5 @@
 import type { BulletTarget } from './bullets';
 
-/** 앞쪽 120도 안에 있어야 벨 수 있다. 부채꼴 절반 각도의 코사인 값이다. */
-const ARC_COS = 0.5;
 /** 몸이 겹칠 만큼 가까우면 방향과 상관없이 벤다. */
 const TOUCHING = 0.5;
 const CHECK_STEP = 0.2;
@@ -23,14 +21,19 @@ function isClear(from: Point, to: Point, isSolid: (x: number, y: number) => bool
   return true;
 }
 
-/** from에서 aim 쪽으로 벨 때 맞는 사람을 찾는다. 한 번에 가장 가까운 한 명만 벤다. */
+/**
+ * from에서 aim 쪽으로 벨 때 맞는 사람을 찾는다. 한 번에 가장 가까운 한 명만 벤다.
+ * arc는 베는 폭(도, 무기마다 다름, weapons.md 6장)이고 조준한 방향에서 그 절반만큼 양쪽으로 벤다.
+ */
 export function meleeTarget(
   from: Point,
   aim: Point,
   reach: number,
+  arc: number,
   targets: BulletTarget[],
   isSolid: (x: number, y: number) => boolean,
 ) {
+  const arcCos = Math.cos(((arc / 2) * Math.PI) / 180);
   const aimX = aim.x - from.x;
   const aimY = aim.y - from.y;
   const aimLength = Math.hypot(aimX, aimY);
@@ -41,7 +44,7 @@ export function meleeTarget(
     const distance = Math.hypot(dx, dy);
     if (distance > reach) return false;
     if (distance <= TOUCHING) return true;
-    return (dx * aimX + dy * aimY) / (distance * aimLength) >= ARC_COS;
+    return (dx * aimX + dy * aimY) / (distance * aimLength) >= arcCos;
   };
 
   const distanceTo = ({ x, y }: BulletTarget) => Math.hypot(x - from.x, y - from.y);

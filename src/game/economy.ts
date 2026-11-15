@@ -26,6 +26,11 @@ export interface ShopWeapon {
   price: number;
   damage: number;
   cooldownMs: number;
+  /** 탄창 발 수. 근접 무기는 null이다. */
+  magazine: number | null;
+  reloadMs: number;
+  /** 한 번 쏠 때 나가는 알 수(산탄총 5) */
+  pellets: number;
 }
 
 export interface ShopTool {
@@ -54,7 +59,6 @@ export interface EconomyData {
   tools: ShopTool[];
   stats: ShopStat[];
   myStats: Record<StatId, number>;
-  owned: WeaponId[];
   ownedTools: string[];
 }
 
@@ -90,7 +94,6 @@ export class Economy {
   readonly tools: ShopTool[];
   private readonly weapons: ShopWeapon[];
   private readonly myStats: Record<StatId, number>;
-  private readonly owned: Set<WeaponId>;
   private readonly ownedTools: Set<string>;
   private readonly loot = new Map<string, LootItem>();
   private readonly stash = new Map<string, number>();
@@ -110,7 +113,6 @@ export class Economy {
     this.tools = data.tools;
     this.weapons = data.weapons;
     this.myStats = { ...data.myStats };
-    this.owned = new Set(data.owned);
     this.ownedTools = new Set(data.ownedTools);
     for (const item of data.loot) this.loot.set(item.item, item);
     for (const { item, count } of data.stash) this.stash.set(item, count);
@@ -183,22 +185,32 @@ export class Economy {
     this.changed();
   }
 
-  /** 상점에서 파는 무기. 기본 지급품은 뺀다. */
+  /** 대장간에서 파는 무기. 기본 지급품은 뺀다. */
   get forSale() {
     return this.weapons.filter(({ price }) => price > 0);
   }
 
+  weapon(id: WeaponId) {
+    return this.weapons.find((weapon) => weapon.id === id);
+  }
+
   cooldownOf(id: WeaponId) {
-    return this.weapons.find((weapon) => weapon.id === id)?.cooldownMs ?? DEFAULT_COOLDOWN_MS;
+    return this.weapon(id)?.cooldownMs ?? DEFAULT_COOLDOWN_MS;
   }
 
   /**
-   * 몬스터에게 주는 한 방의 피해: 무기 피해 × (1 + STR × 0.1%). 소수점 아래는 그 확률만큼 1을 더한다(서버 hit_player와 같은 식).
+   * 몬스터에게 주는 한 알의 피해: 무기 피해 × 1.03^단계 × (1 + STR × 0.1%). 소수점 아래는 그 확률만큼 1을 더한다(서버 hit_player와 같은 식).
    * 몬스터 체력은 서버가 모르고 같은 던전 사람끼리 나눠 보므로 피해도 클라이언트가 정한다.
    */
-  monsterDamage(id: WeaponId) {
-    const base = this.weapons.find((weapon) => weapon.id === id)?.damage ?? 0;
-    return Math.max(1, Math.floor(base * (1 + this.stat('str') * 0.001) + Math.random()));
+  monsterDamage(id: WeaponId, level: number) {
+    const base = this.weapon(id)?.damage ?? 0;
+    return Math.max(1, Math.floor(base * 1.03 ** level * (1 + this.stat('str') * 0.001) + Math.random()));
+  }
+
+  /** 몬스터를 잡으면 받는 골드: round(몬스터 골드 × (1 + LUK/300)), 서버 kill_monster와 같은 식(사용자가 정함, 2026-11-15) */
+  killGold(gold: number): Gold {
+    const luk = BigInt(Math.max(0, Math.floor(this.stat('luk'))));
+    return (BigInt(gold) * (300n + luk) * 2n + 300n) / 600n;
   }
 
   /** 포션 표와 내가 가진 개수. 접속할 때 따로 읽는다(표가 없으면 빈 목록). */
@@ -270,10 +282,6 @@ export class Economy {
     return rows;
   }
 
-  owns(id: WeaponId) {
-    return this.owned.has(id);
-  }
-
   ownsTool(id: string) {
     return this.ownedTools.has(id);
   }
@@ -290,12 +298,6 @@ export class Economy {
     const n = BigInt(count);
     const owned = BigInt(this.myStats[id]);
     return n * BigInt(basePrice) + BigInt(priceStep) * (n * owned + (n * (n - 1n)) / 2n);
-  }
-
-  setWeaponBought(id: WeaponId, gold: Gold) {
-    this.gold = gold;
-    this.owned.add(id);
-    this.changed();
   }
 
   setToolBought(id: string, gold: Gold) {

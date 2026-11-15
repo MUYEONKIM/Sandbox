@@ -1,12 +1,14 @@
 import type { DungeonInfo, MonsterKind } from '../game/dungeon';
 import type { DungeonId } from '../game/maps';
 import { element } from './dom';
-import { goldText } from '../game/gold';
+import { goldText, type Gold } from '../game/gold';
 
 interface DungeonActions {
   onGo(dungeon: DungeonId): void;
   /** 던전마다 지금 있는 사람. 실패하면 null */
   loadRoster(): Promise<{ dungeon: string; nickname: string }[] | null>;
+  /** 몬스터 한 마리를 잡으면 내가 받는 골드(LUK 배율을 붙임) */
+  goldOf(gold: number): Gold;
 }
 
 /** 창이 열려 있는 동안 던전 인원을 다시 읽는 간격 */
@@ -19,6 +21,8 @@ const ROSTER_REFRESH_MS = 5000;
 export class DungeonWindow {
   private readonly root: HTMLElement;
   private readonly rosters = new Map<string, HTMLElement>();
+  /** 던전마다 "오크 290G · 병사 430G" 줄. 열 때마다 내 LUK 배율로 다시 쓴다. */
+  private readonly rates: { line: HTMLElement; kinds: MonsterKind[] }[] = [];
   private rosterTimer = 0;
 
   constructor(parent: HTMLElement, dungeons: DungeonInfo[], monsters: MonsterKind[], private readonly actions: DungeonActions) {
@@ -36,7 +40,7 @@ export class DungeonWindow {
       element('office-place-name', button).textContent = dungeon.name;
       element('office-place-blurb', button).textContent = dungeon.blurb;
       const kinds = monsters.filter((m) => m.dungeon === dungeon.id);
-      element('office-place-rate', button).textContent = kinds.map((m) => `${m.name} ${goldText(m.gold)}`).join(' · ');
+      this.rates.push({ line: element('office-place-rate', button), kinds });
       this.rosters.set(dungeon.id, element('office-place-roster', button));
       button.addEventListener('click', () => actions.onGo(dungeon.id));
     }
@@ -53,6 +57,8 @@ export class DungeonWindow {
   }
 
   open() {
+    // 받는 골드 = 몬스터 골드 × (1 + LUK/300)(서버 kill_monster와 같은 식)
+    for (const { line, kinds } of this.rates) line.textContent = kinds.map((m) => `${m.name} ${goldText(this.actions.goldOf(m.gold))}`).join(' · ');
     this.root.hidden = false;
     void this.showRoster();
     window.clearInterval(this.rosterTimer);

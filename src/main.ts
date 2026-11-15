@@ -6,7 +6,8 @@ import { GameScene } from './game/GameScene';
 import { Inventory } from './game/inventory';
 import { Keys } from './game/keys';
 import { Market } from './game/market';
-import { currentUser, loadDungeons, loadEconomy, loadFarm, loadPotions, loadProfile, signOut, type Profile } from './net/auth';
+import { currentUser, loadDungeons, loadEconomy, loadFarm, loadForge, loadPotions, loadProfile, signOut, type Profile } from './net/auth';
+import { ForgeTable } from './game/forge';
 import { GameSession, type RenameFail } from './net/session';
 import { isConfigured } from './net/supabase';
 import { ChatBox } from './ui/chat';
@@ -27,7 +28,8 @@ import { CastleWindow } from './ui/castle';
 import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
 import { DungeonWindow } from './ui/dungeon';
-import { cropOfSeed } from './items';
+import { cropOfSeed, WEAPONS } from './items';
+import { ForgeWindow } from './ui/forge';
 import { CoopWindow } from './ui/coop';
 import { OfficeWindow } from './ui/office';
 import { ShopWindow } from './ui/shop';
@@ -50,10 +52,11 @@ function enterGame(
   dungeonData: Awaited<ReturnType<typeof loadDungeons>>,
   potionData: Awaited<ReturnType<typeof loadPotions>>,
   farmData: Awaited<ReturnType<typeof loadFarm>>,
+  forgeData: Awaited<ReturnType<typeof loadForge>>,
 ) {
   const root = document.getElementById('hud')!;
   const session = new GameSession(profile);
-  const inventory = new Inventory(profile.inventory, economyData.owned);
+  const inventory = new Inventory(profile.inventory, forgeData.gear);
   inventory.onChange(() => session.saveLater({ inventory: inventory.slots }));
 
   const side = element('side', root);
@@ -118,6 +121,7 @@ function enterGame(
   const dungeon = new DungeonWindow(root, dungeonData.dungeons, dungeonData.monsters, {
     onGo: (id) => scene.goToDungeon(id),
     loadRoster: () => session.fetchDungeonRoster(),
+    goldOf: (gold) => economy.killGold(gold),
   });
 
   // 농협(2026-11-15 사용자 요청, 기획 docs/balance/farm.md)
@@ -149,6 +153,7 @@ function enterGame(
       hud.toast(`작물을 모두 팔았습니다 (+${goldText(sold.earned)})`, '');
     },
     loadFarm: () => session.readFarm(),
+    loadBlocks: () => session.readBlocks('farm'),
     buyPlots: async (cells) => {
       const result = await session.buyPlots(cells);
       if (typeof result === 'string') return farmFailText[result] ?? '사지 못했습니다';
@@ -165,8 +170,40 @@ function enterGame(
     },
   });
 
+  // 대장간(2026-11-16, docs/balance/weapons.md). 사기·강화·팔기는 서버가 정하고, 여기서 골드와 가방을 맞춘다.
+  const forge = new ForgeWindow(root, economy, inventory, new ForgeTable(forgeData.steps), {
+    buy: async (kind) => {
+      const bought = await session.buyGear(kind);
+      if (typeof bought === 'string') return bought;
+      economy.setGold(bought.gold);
+      const placed = inventory.addGear(bought.gear);
+      hud.toast(`+0 ${WEAPONS[kind].name} 구매 (-${goldText(bought.paid)})`, placed ? '단축키 칸에 넣었습니다' : '인벤토리(I)의 무기 탭에 있습니다');
+      return null;
+    },
+    sell: async (gear) => {
+      const sold = await session.sellGear(gear.id);
+      if (typeof sold === 'string') {
+        if (sold === 'gone') inventory.removeGear(gear.id);
+        return sold;
+      }
+      economy.setGold(sold.gold);
+      inventory.removeGear(gear.id);
+      return null;
+    },
+    hammer: async (gear, scrolls) => {
+      const result = await session.forgeGear(gear.id, scrolls);
+      if (typeof result === 'string') {
+        if (result === 'gone') inventory.removeGear(gear.id);
+        return result;
+      }
+      economy.setGold(result.gold);
+      if (result.level === null) inventory.removeGear(gear.id);
+      else inventory.setGearLevel(gear.id, result.level);
+      return result;
+    },
+  });
+
   const shop = new ShopWindow(root, economy, {
-    onBuyWeapon: (id) => scene.buyWeapon(id),
     onBuyTool: (tool) => scene.buyTool(tool),
     onBuyPotion: async (id, amount) => {
       const bought = await session.buyPotion(id, amount);
@@ -237,7 +274,7 @@ function enterGame(
     onSlot: (index) => inventory.select(index),
     onInventory: () => hud.toggle(),
     onHelp: () => hud.toggleHelp(),
-    onRotate: () => inventory.rotateSelected(),
+    onRotate: () => scene.reloadOrRotate(),
     onEscape: () => {
       if (anyModalOpen()) {
         closeTopModal();
@@ -248,6 +285,7 @@ function enterGame(
       dungeon.close();
       coop.close();
       shop.close();
+      forge.close();
       castle.close();
       fame.close();
       board.close();
@@ -257,7 +295,7 @@ function enterGame(
     },
     onChat: () => {
       const windowOpen =
-        hud.isOpen || office.isOpen || dungeon.isOpen || coop.isOpen || shop.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
+        hud.isOpen || office.isOpen || dungeon.isOpen || coop.isOpen || shop.isOpen || forge.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
       if (!windowOpen) chat.open();
     },
   });
@@ -269,9 +307,10 @@ function enterGame(
   hud.onDropGold = () => groundUi.openGoldDrop(economy.gold, (amount) => scene.dropGold(amount));
   void session.myMemos().then((memos) => groundUi.setHeld(memos));
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters, coop);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters, coop, forge);
 
   hud.onUsePotion = () => scene.drinkSelectedPotion();
+  hud.onReselect = () => scene.reloadOrRotate();
   void session.announceJoin();
   watchNewVersion(root);
   showWhatsNew(root, profile.id);
@@ -289,7 +328,7 @@ function enterGame(
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, dungeon, coop, shop, castle, fame, board, exchange, market, elevator, casino, groundUi } });
+    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, dungeon, coop, shop, forge, castle, fame, board, exchange, market, elevator, casino, groundUi } });
   }
 }
 
@@ -307,8 +346,15 @@ async function main() {
     profile = await loadProfile((await showLogin(document.body)).id);
   }
   if (profile) {
-    const [economy, dungeons, potions, farm] = await Promise.all([loadEconomy(profile), loadDungeons(), loadPotions(), loadFarm(), loadSprites()]);
-    enterGame(profile, economy, dungeons, potions, farm);
+    const [economy, dungeons, potions, farm, forge] = await Promise.all([
+      loadEconomy(profile),
+      loadDungeons(),
+      loadPotions(),
+      loadFarm(),
+      loadForge(),
+      loadSprites(),
+    ]);
+    enterGame(profile, economy, dungeons, potions, farm, forge);
   }
 }
 

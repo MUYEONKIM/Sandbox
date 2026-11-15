@@ -1,6 +1,23 @@
 import { BLOCK_IDS, isCube, isFurniture, rotatedBlock, type BlockId } from '../blocks';
 import { FURNITURE_KINDS } from '../furniture';
-import { isItem, isPotion, isSeed, isWeapon, POTION_IDS, SEED_IDS, WEAPON_IDS, type ItemId, type WeaponId } from '../items';
+import {
+  gearIdOf,
+  gearRef,
+  isGearRef,
+  isItem,
+  isPotion,
+  isSeed,
+  isWeapon,
+  itemName,
+  POTION_IDS,
+  SEED_IDS,
+  WEAPON_IDS,
+  WEAPONS,
+  type GearRef,
+  type ItemId,
+  type WeaponId,
+} from '../items';
+import type { Gear } from './forge';
 
 export const HOTBAR_SIZE = 9;
 /** 0번 키 칸: 언제나 메모장이다(2026-11-13 사용자 요청). 단축키 칸 0~8 뒤의 번호로 고르고, 다른 것을 넣거나 뺄 수 없다. */
@@ -16,6 +33,14 @@ export interface Stack {
 
 export type Slot = Stack | null;
 
+/** 손에 든 무기: 종류와 자루(기본 권총은 자루가 없다) */
+export interface Arm {
+  kind: WeaponId;
+  gear: Gear | null;
+  /** 단축키 칸의 id. 탄창을 자루마다 따로 센다. */
+  key: ItemId;
+}
+
 /**
  * 인벤토리 창의 탭(2026-11-12 사용자 요청 "타일, 장식품 탭 분류"). 타일은 상자 블록, 장식품은 나머지 블록이다.
  * 가구는 사용자가 준 실내 꾸미기 에셋으로 만든 장식품이고(2026-11-13), 종류가 많아 탭을 따로 둔다.
@@ -24,7 +49,7 @@ export const TABS = { tile: '타일', decor: '장식품', furniture: '가구', w
 export type TabId = keyof typeof TABS;
 
 export function tabOf(id: ItemId): TabId {
-  if (isWeapon(id)) return 'weapon';
+  if (isWeapon(id) || isGearRef(id)) return 'weapon';
   if (isPotion(id)) return 'potion';
   if (isSeed(id)) return 'seed';
   if (isFurniture(id)) return 'furniture';
@@ -41,40 +66,58 @@ function isSlot(value: unknown): value is Stack {
 /** 처음 단축키 칸에 놓는 블록. 무기는 그 뒤 빈칸에 들어간다. */
 const HOTBAR_BLOCKS: readonly BlockId[] = ['stone', 'brick', 'wood', 'hedge', 'glass', 'grass', 'pine', 'flower'];
 
+/** 무기 탭과 대장간의 자루 순서: 종류 순서(items.ts), 같은 종류는 높은 단계부터 */
+export function sortGear(list: Gear[]) {
+  const order = (kind: WeaponId) => WEAPON_IDS.indexOf(kind);
+  return [...list].sort((a, b) => order(a.kind) - order(b.kind) || b.level - a.level || a.id - b.id);
+}
+
 /**
  * 저장된 목록의 앞 9칸이 단축키 칸이다(예전에는 가방 칸까지 저장했고, 그 앞 9칸도 단축키 칸이었다).
- * 같은 것이 두 칸에 있으면 하나만 남기고, 무기는 서버가 아는 보유 목록에 있을 때만 둔다(저장된 인벤토리는 위조할 수 있으므로).
- * 저장된 것이 없으면(처음 가입) 기본 블록과 가진 무기로 채운다.
+ * 같은 것이 두 칸에 있으면 하나만 남기고, 자루는 서버가 아는 내 자루일 때만 둔다(저장된 인벤토리는 위조할 수 있으므로).
+ * 대장간 배포(2026-11-16) 전의 저장은 무기 종류('sword', 'machinegun')를 담고 있어서 그 종류의 첫 자루로 바꿔 읽는다.
+ * 저장된 것이 없으면(처음 가입) 기본 블록과 기본 권총, 가진 자루로 채운다.
  */
-function readHotbar(saved: unknown, owned: ReadonlySet<WeaponId>): Slot[] {
+function readHotbar(saved: unknown, gear: ReadonlyMap<number, Gear>): Slot[] {
   const hotbar: Slot[] = Array.from({ length: HOTBAR_SIZE }, () => null);
   if (Array.isArray(saved)) {
     const seen = new Set<ItemId>();
+    const all = sortGear([...gear.values()]);
+    const firstOf = (kind: WeaponId) => {
+      const found = all.find((g) => g.kind === kind && !seen.has(gearRef(g.id)));
+      return found ? gearRef(found.id) : null;
+    };
     saved.slice(0, HOTBAR_SIZE).forEach((slot, i) => {
-      if (!isSlot(slot) || seen.has(slot.id) || (isWeapon(slot.id) && !owned.has(slot.id))) return;
-      hotbar[i] = { id: slot.id, count: 1 };
-      seen.add(slot.id);
+      if (!isSlot(slot)) return;
+      let id: ItemId | null = slot.id;
+      if (isGearRef(id) && !gear.has(gearIdOf(id))) id = null;
+      else if (isWeapon(id) && id !== 'pistol') id = firstOf(id);
+      if (!id || seen.has(id)) return;
+      hotbar[i] = { id, count: 1 };
+      seen.add(id);
     });
     return hotbar;
   }
-  [...HOTBAR_BLOCKS, ...owned].slice(0, HOTBAR_SIZE).forEach((id, i) => (hotbar[i] = { id, count: 1 }));
+  const weapons: ItemId[] = ['pistol', ...sortGear([...gear.values()]).map((g) => gearRef(g.id))];
+  [...HOTBAR_BLOCKS, ...weapons].slice(0, HOTBAR_SIZE).forEach((id, i) => (hotbar[i] = { id, count: 1 }));
   return hotbar;
 }
 
 /**
  * 단축키 칸 9개와 가진 것 전체. 블록과 꾸미기는 누구나 모든 종류를 무제한으로 가지므로(2026-11-11 사용자 요청)
  * 인벤토리 창은 탭별 목록이고, 거기서 단축키 칸으로 끌어다 놓는다. 저장하는 것은 단축키 칸뿐이다.
+ * 무기는 기본 권총과 가진 자루(대장간에서 산 것, 서버 gear 표)다.
  */
 export class Inventory {
   /** 단축키 칸 0~8 */
   readonly slots: Slot[];
   selected = 0;
-  private readonly weapons: Set<WeaponId>;
+  private readonly gear = new Map<number, Gear>();
   private readonly listeners: (() => void)[] = [];
 
-  constructor(saved: unknown, owned: readonly WeaponId[]) {
-    this.weapons = new Set(owned);
-    this.slots = readHotbar(saved, this.weapons);
+  constructor(saved: unknown, gear: readonly Gear[]) {
+    for (const g of gear) this.gear.set(g.id, { ...g });
+    this.slots = readHotbar(saved, this.gear);
   }
 
   onChange(fn: () => void) {
@@ -94,9 +137,42 @@ export class Inventory {
     return this.selected === MEMO_SLOT;
   }
 
-  /** 탭에 보여 줄 것: 블록은 전부, 무기는 가진 것만. 순서는 blocks.ts, items.ts의 순서다. */
+  /** 가진 자루 목록(무기 탭 순서) */
+  get gearList() {
+    return sortGear([...this.gear.values()]);
+  }
+
+  gearOf(id: ItemId) {
+    return isGearRef(id) ? this.gear.get(gearIdOf(id)) : undefined;
+  }
+
+  /** 칸의 것이 무기면 그 종류와 자루. 기본 권총은 자루가 없다. */
+  armOf(id: ItemId): Arm | null {
+    if (id === 'pistol') return { kind: 'pistol', gear: null, key: id };
+    const gear = this.gearOf(id);
+    return gear ? { kind: gear.kind, gear, key: id } : null;
+  }
+
+  get selectedArm(): Arm | null {
+    const stack = this.selectedStack;
+    return stack ? this.armOf(stack.id) : null;
+  }
+
+  /** 이름. 자루는 "+12 장검"처럼 단계를 붙인다. */
+  nameOf(id: ItemId) {
+    const gear = this.gearOf(id);
+    return gear ? `+${gear.level} ${WEAPONS[gear.kind].name}` : itemName(id);
+  }
+
+  /** 아이콘을 찾는 id: 자루는 그 종류의 아이콘이다. */
+  iconKey(id: ItemId): Exclude<ItemId, GearRef> {
+    if (!isGearRef(id)) return id;
+    return this.gearOf(id)?.kind ?? 'pistol';
+  }
+
+  /** 탭에 보여 줄 것: 블록은 전부, 무기는 기본 권총과 가진 자루. 순서는 blocks.ts, items.ts의 순서다. */
   catalog(tab: TabId): ItemId[] {
-    if (tab === 'weapon') return WEAPON_IDS.filter((id) => this.weapons.has(id));
+    if (tab === 'weapon') return ['pistol', ...this.gearList.map((g) => gearRef(g.id))];
     // 포션은 가진 개수와 상관없이 다 보이고, 개수는 칸에 적는다(0개면 상점에서 산다).
     if (tab === 'potion') return POTION_IDS;
     if (tab === 'seed') return SEED_IDS;
@@ -108,7 +184,8 @@ export class Inventory {
   /** 고른 칸의 가구를 다음 방향으로 돌린다. 돌릴 것이 없으면 false */
   rotateSelected() {
     const stack = this.selectedStack;
-    const next = stack && !isWeapon(stack.id) && !isPotion(stack.id) && !isSeed(stack.id) ? rotatedBlock(stack.id) : null;
+    const id = stack?.id;
+    const next = id && !isWeapon(id) && !isGearRef(id) && !isPotion(id) && !isSeed(id) ? rotatedBlock(id) : null;
     if (!next) return false;
     this.slots[this.selected] = { id: next, count: 1 };
     this.changed();
@@ -148,14 +225,28 @@ export class Inventory {
     this.changed();
   }
 
-  /** 새로 산 무기를 무기 탭에 넣고, 단축키 칸에 빈칸이 있으면 거기에도 넣는다. 단축키 칸에 들어갔으면 true */
-  addWeapon(id: WeaponId) {
-    this.weapons.add(id);
-    if (this.hotbarIndexOf(id) < 0) {
-      const empty = this.slots.indexOf(null);
-      if (empty >= 0) this.slots[empty] = { id, count: 1 };
-    }
+  /** 새로 산 자루를 무기 탭에 넣고, 단축키 칸에 빈칸이 있으면 거기에도 넣는다. 단축키 칸에 들어갔으면 true */
+  addGear(gear: Gear) {
+    this.gear.set(gear.id, { ...gear });
+    const empty = this.slots.indexOf(null);
+    if (empty >= 0) this.slots[empty] = { id: gearRef(gear.id), count: 1 };
     this.changed();
-    return this.hotbarIndexOf(id) >= 0;
+    return empty >= 0;
+  }
+
+  /** 강화로 단계가 바뀐 자루 */
+  setGearLevel(id: number, level: number) {
+    const gear = this.gear.get(id);
+    if (!gear) return;
+    gear.level = level;
+    this.changed();
+  }
+
+  /** 팔았거나 파괴된 자루를 목록과 단축키 칸에서 뺀다. */
+  removeGear(id: number) {
+    if (!this.gear.delete(id)) return;
+    const at = this.hotbarIndexOf(gearRef(id));
+    if (at >= 0) this.slots[at] = null;
+    this.changed();
   }
 }
