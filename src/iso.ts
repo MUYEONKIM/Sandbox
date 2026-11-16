@@ -28,3 +28,12 @@ export function tileCenter(x: number, y: number) {
 export function depthOf(gx: number, gy: number) {
   return 100 + (gx + gy) * 10;
 }
+
+/**
+ * 깊이가 바뀔 때만 setDepth를 부른다. Phaser는 같은 값을 넣어도 장면의 그림 전체를 다시 정렬하므로(블록이 많은 벌목장에서 매 프레임 1.2ms),
+ * 매 프레임 깊이를 맞추는 곳(캐릭터, 설치 미리보기)은 이것을 쓴다.
+ */
+export function keepDepth<T extends { depth: number; setDepth(value: number): unknown }>(object: T, depth: number): T {
+  if (object.depth !== depth) object.setDepth(depth);
+  return object;
+}

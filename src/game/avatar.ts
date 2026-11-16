@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { BASE_HP, TEAM_SIZE } from '../config';
-import { depthOf, gridToWorld } from '../iso';
+import { depthOf, gridToWorld, keepDepth } from '../iso';
 import { WEAPONS, type WeaponId } from '../items';
 import type { Tile } from './world';
 
@@ -324,9 +324,9 @@ export class Avatar {
       .setPosition(drawX, drawY)
       .setTexture(this.back ? 'team-back' : 'team', frame)
       .setFlipX(this.flip)
-      .setRotation(this.knockX * KNOCK_LEAN * knock + this.poseLean)
-      .setDepth(depth);
-    this.shadow.setPosition(pos.x, pos.y).setDepth(depthOf(x, y));
+      .setRotation(this.knockX * KNOCK_LEAN * knock + this.poseLean);
+    keepDepth(this.image, depth);
+    keepDepth(this.shadow.setPosition(pos.x, pos.y), depthOf(x, y));
 
     const armed = this.aimAngle !== null && !this.isDown && !this.hidden;
     this.gun.setVisible(armed);
@@ -335,8 +335,8 @@ export class Avatar {
       this.gun
         .setPosition(drawX + Math.cos(angle) * HAND_REACH, drawY - HAND_HEIGHT + Math.sin(angle) * HAND_REACH * 0.5)
         .setRotation(angle)
-        .setFlipY(Math.abs(angle) > Math.PI / 2)
-        .setDepth(Math.sin(angle) < 0 ? depth - 0.5 : depth + 0.5);
+        .setFlipY(Math.abs(angle) > Math.PI / 2);
+      keepDepth(this.gun, Math.sin(angle) < 0 ? depth - 0.5 : depth + 0.5);
     }
   }
 

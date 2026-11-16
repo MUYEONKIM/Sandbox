@@ -26,6 +26,7 @@ import {
 import { layoutBattlefield, type BattleProp } from './battlefield';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
+import { WORK_LAYOUTS } from './workLayouts';
 
 /** Void는 아무것도 없는 칸이다. 건물 안처럼 맵의 일부만 쓸 때 나머지를 채운다. */
 export const Terrain = { Ground: 0, Water: 1, Void: 2 } as const;
@@ -244,6 +245,9 @@ export function generateMap(id: MapId): GameMap {
 
   const workBuilding = WORK_BUILDINGS[id];
   if (workBuilding) buildings.push({ sprite: workBuilding, ...WORK_SITE });
+  // 작업장 소품(2026-11-16 디자인 세션, workLayouts.ts): 건물처럼 놓고 아래 반복문이 차지하는 칸을 막는다.
+  const workLayout = MAPS[id].work ? WORK_LAYOUTS[id as WorkId] : undefined;
+  if (workLayout) buildings.push(...workLayout.props);
 
   for (const { x, y, w, d } of buildings) {
     for (let j = y; j < y + d; j++) {
@@ -266,7 +270,8 @@ export function generateMap(id: MapId): GameMap {
       }
     }
   }
-  const walls = MAPS[id].work ? workWalls(id as WorkId, terrain, solid) : battleWalls;
+  // 소품으로 바꾼 작업장은 예전 장식 벽(WORK_WALLS)을 세우지 않는다.
+  const walls = workLayout && !workLayout.removeWalls ? workWalls(id as WorkId, terrain, solid) : battleWalls;
   const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, size - 1, size - 1];
   // 블록은 어느 맵이든 바닥 전체에 놓는다. 벽, 물, 포탈 둘레처럼 놓을 수 없는 칸은 World.canPlace가 거른다.
   // 4층 숨은 방 안에도 놓는다. 방이 닫혀 있으면 허공이라 World.canPlace가 거른다. 입구와 통로는 막히지 않게 비운다.

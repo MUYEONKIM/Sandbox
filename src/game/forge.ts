@@ -3,7 +3,9 @@ import type { Gold } from './gold';
 
 /**
  * 대장간 값 계산(2026-11-16, docs/balance/weapons.md 2장, forge-items.md 3장). 서버 forge_gear·gear_price와 같은 식이다.
- * 판매가는 서버 forge_steps 표의 단계 값 × 무기값/1,000 × (1 + LUK/300)이고 소수점 아래는 버린다.
+ * 사는 값은 무기값이고 LUK와 상관없다(2026-11-16 사용자가 고른 B안, docs/balance/forge-luk.md).
+ * 판매가는 V = 서버 forge_steps 표의 단계 값 × 무기값/1,000에, V가 무기값을 넘는 몫에만 LUK/300을 곱해 더한 값이다(+8부터).
+ * 서버 gear_price의 정수 식 div(무기값 × (300 × p + LUK × max(p − 1000, 0)), 300000)과 같고 소수점 아래는 버린다.
  * 골드는 끝이 없어서 BigInt로 센다. 표의 값은 소수 둘째 자리까지라 100을 곱한 정수(센트)로 다룬다.
  */
 
@@ -50,10 +52,13 @@ export function parseCents(value: unknown): bigint | null {
 
 const luk = (value: number) => BigInt(Math.max(0, Math.floor(value)));
 
-/** 무기를 사는 값: 무기값 × (1 + LUK/300), 버림 */
-export function buyPrice(base: number, lukValue: number): Gold {
-  return (BigInt(base) * (300n + luk(lukValue))) / 300n;
+/** 무기를 사는 값: 무기값(LUK와 상관없음, 서버 buy_gear와 같음) */
+export function buyPrice(base: number): Gold {
+  return BigInt(base);
 }
+
+/** 단계표 값 1,000G(센트)를 넘는 몫. 판매가에서 이 몫에만 LUK가 붙는다. */
+const OVER_BASE_CENTS = 100_000n;
 
 /** 망치질 한 번의 간격: 3초 × 무기값/1,000 */
 export function hammerMs(base: number) {
@@ -75,11 +80,12 @@ export class ForgeTable {
     return this.steps[level];
   }
 
-  /** 판매가 */
+  /** 판매가. 서버 식에 위아래로 100을 곱한 것(센트)이라 같은 값이 나온다. */
   sale(level: number, base: number, lukValue: number): Gold {
     const step = this.steps[level];
     if (!step) return 0n;
-    return (step.cents * BigInt(base) * (300n + luk(lukValue))) / 30_000_000n;
+    const over = step.cents > OVER_BASE_CENTS ? step.cents - OVER_BASE_CENTS : 0n;
+    return (BigInt(base) * (300n * step.cents + luk(lukValue) * over)) / 30_000_000n;
   }
 
   /** 강화비: 판매가의 1%(반올림, 최소 1G) */

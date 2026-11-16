@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { alphaMask, opaqueAt } from './alphaMask';
 
 /** 가리는 동안의 불투명도 */
 const FADED_ALPHA = 0.5;
@@ -12,7 +13,6 @@ const BODY_HEIGHTS = [16, 30];
 
 /** 화면 위로 솟아 캐릭터를 가릴 수 있는 것. 건물은 세로 띠 여러 장, 나무는 한 장이다. */
 interface Cover {
-  textureKey: string;
   images: Phaser.GameObjects.Image[];
 }
 
@@ -24,8 +24,10 @@ export class CoverFader {
 
   constructor(private readonly scene: Phaser.Scene) {}
 
-  add(textureKey: string, images: Phaser.GameObjects.Image[]) {
-    this.covers.push({ textureKey, images });
+  /** 알파는 여기서 미리 읽어 둔다. 맵에 들어갈 때(화면이 어두운 동안) 읽어야 처음 걸을 때 한 번 튀지 않는다. */
+  add(images: Phaser.GameObjects.Image[]) {
+    for (const image of images) alphaMask(image.frame);
+    this.covers.push({ images });
   }
 
   /** 회수한 블록처럼 지운 그림을 뺀다. */
@@ -56,10 +58,13 @@ export class CoverFader {
     }
   }
 
-  /** 캐릭터보다 앞에 그려지는 그림의 불투명한 픽셀이 몸통이나 머리를 덮는지 본다. */
-  private hides({ textureKey, images }: Cover, avatar: Phaser.GameObjects.Image) {
+  /**
+   * 캐릭터보다 앞에 그려지는 그림의 불투명한 픽셀이 몸통이나 머리를 덮는지 본다. 알파는 그림마다 한 번만 읽어 둔 것을 쓴다(alphaMask.ts).
+   * 화면 밖이라 표시 목록에서 뺀 블록(blockChunks.ts)은 캐릭터를 가릴 수 없으므로 건너뛴다.
+   */
+  private hides({ images }: Cover, avatar: Phaser.GameObjects.Image) {
     return images.some((image) => {
-      if (image.depth <= avatar.depth) return false;
+      if (!image.displayList || image.depth <= avatar.depth) return false;
       const left = image.x - image.displayOriginX;
       const top = image.y - image.displayOriginY;
       const px = Math.floor(avatar.x - left);
@@ -67,7 +72,7 @@ export class CoverFader {
       return BODY_HEIGHTS.some((height) => {
         const py = Math.floor(avatar.y - height - top);
         if (py < 0 || py >= image.height) return false;
-        return this.scene.textures.getPixelAlpha(px, py, textureKey, image.frame.name) > 0;
+        return opaqueAt(image.frame, px, py);
       });
     });
   }

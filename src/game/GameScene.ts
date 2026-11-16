@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { paintJumpShadow, paintSmoke } from '../art/effects';
 import { DECOR_LIFT, paintGround, TILE_CELL, worldRect } from '../art/ground';
+import { paintWorkGround } from '../art/workGround';
 import {
   hideoutOrigin,
   hideoutPassageOrigin,
@@ -35,7 +36,7 @@ import {
   TILE_W,
   ZOOM,
 } from '../config';
-import { depthOf, gridToWorld, tileCenter, worldToGrid } from '../iso';
+import { depthOf, gridToWorld, keepDepth, tileCenter, worldToGrid } from '../iso';
 import { cropOfSeed, isBlockItem, isGearRef, isPotion, isSeed, WEAPON_IDS, WEAPONS, type ItemId, type PotionId, type WeaponId } from '../items';
 import type {
   Bounty,
@@ -69,6 +70,7 @@ import type { ShopWindow } from '../ui/shop';
 import type { ForgeWindow } from '../ui/forge';
 import { Avatar, TEAM_H, TEAM_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
+import { BlockChunks } from './blockChunks';
 import { CoverFader } from './covers';
 import { KEEP_CLEAR_ALPHA, KeepClear } from './keepClear';
 import type { Economy, ShopTool } from './economy';
@@ -330,6 +332,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 건물과 자원처럼 맵을 옮길 때 지워야 하는 그림 */
   private mapImages: Phaser.GameObjects.Image[] = [];
   private readonly covers = new CoverFader(this);
+  /** 화면 밖 블록 그림을 덩어리째 숨긴다(src/game/blockChunks.ts). */
+  private readonly blockChunks = new BlockChunks();
   /** 바깥 맵의 KST 시간대 밝기 */
   private daylight!: Daylight;
   /** 전쟁터의 손전등 시야 */
@@ -473,6 +477,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const cam = this.cameras.main;
     cam.setZoom(savedZoom());
     cam.startFollow(this.me.anchor, true);
+    // 카메라가 이번 프레임의 화면 범위를 정한 직후, 그리기 전에 화면 밖 블록 덩어리를 숨기거나 보인다.
+    cam.on(Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE, (camera: Phaser.Cameras.Scene2D.Camera) => this.blockChunks.update(camera.worldView));
     // 마우스 휠로 화면을 넓게 보거나 크게 본다(2026-11-15 사용자 요청). 도트가 뭉개지지 않게 정해 둔 단계로만 바꾸고 이 브라우저에 기억한다.
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
       if (dy === 0 || performance.now() < this.nextZoomAt) return;
@@ -544,10 +550,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return name;
   }
 
-  /** 맵 바닥 그림은 처음 들어갈 때 한 번만 그린다. */
+  /** 맵 바닥 그림은 처음 들어갈 때 한 번만 그린다. 작업장은 길·밭고랑·물가까지 칠한 바닥이다(workGround.ts). */
   private groundTexture(id: MapId) {
     const key = `ground-${id}`;
-    if (!this.textures.exists(key)) this.textures.addCanvas(key, paintGround(generateMap(id)));
+    if (!this.textures.exists(key)) {
+      const map = generateMap(id);
+      this.textures.addCanvas(key, MAPS[id].work ? paintWorkGround(map, id as WorkId) : paintGround(map));
+    }
     return key;
   }
 
@@ -585,7 +594,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setOrigin(foot.x / image.width, foot.y / image.height)
       .setDepth(depthOf(x, y));
     this.mapImages.push(placed);
-    this.covers.add(name, [placed]);
+    this.covers.add([placed]);
     return placed;
   }
 
@@ -618,7 +627,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setOrigin(CROPS_CENTER.x / image.width, CROPS_CENTER.y / image.height)
       .setDepth(depthOf(x, y));
     this.mapImages.push(placed);
-    this.covers.add('crops', [placed]);
+    this.covers.add([placed]);
     return placed;
   }
 
@@ -659,7 +668,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       strips.push(this.add.image(left + sx, top, name, stripName).setOrigin(0, 0).setDepth(depth));
     }
     this.mapImages.push(...strips);
-    this.covers.add(name, strips);
+    this.covers.add(strips);
     return { left, top };
   }
 
@@ -890,7 +899,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const c = tileCenter(x, y);
       const image = this.add.image(c.x, c.y, key).setOrigin(CUBE_ORIGIN_X, originY).setDepth(depthOf(x, y));
       this.mapImages.push(image);
-      this.covers.add(key, [image]);
+      this.covers.add([image]);
     }
   }
 
@@ -1003,6 +1012,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.others.clear();
     for (const image of this.blockImages.values()) image.destroy();
     this.blockImages.clear();
+    this.blockChunks.clear();
     this.keepClear.clear();
     for (const { image, tag } of this.portalSprites) {
       image.destroy();
@@ -2029,7 +2039,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const ok = this.reachesBlock(this.hoveredBlock);
       const top = this.world.topAt(x, y);
       const area = top && height === 1 ? footprintOf(top.id, x, y) : { x0: x, y0: y, a: 1, b: 1 };
-      this.marker.setDepth(depthOf(area.x0 + area.a - 1, area.y0 + area.b - 1) + 2);
+      keepDepth(this.marker, depthOf(area.x0 + area.a - 1, area.y0 + area.b - 1) + 2);
       this.strokeTile(area.x0, area.y0, ok ? 0xffffff : 0xff6b5e, -BLOCK_HEIGHT * height, area.a, area.b);
       // 블록을 들고 벽 블록을 가리키면 그 위에 쌓일 자리를 미리 보여 준다.
       if (stack && isBlockItem(stack.id) && this.world.canStack(this.hoveredBlock, this.me.tile, stack.id)) {
@@ -2043,7 +2053,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (stack && !id) return;
     const { x, y } = this.hoveredGround;
     const ok = id !== undefined && this.canPlaceAt(this.hoveredGround, id);
-    this.marker.setDepth(DEPTH_OVERLAY);
+    keepDepth(this.marker, DEPTH_OVERLAY);
     // 큰 가구는 차지할 칸 전체를 그린다.
     const area = id !== undefined ? footprintOf(id, x, y) : { x0: x, y0: y, a: 1, b: 1 };
     this.strokeTile(area.x0, area.y0, ok ? 0xffffff : 0xff6b5e, 0, area.a, area.b);
@@ -2173,6 +2183,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.world.place(x, y, z, id);
     const image = this.dressBlock(this.add.image(0, 0, 'tiles'), id, x, y, z);
     this.blockImages.set(`${x},${y},${z}`, image);
+    this.blockChunks.add(image, x, y);
     // 포탈이나 안내판을 덮으면 늘 반투명하게 그린다(2026-11-16 사용자 "가려지면 안 된다").
     if (this.keepClear.covers(image)) {
       image.setAlpha(KEEP_CLEAR_ALPHA);
@@ -2180,9 +2191,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     const art = blockArt(id);
     // 나무, 가구, 높이 쌓은 상자는 뒤에 선 캐릭터를 가리므로 반투명하게 할 대상에 넣는다.
-    if (art.kind === 'sprite') this.covers.add(art.sprite, [image]);
-    if (art.kind === 'cube') this.covers.add(`block-${id}`, [image]);
-    if (art.kind === 'furniture') this.covers.add('furniture', [image]);
+    if (art.kind === 'sprite' || art.kind === 'cube' || art.kind === 'furniture') this.covers.add([image]);
   }
 
   /**
@@ -2195,7 +2204,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const depth = depthOf(x, y) + z * STACK_DEPTH;
     if (art.kind === 'cube') {
       const c = tileCenter(x, y);
-      return image.setTexture(`block-${id}`).setOrigin(CUBE_ORIGIN_X, CUBE_ORIGIN_Y).setPosition(c.x, c.y - lift).setDepth(depth);
+      return keepDepth(image.setTexture(`block-${id}`).setOrigin(CUBE_ORIGIN_X, CUBE_ORIGIN_Y).setPosition(c.x, c.y - lift), depth);
     }
     if (art.kind === 'furniture') {
       this.furnitureTexture();
@@ -2205,29 +2214,35 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const c = gridToWorld(x0 + a / 2, y0 + b / 2);
       const front = depthOf(x0 + a - 1, y0 + b - 1) + z * STACK_DEPTH;
       // 카펫, 담요처럼 지나갈 수 있는 가구는 바닥에 깔려 캐릭터가 위로 지나간다.
-      return image
-        .setTexture('furniture', id)
-        .setOrigin(ax / w, ay / h)
-        .setPosition(c.x, c.y - lift)
-        .setDepth(BLOCKS[id].solid || z > 0 ? front : DEPTH_DECAL);
+      return keepDepth(
+        image
+          .setTexture('furniture', id)
+          .setOrigin(ax / w, ay / h)
+          .setPosition(c.x, c.y - lift),
+        BLOCKS[id].solid || z > 0 ? front : DEPTH_DECAL,
+      );
     }
     if (art.kind === 'sprite') {
       this.spriteTexture(art.sprite);
       const source = sprite(art.sprite);
       const foot = groundPoint(art.sprite);
       const c = tileCenter(x, y);
-      return image
-        .setTexture(art.sprite)
-        .setOrigin(foot.x / source.width, foot.y / source.height)
-        .setPosition(c.x, c.y - lift)
-        .setDepth(depth);
+      return keepDepth(
+        image
+          .setTexture(art.sprite)
+          .setOrigin(foot.x / source.width, foot.y / source.height)
+          .setPosition(c.x, c.y - lift),
+        depth,
+      );
     }
     const corner = gridToWorld(x, y);
-    return image
-      .setTexture('tiles', blockTile(art.tiles, x, y))
-      .setOrigin(0.5, 0)
-      .setPosition(corner.x, corner.y - this.world.map.floorTop - DECOR_LIFT - lift)
-      .setDepth(BLOCKS[id].solid || z > 0 ? depth : DEPTH_DECAL);
+    return keepDepth(
+      image
+        .setTexture('tiles', blockTile(art.tiles, x, y))
+        .setOrigin(0.5, 0)
+        .setPosition(corner.x, corner.y - this.world.map.floorTop - DECOR_LIFT - lift),
+      BLOCKS[id].solid || z > 0 ? depth : DEPTH_DECAL,
+    );
   }
 
   private removeBlockAt(x: number, y: number, z: number) {
@@ -2236,6 +2251,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const image = this.blockImages.get(key);
     if (image) {
       this.covers.remove(image);
+      this.blockChunks.remove(image, x, y);
       image.destroy();
     }
     this.blockImages.delete(key);

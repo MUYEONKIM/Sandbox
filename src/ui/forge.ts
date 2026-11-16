@@ -191,7 +191,7 @@ export class ForgeWindow extends PurchaseWindow {
       this.result = fail ? FAIL_TEXT[fail] : '';
     });
     this.refreshers.push(() => {
-      const price = buyPrice(this.basePrice(kind), this.luk);
+      const price = buyPrice(this.basePrice(kind));
       buy.textContent = goldText(price);
       buy.disabled = this.busy || this.economy.gold < price || this.inventory.gearList.length >= GEAR_MAX;
     });
@@ -202,7 +202,10 @@ export class ForgeWindow extends PurchaseWindow {
     this.buyPane.hidden = this.tab !== 'buy';
     this.anvilPane.hidden = this.tab !== 'anvil';
     const count = this.inventory.gearList.length;
-    const luk = this.luk > 0 ? ` 값에는 LUK ${this.luk.toLocaleString()} 배율(×${(1 + this.luk / 300).toFixed(2)})이 붙습니다.` : '';
+    const luk =
+      this.luk > 0
+        ? ` 사는 값은 LUK와 상관없습니다. LUK ${this.luk.toLocaleString()} 배율(×${(1 + this.luk / 300).toFixed(2)})은 판매가 가운데 산 값을 넘는 몫에만 붙습니다(+8부터).`
+        : '';
     this.countLine.textContent =
       `가진 무기 ${count} / ${GEAR_MAX}자루(기본 권총 빼고). 새 무기는 +0이고, 바로 팔면 산 값의 절반입니다.${luk}` +
       (this.tab === 'buy' && this.result ? ` ${this.result}` : '');

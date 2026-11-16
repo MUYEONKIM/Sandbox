@@ -513,6 +513,7 @@ export function portalColor(portal: Portal) {
 /**
  * from에서 to로 넘어갔을 때 서는 칸: 돌아오는 포탈 앞이다.
  * 엘리베이터로 오면 엘리베이터 앞이고, 작업장에서 돌아오면 노동청 앞, 던전에서 돌아오면 던전 입장 포탈 앞이다.
+ * 작업장은 노동청 안(labor)의 창에서 가도 작업장 포탈 앞에 선다(2026-11-16 노동청 안 맵을 낸 뒤 노동청 앞 좌표 (11, 7)에 서던 것을 고침).
  */
 export function arrivalFor(to: MapId, from: MapId) {
   if (to === DEFAULT_MAP && isDungeon(from)) return DUNGEON_GATE.landing;
@@ -520,7 +521,7 @@ export function arrivalFor(to: MapId, from: MapId) {
   const back =
     portals.find((p) => p.to === from) ??
     portals.find((p) => p.to === 'elevator') ??
-    (isTower(to) ? portals[0] : undefined);
+    (isTower(to) || MAPS[to].work ? portals[0] : undefined);
   return back ? back.landing : OFFICE.landing;
 }
 
