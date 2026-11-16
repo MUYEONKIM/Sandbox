@@ -18,6 +18,8 @@ import {
   LOBBY_FURNITURE,
   MART_PROPS,
   SMITHY_PROPS,
+  ROOM_PROPS,
+  LABOR_FURNITURE,
   SNAIL_TRACK,
   type PartitionKind,
 } from './tower';
@@ -204,6 +206,9 @@ export function generateMap(id: MapId): GameMap {
     }
     if (id === 'mart') buildings.push(...MART_PROPS);
     if (id === 'smithy') buildings.push(...SMITHY_PROPS);
+    // 건물 안 소품(2026-11-16 다시 꾸미기, 노동청·농협 안)
+    buildings.push(...(ROOM_PROPS[id] ?? []));
+    if (id === 'labor') scenery.trees.push(...LABOR_FURNITURE);
     if (id === 'exchange') {
       buildings.push({ ...BULL });
       scenery.trees.push(...EXCHANGE_FURNITURE);

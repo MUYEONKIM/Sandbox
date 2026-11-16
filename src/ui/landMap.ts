@@ -173,7 +173,7 @@ export class LandMap {
   }
 
   private showMode() {
-    this.modeButton.textContent = this.dragMode === 'pick' ? '끌기: 고르기' : '끌기: 옮기기';
+    this.modeButton.textContent = this.dragMode === 'pick' ? '끌기: 선택' : '끌기: 옮기기';
     this.view.classList.toggle('moving', this.dragMode === 'move');
   }
 

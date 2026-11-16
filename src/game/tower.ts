@@ -7,7 +7,21 @@ import type { Tile } from './world';
  * 엘리베이터는 7층까지 가고, 8층은 7층 사무실 안 계단으로, 옥상은 8층 바깥 계단으로 올라간다.
  * 시작마을 주점을 고친 도박장(casino)과 증권거래소 안(exchange)도 같은 방식으로 그리는 건물 안이라 여기에 함께 둔다.
  */
-export type TowerId = 'tower1' | 'tower4' | 'tower7' | 'tower8' | 'stairs' | 'rooftop' | 'elevator' | 'casino' | 'exchange' | 'annex' | 'mart' | 'smithy';
+export type TowerId =
+  | 'tower1'
+  | 'tower4'
+  | 'tower7'
+  | 'tower8'
+  | 'stairs'
+  | 'rooftop'
+  | 'elevator'
+  | 'casino'
+  | 'exchange'
+  | 'annex'
+  | 'mart'
+  | 'smithy'
+  | 'labor'
+  | 'farmcoop';
 
 /** 1층 로비 바닥. 블록 설치 구역도 이 범위다. */
 export const LOBBY: Area = [13, 13, 32, 32];
@@ -74,7 +88,7 @@ export interface Partition {
 export interface FloorPlan {
   /** 층 번호. 옥상, 바깥 계단, 엘리베이터 안은 null */
   number: number | null;
-  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange' | 'annex' | 'mart' | 'smithy';
+  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange' | 'annex' | 'mart' | 'smithy' | 'labor' | 'farmcoop';
   /** 바닥이 있는 칸 */
   area: Area;
   doorways: Doorway[];
@@ -276,7 +290,8 @@ export const CASINO_FURNITURE: Furniture[] = [
   { sprite: 'plant', x: 13, y: 13 },
   { sprite: 'plant', x: 30, y: 13 },
   { sprite: 'plant', x: 13, y: 30 },
-  { sprite: 'cafe-table', x: 22, y: 24 },
+  // 2026-11-16 룰렛 탁자 자리를 비우려고 (22, 24)에서 옮김(디자인 세션 다시 꾸미기)
+  { sprite: 'cafe-table', x: 18, y: 27 },
   { sprite: 'cafe-table', x: 25, y: 27 },
 ];
 
@@ -336,6 +351,16 @@ export const MART_PROPS = [
   { sprite: 'mart-shelf-drinks-x' as const, ...mart(0, 6), w: 1, d: 2 },
   { sprite: 'mart-shelf-goods-x' as const, ...mart(0, 9), w: 1, d: 2 },
   { sprite: 'mart-fridge-x' as const, ...mart(0, 12), w: 1, d: 1 },
+  // 2026-11-16 다시 꾸미기(디자인 세션, interior-restyle.md). 냉동고·냉장고 둘레에는 interior.ts가 바닥에 찬 불빛을 그린다.
+  { sprite: 'mart-pallet' as const, x: 15, y: 15, w: 1, d: 1 },
+  { sprite: 'mart-freezer-x' as const, x: 15, y: 16, w: 1, d: 2 },
+  { sprite: 'mart-pallet' as const, x: 15, y: 20, w: 1, d: 1 },
+  { sprite: 'mart-freezer' as const, x: 20, y: 15, w: 2, d: 1 },
+  { sprite: 'mart-freezer' as const, x: 22, y: 15, w: 2, d: 1 },
+  { sprite: 'mart-coffee' as const, x: 28, y: 15, w: 1, d: 1 },
+  { sprite: 'mart-fridge-x' as const, x: 15, y: 26, w: 1, d: 1 },
+  { sprite: 'mart-baskets' as const, x: 28, y: 20, w: 1, d: 1 },
+  { sprite: 'mart-baskets' as const, x: 28, y: 24, w: 1, d: 1 },
 ];
 
 /**
@@ -368,6 +393,68 @@ export const SMITHY_PROPS = [
   { sprite: 'smithy-armor-stand' as const, ...smithy(11, 0), w: 1, d: 1 },
   { sprite: 'smithy-case' as const, ...smithy(12, 1), w: 2, d: 1 },
 ];
+
+/**
+ * 노동청 안(labor)과 농협 안(farmcoop)(2026-11-16 사용자 "둘 다 만들어", 디자인 세션 labor-coop-rooms.md). 상점 안과 같은 14×14칸이고
+ * 창구 하나가 지금의 노동청 창, 농협 창을 연다. 맵 id는 창을 여는 포탈 이름(office, coop)과 헷갈리지 않게 따로 지었다(에이전트가 정함).
+ */
+export const SHOP_ROOM: Area = [15, 15, 28, 28];
+const SHOP_ROOM_EXIT = { x: 28, y: 22 };
+const SHOP_ROOM_COUNTER = { x: 22, y: 18 };
+function shopRoomPortals(to: 'office' | 'coop', label: string): Portal[] {
+  return [
+    { ...SHOP_ROOM_EXIT, to: 'plains', label: '시작마을', landing: { x: 26, y: 22 } },
+    { ...SHOP_ROOM_COUNTER, to, label, landing: { x: 22, y: 20 } },
+  ];
+}
+
+type Prop = { sprite: SpriteName; x: number; y: number; w: number; d: number };
+const props = (sprite: SpriteName, w: number, d: number, ...cells: [number, number][]): Prop[] => cells.map(([x, y]) => ({ sprite, x, y, w, d }));
+
+/**
+ * 건물 안 소품(2026-11-16 사용자 "대장간 내부의 분위기가 매우 마음에 들었다. 해당 느낌으로 다른 건물들도", 디자인 세션 interior-restyle.md).
+ * 건물처럼 바닥 아래 꼭짓점에 맞춰 놓고 지나갈 수 없다. 상점(MART_PROPS)과 대장간(SMITHY_PROPS)은 따로 있다. 7, 8층에는 두지 않았다.
+ */
+export const ROOM_PROPS: Partial<Record<TowerId, Prop[]>> = {
+  casino: [
+    ...props('casino-slot-x', 1, 1, [13, 14], [13, 15], [13, 16], [13, 28], [13, 29]),
+    ...props('casino-slot', 1, 1, [14, 13]),
+    ...props('casino-cashier', 2, 1, [28, 13]),
+    ...props('casino-roulette', 2, 2, [21, 25]),
+  ],
+  exchange: [...props('exchange-desk-x', 1, 2, [13, 15], [13, 18], [13, 21], [13, 24]), ...props('exchange-kiosk', 1, 1, [17, 17], [27, 17])],
+  tower1: [...props('lobby-vending', 1, 1, [25, 13], [26, 13]), ...props('office-cooler', 1, 1, [32, 13])],
+  tower4: [
+    ...props('office-cooler', 1, 1, [26, 3]),
+    ...props('lobby-vending', 1, 1, [27, 3]),
+    ...props('office-printer', 1, 1, [36, 3]),
+    ...props('office-server', 1, 1, [38, 3], [39, 3], [40, 3]),
+    ...props('office-bookshelf-x', 1, 2, [3, 10], [3, 12]),
+    ...props('office-printer-x', 1, 1, [3, 15]),
+  ],
+  rooftop: [...props('roof-hvac', 2, 2, [6, 5], [9, 5]), ...props('roof-solar', 2, 1, [16, 3], [19, 3], [22, 3], [25, 3])],
+  labor: [
+    ...props('labor-counter', 3, 1, [21, 17]),
+    ...props('labor-lockers', 2, 1, [15, 15], [27, 15]),
+    ...props('labor-toolrack', 2, 1, [25, 15]),
+    ...props('labor-bench-x', 1, 2, [15, 19], [15, 22], [15, 25]),
+    ...props('labor-ticket', 1, 1, [27, 20]),
+    ...props('office-cooler-x', 1, 1, [15, 17]),
+  ],
+  farmcoop: [
+    ...props('coop-counter', 3, 1, [21, 17]),
+    ...props('coop-seeds', 2, 1, [15, 15]),
+    ...props('coop-seedlings', 2, 1, [17, 15]),
+    ...props('coop-sacks', 1, 1, [25, 15], [27, 15], [15, 20], [15, 27], [28, 19]),
+    ...props('coop-crates', 1, 1, [26, 15], [28, 15], [15, 21], [28, 25]),
+    ...props('coop-seeds-x', 1, 2, [15, 17]),
+    ...props('coop-seedlings-x', 1, 2, [15, 23]),
+    ...props('coop-scale-x', 1, 1, [15, 26]),
+  ],
+};
+
+/** 노동청 안의 화분(나무처럼 칸 가운데에 섬) */
+export const LABOR_FURNITURE: Furniture[] = [{ sprite: 'plant', x: 15, y: 28 }];
 
 /**
  * 어디와도 이어지지 않은 16×16칸 다다미방. 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
@@ -536,6 +623,8 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
       { ...SMITHY_COUNTERS.anvil, to: 'forge-anvil', label: '강화 · 팔기', landing: { x: SMITHY_COUNTERS.anvil.x, y: SMITHY_COUNTERS.anvil.y + 2 } },
     ],
   },
+  labor: { ...plain, number: null, style: 'labor', area: SHOP_ROOM, doorways: [], portals: shopRoomPortals('office', '작업장 고르기') },
+  farmcoop: { ...plain, number: null, style: 'farmcoop', area: SHOP_ROOM, doorways: [], portals: shopRoomPortals('coop', '농협 창구') },
   annex: {
     ...plain,
     number: null,

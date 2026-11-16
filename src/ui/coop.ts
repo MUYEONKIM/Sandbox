@@ -159,7 +159,7 @@ export class CoopWindow extends PurchaseWindow {
     if (!plots || !blocks) return;
     const modal = new Modal(this.hostRoot, 'land-map', '농장 땅');
     element('modal-note', modal.box).textContent =
-      '빈 땅을 고르면 사고, 내 땅(노랑)을 고르면 팝니다. 누르면 고르고 다시 누르면 취소, 끌면 두 칸 사이의 네모를 한꺼번에 고릅니다. 휠이나 +/−로 확대합니다.';
+      '빈 땅을 선택하면 사고, 내 땅(노랑)을 선택하면 팝니다. 누르면 선택하고 다시 누르면 취소, 끌면 두 칸 사이의 네모를 한꺼번에 선택합니다. 휠이나 +/−로 확대합니다.';
     const summary = element('land-summary', modal.box);
     const map = new LandMap(modal.box, {
       myId: this.myId,
@@ -181,12 +181,12 @@ export class CoopWindow extends PurchaseWindow {
       if (map.mode === 'sell') {
         let refund = 0;
         for (let i = 0; i < cells.length; i++) refund += Math.floor(landPrice(this.myPlots - i) / 2);
-        summary.textContent = `고른 내 땅 ${cells.length}칸 · 받는 돈 약 ${goldText(refund)} · 내 땅 ${this.myPlots}칸`;
+        summary.textContent = `선택한 내 땅 ${cells.length}칸 · 받는 돈 약 ${goldText(refund)} · 내 땅 ${this.myPlots}칸`;
         action.textContent = '팔기';
       } else {
         let cost = 0;
         for (let i = 1; i <= cells.length; i++) cost += landPrice(this.myPlots + i);
-        summary.textContent = `고른 칸 ${cells.length}개 · 합계 ${goldText(cost)} · 내 땅 ${this.myPlots}칸 · 보유 ${goldText(this.economy.gold)}`;
+        summary.textContent = `선택한 칸 ${cells.length}개 · 합계 ${goldText(cost)} · 내 땅 ${this.myPlots}칸 · 보유 ${goldText(this.economy.gold)}`;
         action.textContent = '사기';
       }
       action.disabled = cells.length === 0;

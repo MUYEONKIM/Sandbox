@@ -16,6 +16,7 @@ import { paintWeaponIcon, WEAPONS, type WeaponId } from '../items';
 import { paintForgeIcon } from '../art/weapons';
 import type { ForgeFail, ForgeResult } from '../net/session';
 import { element } from './dom';
+import { ForgeFx } from './forgeFx';
 import { josa, josaRo } from './notice';
 import { PurchaseWindow } from './purchase';
 
@@ -96,6 +97,8 @@ export class ForgeWindow extends PurchaseWindow {
   /** 망치질 버튼. 대기 시간은 이 글자만 고친다. */
   private hammerButton: HTMLButtonElement | null = null;
   private sellArmedUntil = 0;
+  /** 망치질 번개 연출(src/ui/forgeFx.ts) */
+  readonly fx = new ForgeFx();
 
   constructor(
     parent: HTMLElement,
@@ -123,11 +126,12 @@ export class ForgeWindow extends PurchaseWindow {
     const weaponList = element('shop-weapons', this.buyPane);
     for (const weapon of economy.forSale) this.addWeapon(weaponList, weapon.id);
 
+    // 망치질·팔기 버튼과 결과를 탭 바로 아래에 둔다(2026-11-16 사용자 "망치질 버튼 같은 상호작용은 제일 위에").
+    // 그 아래 고른 무기와 확률, 두루마리, 내 무기 목록 순서다(PM이 정함).
     this.anvilPane = element('forge-pane', this.root);
+    this.bench = element('shop-stats', this.anvilPane);
     element('office-section', this.anvilPane).textContent = '내 무기';
     this.gearList = element('shop-stats', this.anvilPane);
-    element('office-section', this.anvilPane).textContent = '모루';
-    this.bench = element('shop-stats', this.anvilPane);
 
     this.refreshers.push(() => this.renderPanes());
     inventory.onChange(() => {
@@ -145,6 +149,7 @@ export class ForgeWindow extends PurchaseWindow {
 
   close() {
     super.close();
+    this.fx.stop();
     window.clearInterval(this.countdown);
     this.countdown = 0;
   }
@@ -221,7 +226,7 @@ export class ForgeWindow extends PurchaseWindow {
       element('shop-stat-blurb', text).textContent = `판매가 ${goldText(this.sale(gear))}`;
       const pick = element('shop-amount', row, 'button') as HTMLButtonElement;
       pick.type = 'button';
-      pick.textContent = gear.id === this.selected ? '고름' : '고르기';
+      pick.textContent = gear.id === this.selected ? '선택됨' : '선택';
       // 칩 버튼은 줄 너비를 나눠 갖는 모양이라(.shop-amount) 글자 너비만 쓰게 한다.
       pick.style.flex = 'none';
       pick.classList.toggle('chosen', gear.id === this.selected);
@@ -256,6 +261,37 @@ export class ForgeWindow extends PurchaseWindow {
     const luk = this.luk;
     const top = gear.level >= LEVEL_MAX;
 
+    // 이번 망치질 값: 강화비와 고른 두루마리(forge-items.md 3장). 쓸 수 없는 단계의 두루마리는 고른 것에서 뺀다.
+    let cost: Gold = this.table.fee(gear.level, base, luk);
+    const prices = new Map<ScrollId, Gold | null>();
+    for (const id of SCROLL_IDS) {
+      const price = this.table.scroll(id, gear.level, base, luk);
+      prices.set(id, price);
+      if (price === null) this.scrolls.delete(id);
+      else if (this.scrolls.has(id)) cost += price;
+    }
+
+    const actions = element('shop-stat', this.bench);
+    const hammer = element('shop-buy', actions, 'button') as HTMLButtonElement;
+    hammer.type = 'button';
+    const wait = this.nextHammerAt - performance.now();
+    hammer.textContent = wait > 0 ? `망치질 ${(wait / 1000).toFixed(1)}초` : `망치질 (${goldText(cost)})`;
+    hammer.disabled = this.busy || top || wait > 0 || this.economy.gold < cost;
+    hammer.addEventListener('click', () => void this.hammer(gear));
+    this.hammerButton = hammer;
+    if (wait > 0) this.tickCountdown();
+
+    const sell = element('shop-buy', actions, 'button') as HTMLButtonElement;
+    sell.type = 'button';
+    const armed = performance.now() < this.sellArmedUntil;
+    sell.textContent = armed ? `한 번 더 누르면 팝니다 (+${goldText(this.sale(gear))})` : `팔기 (+${goldText(this.sale(gear))})`;
+    sell.disabled = this.busy;
+    sell.addEventListener('click', () => void this.sell(gear));
+    const note = element('shop-stat-text', actions);
+    element('shop-stat-blurb', note).textContent = `강화비 ${goldText(this.table.fee(gear.level, base, luk))}${this.scrolls.size ? ' + 두루마리' : ''} · ${hammerMs(base) / 1000}초에 한 번`;
+
+    if (this.result) element('office-note', this.bench).textContent = this.result;
+
     const head = element('shop-stat', this.bench);
     const icon = element('shop-tool-icon', head, 'img') as HTMLImageElement;
     icon.src = weaponIcon(gear.kind);
@@ -268,11 +304,8 @@ export class ForgeWindow extends PurchaseWindow {
       ? `성공 ${percent(odds.success)} · 유지 ${percent(odds.keep)} · 하락 ${percent(odds.fall)} · 파괴 ${percent(odds.destroy)}`
       : '더 올릴 수 없습니다.';
 
-    // 두루마리: 고르면 이번 망치질에 쓰고 값은 함께 낸다(forge-items.md 3장). 쓸 수 없는 단계에서는 버튼이 꺼진다.
-    let cost: Gold = this.table.fee(gear.level, base, luk);
     for (const id of SCROLL_IDS) {
-      const price = this.table.scroll(id, gear.level, base, luk);
-      if (price === null) this.scrolls.delete(id);
+      const price = prices.get(id) ?? null;
       const row = element('shop-stat', this.bench);
       const art = element('shop-tool-icon', row, 'img') as HTMLImageElement;
       art.src = scrollIcon(id);
@@ -282,39 +315,16 @@ export class ForgeWindow extends PurchaseWindow {
       element('shop-stat-blurb', text).textContent = price === null ? SCROLL_UNUSABLE[id] : SCROLL_BLURBS[id];
       const button = element('shop-amount', row, 'button') as HTMLButtonElement;
       button.type = 'button';
-      button.textContent = this.scrolls.has(id) ? '씀' : '쓰기';
+      button.textContent = this.scrolls.has(id) ? '선택됨' : '선택';
       button.style.flex = 'none';
       button.disabled = price === null || this.busy || top;
       button.classList.toggle('chosen', this.scrolls.has(id));
-      if (price !== null && this.scrolls.has(id)) cost += price;
       button.addEventListener('click', () => {
         if (this.scrolls.has(id)) this.scrolls.delete(id);
         else this.scrolls.add(id);
         this.render();
       });
     }
-
-    const actions = element('shop-stat', this.bench);
-    const note = element('shop-stat-text', actions);
-    element('shop-stat-blurb', note).textContent = `망치질 한 번 ${goldText(cost)}(강화비 ${goldText(this.table.fee(gear.level, base, luk))}${this.scrolls.size ? ' + 두루마리' : ''}) · ${hammerMs(base) / 1000}초에 한 번`;
-
-    const hammer = element('shop-buy', actions, 'button') as HTMLButtonElement;
-    hammer.type = 'button';
-    const wait = this.nextHammerAt - performance.now();
-    hammer.textContent = wait > 0 ? `망치질 ${(wait / 1000).toFixed(1)}초` : '망치질';
-    hammer.disabled = this.busy || top || wait > 0 || this.economy.gold < cost;
-    hammer.addEventListener('click', () => void this.hammer(gear));
-    this.hammerButton = hammer;
-    if (wait > 0) this.tickCountdown();
-
-    const sell = element('shop-buy', actions, 'button') as HTMLButtonElement;
-    sell.type = 'button';
-    const armed = performance.now() < this.sellArmedUntil;
-    sell.textContent = armed ? `한 번 더 누르면 팝니다 (+${goldText(this.sale(gear))})` : `팔기 (+${goldText(this.sale(gear))})`;
-    sell.disabled = this.busy;
-    sell.addEventListener('click', () => void this.sell(gear));
-
-    if (this.result) element('office-note', this.bench).textContent = this.result;
   }
 
   private tickCountdown() {
@@ -336,14 +346,18 @@ export class ForgeWindow extends PurchaseWindow {
     const name = WEAPONS[gear.kind].name;
     this.busy = true;
     this.render();
+    // 누르자마자 연출을 띄우고, 서버 결과는 받는 대로 넘겨 마지막 번개에 보인다.
+    const shown = this.fx.play(weaponIcon(gear.kind), hammerMs(this.basePrice(gear.kind)));
     try {
       const outcome = await this.actions.hammer(gear, new Set(this.scrolls));
       if (typeof outcome === 'string') {
+        this.fx.stop();
         this.result = FAIL_TEXT[outcome];
         if (outcome === 'fast') this.nextHammerAt = performance.now() + hammerMs(this.basePrice(gear.kind));
         return;
       }
       this.nextHammerAt = performance.now() + hammerMs(this.basePrice(gear.kind));
+      this.fx.setResult({ kind: outcome.result, level: outcome.level ?? before, saved: outcome.saved !== null });
       const paid = `(-${goldText(outcome.paid)})`;
       if (outcome.result === 'success') this.result = `성공했습니다. +${outcome.level} ${josa(name, '이', '가')} 됐습니다. ${paid}`;
       else if (outcome.result === 'drop') this.result = `하락했습니다. +${josaRo(String(outcome.level))} 내려갔습니다. ${paid}`;
@@ -351,6 +365,7 @@ export class ForgeWindow extends PurchaseWindow {
       else if (outcome.saved === 'guard') this.result = `파괴 방지 두루마리가 막아 +${before} 그대로입니다. ${paid}`;
       else if (outcome.saved === 'hold') this.result = `하락 방지 두루마리가 막아 +${before} 그대로입니다. ${paid}`;
       else this.result = `유지됐습니다. +${before} 그대로입니다. ${paid}`;
+      await shown;
     } finally {
       this.busy = false;
       this.render();

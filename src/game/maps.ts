@@ -170,6 +170,25 @@ export const MAPS: Record<MapId, MapInfo> = {
     links: {},
   },
   // 상점 안(2026-11-15 사용자 요청). 시작마을 가게라 공격이 막힌다(에이전트가 정함, 서버 hit_player에도 있음).
+  // 노동청 안과 농협 안(2026-11-16 사용자 "둘 다 만들어"). 시작마을 건물 안이라 공격이 막힌다(서버 hit_player도 막음).
+  labor: {
+    name: '노동청',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x8a6a48,
+    accent: 0xffd84d,
+    links: {},
+    safe: true,
+  },
+  farmcoop: {
+    name: '농협',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x8a6a40,
+    accent: 0xf2d16b,
+    links: {},
+    safe: true,
+  },
   // 대장간 안(2026-11-16). 시작마을 건물 안이라 공격이 막힌다(서버 hit_player도 'smithy'를 막음).
   smithy: {
     name: '대장간',
@@ -455,7 +474,7 @@ export function portalsOf(id: MapId): Portal[] {
   if (isTower(id)) return FLOORS[id].portals;
   const portals = (Object.entries(MAPS[id].links) as [Corner, MapId][]).map(([corner, to]) => portalAt(corner, to));
   if (id === 'plains') {
-    portals.push({ ...OFFICE.door, to: 'office', landing: OFFICE.landing });
+    portals.push({ ...OFFICE.door, to: 'labor', landing: OFFICE.landing });
     portals.push({ ...SHOP.door, to: 'mart', landing: SHOP.landing });
     portals.push({ ...CASTLE.door, to: 'tower1', label: CASTLE.name, landing: CASTLE.landing });
     portals.push({ ...FAME.door, to: 'fame', landing: FAME.landing });
@@ -463,7 +482,7 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...EXCHANGE.door, to: 'exchange', landing: EXCHANGE.landing });
     portals.push({ ...CASINO_DOOR.door, to: 'casino', landing: CASINO_DOOR.landing });
     portals.push({ ...DUNGEON_GATE.door, to: 'dungeon', landing: DUNGEON_GATE.landing });
-    portals.push({ ...COOP.door, to: 'coop', landing: COOP.landing });
+    portals.push({ ...COOP.door, to: 'farmcoop', landing: COOP.landing });
     portals.push({ ...SMITHY.door, to: 'smithy', landing: SMITHY.landing });
   }
   return portals;

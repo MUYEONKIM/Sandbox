@@ -1,0 +1,380 @@
+/*
+ * 망치질 번개 연출(src/ui/forgeFx.ts, 2026-11-16 사용자 "망치질 순간의 이펙트는 화면에 전체적으로, 번개 치는 느낌으로").
+ * 값은 디자인 세션 의견(2026-11-16)을 따랐고, 의견에 없는 것은 "에이전트가 정함"으로 적었다.
+ * 움직임은 모두 transform·opacity 애니메이션이다. 그림자, 그라디언트 값은 움직이지 않아 처음 한 번만 그려진다.
+ * will-change는 연출이 떠 있는 동안에만 있는 요소에만 붙는다(연출이 닫히면 요소째 지워진다).
+ */
+.forge-fx {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  overflow: hidden;
+  cursor: pointer;
+  animation: forge-fx-in 200ms ease-out;
+  touch-action: none;
+}
+
+.forge-fx.out {
+  animation: forge-fx-out 250ms ease-in forwards;
+}
+
+/* 흔들리는 화면. 흔들려도 화면 가장자리가 비지 않게 사방으로 16px 크다(에이전트가 정함). */
+.forge-fx-world {
+  position: absolute;
+  inset: -16px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 55%, rgb(70 34 12 / 55%), rgb(6 4 10 / 92%) 70%);
+  will-change: transform;
+}
+
+.forge-fx-stage {
+  position: relative;
+  width: 240px;
+  height: 300px;
+}
+
+.forge-fx-glow {
+  position: absolute;
+  left: 50%;
+  top: 170px;
+  width: 220px;
+  height: 70px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(255 154 60 / 85%), rgb(255 90 40 / 0%));
+  transform: translateX(-50%);
+  animation: forge-fx-pulse 900ms ease-in-out infinite alternate;
+}
+
+.forge-fx-icon,
+.forge-fx-crack {
+  position: absolute;
+  left: 50%;
+  top: 150px;
+  width: 96px;
+  height: 96px;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+}
+
+.forge-fx-icon.gone {
+  opacity: 0;
+}
+
+.forge-fx-crack {
+  width: 160px;
+  height: 160px;
+  image-rendering: auto;
+  animation: forge-fx-fade-in 200ms ease-out;
+}
+
+/* 번개: 화면 위 끝에서 무기 가운데보다 30px 아래까지. 70ms에 내리꽂고 230ms에 사라진다. */
+.forge-fx-bolt {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 140px;
+  height: calc(50% + 30px);
+  transform-origin: 50% 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  animation: forge-fx-bolt 300ms forwards;
+}
+
+/* 번쩍임: 가운데에서 퍼지는 빛 */
+.forge-fx-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgb(225 243 255 / 90%), rgb(225 243 255 / 0%) 70vmax);
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity;
+  animation: forge-fx-flash 140ms ease-out forwards;
+}
+
+/*
+ * 화면 가장자리 빛: 가운데는 비고 가장자리만 번개 색. JS가 opacity만 움직인다(Web Animations).
+ * 퍼짐 76px = 의견의 60px + 화면 밖 16px(에이전트가 정함). 유지의 하얀색도 에이전트가 정함.
+ */
+.forge-fx-edge {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 160px 76px rgb(159 216 255 / 55%);
+  will-change: opacity;
+}
+
+.forge-fx-edge.success {
+  box-shadow: inset 0 0 160px 76px rgb(255 216 77 / 60%);
+}
+
+.forge-fx-edge.keep {
+  box-shadow: inset 0 0 160px 76px rgb(255 255 255 / 50%);
+}
+
+.forge-fx-edge.drop {
+  box-shadow: inset 0 0 160px 76px rgb(140 110 255 / 60%);
+}
+
+.forge-fx-edge.destroy {
+  box-shadow: inset 0 0 160px 76px rgb(255 60 40 / 65%);
+}
+
+.forge-fx-spark {
+  position: absolute;
+  left: 50%;
+  top: 150px;
+  width: var(--size, 4px);
+  height: var(--size, 4px);
+  background: #ffe9a8;
+  box-shadow: 0 0 6px #ff9a3c;
+  animation: forge-fx-spark 600ms ease-out forwards;
+}
+
+.forge-fx-spark.streak {
+  width: 2px;
+  height: 10px;
+}
+
+.forge-fx-spark.red {
+  background: #ff8a7a;
+}
+
+/* 성공: 고리 둘(둘째는 120ms 늦게), 화면 전체 금빛 터짐, 빛살 */
+.forge-fx-ring {
+  position: absolute;
+  left: 50%;
+  top: 150px;
+  width: 160px;
+  height: 160px;
+  border: 6px solid #ffd84d;
+  border-radius: 50%;
+  box-shadow: 0 0 24px #ffd84d;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: forge-fx-ring 700ms ease-out forwards;
+}
+
+.forge-fx-ring.late {
+  animation-delay: 120ms;
+}
+
+/* 금빛 터짐은 15%에 가장 밝고 천천히 꺼진다: 번쩍임과 겹쳐 두 번 번쩍이지 않게(에이전트가 정함). */
+.forge-fx-burst {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgb(255 216 77 / 55%), rgb(255 216 77 / 0%) 60vmax);
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity;
+  animation: forge-fx-burst 600ms ease-out forwards;
+}
+
+.forge-fx-rays {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120vmax;
+  height: 120vmax;
+  background: repeating-conic-gradient(rgb(255 230 150 / 35%) 0 6deg, rgb(255 230 150 / 0%) 6deg 20deg);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  animation: forge-fx-rays 900ms ease-out forwards;
+}
+
+.forge-fx-smoke {
+  position: absolute;
+  left: 50%;
+  top: 150px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(200 198 205 / 80%), rgb(200 198 205 / 0%));
+  animation: forge-fx-smoke 1100ms ease-out forwards;
+}
+
+/* 파괴 조각: 터지듯 빨리 나가게 ease-out(에이전트가 정함) */
+.forge-fx-shard {
+  position: absolute;
+  left: 50%;
+  top: 150px;
+  width: 48px;
+  height: 48px;
+  background-size: 96px 96px;
+  image-rendering: pixelated;
+  animation: forge-fx-shard 900ms ease-out forwards;
+}
+
+.forge-fx-label {
+  position: absolute;
+  left: 50%;
+  top: 218px;
+  color: #fff;
+  font-size: 40px;
+  font-weight: 800;
+  white-space: nowrap;
+  text-shadow: 0 2px 0 #1f1a24, 0 0 12px rgb(0 0 0 / 60%);
+  transform: translateX(-50%);
+  animation: forge-fx-pop 300ms ease-out;
+}
+
+.forge-fx-label.success {
+  color: #ffd84d;
+}
+
+.forge-fx-label.keep {
+  color: #d9d4ca;
+}
+
+.forge-fx-label.drop {
+  color: #b9a8ff;
+}
+
+.forge-fx-label.destroy {
+  color: #ff6a5a;
+}
+
+.forge-fx-hint {
+  position: absolute;
+  left: 50%;
+  bottom: -28px;
+  color: rgb(255 255 255 / 55%);
+  font-size: 13px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+@keyframes forge-fx-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes forge-fx-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes forge-fx-pulse {
+  to {
+    opacity: 0.45;
+  }
+}
+
+@keyframes forge-fx-bolt {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) scaleY(0);
+    animation-timing-function: ease-out;
+  }
+
+  23.3% {
+    opacity: 1;
+    transform: translateX(-50%) scaleY(1);
+    animation-timing-function: linear;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scaleY(1);
+  }
+}
+
+@keyframes forge-fx-flash {
+  25% {
+    opacity: 0.45;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes forge-fx-spark {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(var(--turn, 0deg));
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--turn, 0deg));
+  }
+}
+
+@keyframes forge-fx-ring {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(3.2);
+  }
+}
+
+@keyframes forge-fx-burst {
+  15% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes forge-fx-rays {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  25% {
+    opacity: 0.6;
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(15deg);
+  }
+}
+
+@keyframes forge-fx-smoke {
+  from {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), -170%) scale(1.7);
+  }
+}
+
+@keyframes forge-fx-shard {
+  from {
+    opacity: 1;
+    transform: translate(var(--x0), var(--y0)) rotate(0deg);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--x0) + var(--dx)), calc(var(--y0) + var(--dy))) rotate(var(--r));
+  }
+}
+
+@keyframes forge-fx-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.6);
+  }
+}
+
+@keyframes forge-fx-fade-in {
+  from {
+    opacity: 0;
+  }
+}
