@@ -107,7 +107,7 @@ function enterGame(
 
   const minimap = new Minimap(side);
   new RankPanel(side, myName, () => session.fetchRanking(PANEL_SIZE));
-  const chat = new ChatBox(root, (text, everyone) => void session.sendChat(text, everyone), `chat-log:${profile.id}`);
+  const chat = new ChatBox(root, (text, everyone) => void session.sendChat(text, everyone), `chat-log:${profile.id}`, profile.id);
   const tags = new NameTags(root);
   const wanted = new WantedPanel(hud.topLeft, profile.id, () => session.fetchWanted());
   wanted.onChange((karma) => tags.setKarma(karma));
@@ -196,10 +196,13 @@ function enterGame(
         if (result === 'gone') inventory.removeGear(gear.id);
         return result;
       }
+      // 강화비는 결과와 상관없이 빠지므로 골드는 바로 맞춘다. 단계와 목록은 연출 뒤 land에서 바꾼다.
       economy.setGold(result.gold);
-      if (result.level === null) inventory.removeGear(gear.id);
-      else inventory.setGearLevel(gear.id, result.level);
       return result;
+    },
+    land: (gear, outcome) => {
+      if (outcome.level === null) inventory.removeGear(gear.id);
+      else inventory.setGearLevel(gear.id, outcome.level);
     },
   });
 

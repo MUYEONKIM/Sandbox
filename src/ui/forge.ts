@@ -27,6 +27,8 @@ interface ForgeActions {
   buy(kind: WeaponId): Promise<ForgeFail | null>;
   sell(gear: Gear): Promise<ForgeFail | null>;
   hammer(gear: Gear, scrolls: ReadonlySet<ScrollId>): Promise<ForgeResult | ForgeFail>;
+  /** 연출이 사라진 뒤 결과를 가방에 붙인다(단계 바꾸기, 부서진 무기 빼기). */
+  land(gear: Gear, outcome: ForgeResult): void;
 }
 
 const FAIL_TEXT: Record<ForgeFail, string> = {
@@ -348,9 +350,13 @@ export class ForgeWindow extends PurchaseWindow {
     const before = gear.level;
     const name = WEAPONS[gear.kind].name;
     this.busy = true;
+    // 지난 결과 문구가 연출 중에 이번 결과처럼 보이지 않게 지운다.
+    this.result = '';
     this.render();
     // 누르자마자 연출을 띄우고, 서버 결과는 받는 대로 넘겨 마지막 번개에 보인다.
+    // 단계·목록과 결과 문구는 연출이 사라진 뒤에 붙인다(뒤 창에 결과가 먼저 비치지 않게). 골드는 바로 맞춘다.
     const shown = this.fx.play(weaponIcon(gear.kind), hammerMs(this.basePrice(gear.kind)));
+    let landed: ForgeResult | null = null;
     try {
       const outcome = await this.actions.hammer(gear, new Set(this.scrolls));
       if (typeof outcome === 'string') {
@@ -359,18 +365,22 @@ export class ForgeWindow extends PurchaseWindow {
         if (outcome === 'fast') this.nextHammerAt = performance.now() + hammerMs(this.basePrice(gear.kind));
         return;
       }
+      landed = outcome;
       this.nextHammerAt = performance.now() + hammerMs(this.basePrice(gear.kind));
       this.fx.setResult({ kind: outcome.result, level: outcome.level ?? before, saved: outcome.saved !== null });
       const paid = `(-${goldText(outcome.paid)})`;
-      if (outcome.result === 'success') this.result = `성공했습니다. +${outcome.level} ${josa(name, '이', '가')} 됐습니다. ${paid}`;
-      else if (outcome.result === 'drop') this.result = `하락했습니다. +${josaRo(String(outcome.level))} 내려갔습니다. ${paid}`;
-      else if (outcome.result === 'destroy') this.result = `+${before} ${josa(name, '이', '가')} 부서졌습니다. ${paid}`;
-      else if (outcome.saved === 'guard') this.result = `파괴 방지 두루마리가 막아 +${before} 그대로입니다. ${paid}`;
-      else if (outcome.saved === 'hold') this.result = `하락 방지 두루마리가 막아 +${before} 그대로입니다. ${paid}`;
-      else this.result = `유지됐습니다. +${before} 그대로입니다. ${paid}`;
+      let text: string;
+      if (outcome.result === 'success') text = `성공했습니다. +${outcome.level} ${josa(name, '이', '가')} 됐습니다. ${paid}`;
+      else if (outcome.result === 'drop') text = `하락했습니다. +${josaRo(String(outcome.level))} 내려갔습니다. ${paid}`;
+      else if (outcome.result === 'destroy') text = `+${before} ${josa(name, '이', '가')} 부서졌습니다. ${paid}`;
+      else if (outcome.saved === 'guard') text = `파괴 방지 두루마리가 막아 +${before} 그대로입니다. ${paid}`;
+      else if (outcome.saved === 'hold') text = `하락 방지 두루마리가 막아 +${before} 그대로입니다. ${paid}`;
+      else text = `유지됐습니다. +${before} 그대로입니다. ${paid}`;
       await shown;
+      this.result = text;
     } finally {
       this.busy = false;
+      if (landed) this.actions.land(gear, landed);
       this.render();
     }
   }

@@ -133,6 +133,7 @@ const NAMES = [
   'work-bush',
   'work-scarecrow',
   'work-basket',
+  'work-wheelbarrow',
   'work-wheelbarrow-x',
   'work-dock',
   'work-boat',
@@ -142,6 +143,15 @@ const NAMES = [
   'work-tackle',
   'work-dryrack',
   'work-lantern',
+  // 농장 꾸밈(2026-11-16, 디자인 세션 farm-decor.md, src/game/farmLayout.ts)
+  'farm-haystack',
+  'farm-bales',
+  'farm-bales-x',
+  'farm-well',
+  'farm-shed',
+  'farm-shed-x',
+  'farm-fence',
+  'farm-fence-x',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

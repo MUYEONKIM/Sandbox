@@ -1,6 +1,7 @@
 import { formatLevel } from '../game/level';
 import type { RankEntry } from '../net/session';
 import { element } from './dom';
+import { FoldBox } from './fold';
 
 type LoadRanking = () => Promise<RankEntry[] | null>;
 
@@ -68,9 +69,12 @@ export class RankPanel {
     private readonly load: LoadRanking,
   ) {
     const box = element('rank-panel', parent);
-    element('rank-panel-title', box).textContent = '레벨 TOP 10';
+    const title = element('rank-panel-title', box);
+    title.textContent = '레벨 TOP 10';
     this.list = element('rank-list', box);
     element('rank-panel-note', box).textContent = '매시 정각 갱신';
+    // 접으면 제목 줄만 남는다. 매시 정각 읽기는 그대로 한다(1시간에 한 번).
+    new FoldBox('rank', box, title);
     void this.refresh();
   }
 

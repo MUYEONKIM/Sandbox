@@ -34,12 +34,15 @@ export class World {
   private readonly covered = new Map<number, number>();
   /** 블록을 놓거나 치울 때마다 1씩 는다. 전쟁터 손전등이 막힌 칸이 바뀐 것을 알아챌 때 쓴다. */
   version = 0;
+  /** 울타리가 막는 변(농장만). 키는 fenceKey. */
+  private readonly fences = new Set<number>();
 
   constructor(
     readonly map: GameMap,
     readonly portals: Portal[],
   ) {
     for (const { x, y } of map.partitions) this.partitions.add(this.key(x, y));
+    for (const { x, y, side } of map.fences ?? []) this.fences.add(this.fenceKey(x, y, side === 'left'));
   }
 
   private key(x: number, y: number) {
@@ -124,11 +127,47 @@ export class World {
     return this.map.solid[this.key(x, y)] === 1 || this.covered.has(this.key(x, y)) || (block !== undefined && BLOCKS[block].solid);
   }
 
-  /** from에서 (dx, dy)로 한 칸 갈 수 있는지 본다. 양옆이 모두 막힌 틈은 지나갈 수 없다. */
+  /**
+   * from에서 (dx, dy)로 한 칸 갈 수 있는지 본다. 양옆이 모두 막힌 틈은 지나갈 수 없다.
+   * 울타리(농장)는 칸 사이 변을 막는다: 가로·세로는 그 변에 울타리가 없어야 가고, 대각선은 꺾는 칸이 걸을 수 있고
+   * 두 변 모두 울타리가 없는 꺾인 길이 하나라도 있어야 간다(farm-decor.md 2-3). 울타리 없는 맵은 예전 규칙과 같다.
+   * 내 걸음과 길찾기(path.ts)가 모두 여기를 거친다.
+   */
   canStep(from: Tile, dx: number, dy: number) {
-    if (!this.isWalkable(from.x + dx, from.y + dy)) return false;
-    if (dx === 0 || dy === 0) return true;
-    return this.isWalkable(from.x + dx, from.y) || this.isWalkable(from.x, from.y + dy);
+    const tx = from.x + dx;
+    const ty = from.y + dy;
+    if (!this.isWalkable(tx, ty)) return false;
+    if (!this.fences.size) {
+      if (dx === 0 || dy === 0) return true;
+      return this.isWalkable(tx, from.y) || this.isWalkable(from.x, ty);
+    }
+    if (dx === 0 || dy === 0) return !this.fenceBetween(from.x, from.y, tx, ty);
+    const okX = this.isWalkable(tx, from.y) && !this.fenceBetween(from.x, from.y, tx, from.y) && !this.fenceBetween(tx, from.y, tx, ty);
+    const okY = this.isWalkable(from.x, ty) && !this.fenceBetween(from.x, from.y, from.x, ty) && !this.fenceBetween(from.x, ty, tx, ty);
+    return okX || okY;
+  }
+
+  /** 가로·세로로 이웃한 두 칸 사이에 울타리가 있는지 */
+  fenceBetween(ax: number, ay: number, bx: number, by: number) {
+    if (!this.fences.size) return false;
+    if (bx === ax && by === ay + 1) return this.fences.has(this.fenceKey(bx, by, false));
+    if (bx === ax && by === ay - 1) return this.fences.has(this.fenceKey(ax, ay, false));
+    if (by === ay && bx === ax + 1) return this.fences.has(this.fenceKey(bx, by, true));
+    if (by === ay && bx === ax - 1) return this.fences.has(this.fenceKey(ax, ay, true));
+    return false;
+  }
+
+  /** 한 걸음(가로·세로·대각선)이 울타리를 넘는지. 대각선은 두 꺾인 길이 모두 울타리를 넘을 때 넘는 것으로 친다(점프용). */
+  crossesFence(a: Tile, b: Tile) {
+    if (!this.fences.size) return false;
+    if (a.x === b.x || a.y === b.y) return this.fenceBetween(a.x, a.y, b.x, b.y);
+    const viaX = this.fenceBetween(a.x, a.y, b.x, a.y) || this.fenceBetween(b.x, a.y, b.x, b.y);
+    const viaY = this.fenceBetween(a.x, a.y, a.x, b.y) || this.fenceBetween(a.x, b.y, b.x, b.y);
+    return viaX && viaY;
+  }
+
+  private fenceKey(x: number, y: number, left: boolean) {
+    return (x + y * this.map.size) * 2 + (left ? 1 : 0);
   }
 
   /**

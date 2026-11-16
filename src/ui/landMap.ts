@@ -4,7 +4,7 @@ import { groundPoint, sprite } from '../art/sprites';
 import { blockArt, blockTile, footprintOf, paintBlock, type BlockId } from '../blocks';
 import { BLOCK_HEIGHT, MAP_SIZE } from '../config';
 import { CROP_ART, CROP_CELL } from '../game/cropArt';
-import { FARMLAND_TILES, FLOOR_TOP, formatLeft, GRADE_NAME, gradeOf, isPlot, ripeAt, stageOf, type CropInfo, type CropId, type Plot } from '../game/farm';
+import { cropStateText, FARMLAND_TILES, FLOOR_TOP, isPlot, ownerWord, stageOf, votesText, type CropInfo, type CropId, type Plot } from '../game/farm';
 import { generateMap } from '../game/map';
 import { gridToWorld, tileCenter, worldToGrid } from '../iso';
 import type { PlacedBlock } from '../net/session';
@@ -310,6 +310,8 @@ export class LandMap {
   }
 
   private onDown(e: PointerEvent) {
+    // '끌기'와 + / − 버튼은 지도 칸 안에 있다. 여기서 포인터를 잡으면 버튼의 click이 지도 칸으로 가 버리므로 그냥 둔다.
+    if ((e.target as Element).closest('.land-mode, .land-zoom')) return;
     // 지도 밖으로 끌어도 계속 받는다. 잡지 못하는 포인터(이미 끝난 것)면 그냥 넘어간다.
     try {
       this.view.setPointerCapture(e.pointerId);
@@ -395,14 +397,11 @@ export class LandMap {
     if (!isPlot(at.x, at.y)) return at.x === HOME_PORTAL.x && at.y === HOME_PORTAL.y ? `시작마을 포탈 ${where}` : `길 ${where}`;
     const plot = this.owner.get(`${at.x},${at.y}`);
     if (!plot) return `빈 땅 ${where}`;
-    const who = plot.owner === this.options.myId ? `내 땅 ${where}` : `${plot.nickname || '누군가'}의 땅 ${where}`;
+    const who = `${ownerWord(plot, this.options.myId)} 땅 ${where}`;
     const block = this.blocked.has(`${at.x},${at.y}`) ? ' · 블록 있음' : '';
     const crop = plot.crop && this.options.crop(plot.crop);
     if (!crop) return `${who}${block}`;
-    const left = ripeAt(plot, crop) - Date.now();
-    const votes = `칭찬 ${plot.praise} · 비난 ${plot.blame}`;
-    if (left <= 0) return `${who} · ${GRADE_NAME[gradeOf(plot)]}${crop.name} · 다 자람 · ${votes}${block}`;
-    return `${who} · ${crop.name} · ${formatLeft(left)} 남음 · ${votes}${block}`;
+    return `${who} · ${cropStateText(plot, crop)} · ${votesText(plot)}${block}`;
   }
 
   // ───────── 그리기 ─────────

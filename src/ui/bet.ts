@@ -15,8 +15,6 @@ const FONT = "'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif";
 /** 만화풍 그림의 테두리색 */
 export const OUTLINE = '#2a1a10';
 export const GOLD = '#f2cf6a';
-export const RED = '#d8413b';
-export const BLUE = '#2f5fa8';
 
 /** 거는 돈에 더하는 버튼 */
 const CHIPS = [100, 1_000, 10_000];
@@ -82,6 +80,8 @@ export abstract class BetWindow extends PurchaseWindow {
     for (const pick of info.picks) {
       const button = element('casino-pick', picks, 'button') as HTMLButtonElement;
       button.type = 'button';
+      // 걸 곳 이름 앞 색 점(style.css): 홀·좌는 빨강, 짝·우는 파랑, 줄 수는 금색, 달팽이는 번호 색
+      button.dataset.pick = pick.id;
       element('casino-pick-label', button).textContent = pick.label;
       element('casino-pick-odds', button).textContent = `${pick.odds}배`;
       button.addEventListener('click', () => {

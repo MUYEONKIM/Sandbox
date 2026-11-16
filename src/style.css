@@ -2508,6 +2508,71 @@ canvas {
   font-size: 16px;
 }
 
+/* 농장에서 작물 곁에 서면 캐릭터 발밑에 뜨는 안내 창(docs/balance/farm.md 9.3). 줍기 안내와 같은 자리다.
+   바탕은 마우스를 막지 않아 그 뒤 땅을 누를 수 있고, 버튼만 눌린다. */
+.farm-panel {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: calc(50% + 28px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  max-width: 260px;
+  padding: 8px 12px;
+  color: var(--text);
+  background: rgb(31 21 16 / 88%);
+  border: 2px solid var(--gold);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.farm-panel[hidden],
+.farm-panel [hidden] {
+  display: none;
+}
+
+.farm-panel-title {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* 바탕과 테두리는 게임 버튼 그림(#hud button)을 쓴다. 줍기 안내와 같다. */
+.farm-panel-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 2px 12px 2px 6px;
+  font: inherit;
+  font-weight: 700;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.farm-panel .pickup-key {
+  width: 20px;
+  height: 20px;
+  font-size: 13px;
+}
+
+/* 휴대폰에는 F 키가 없어 버튼 글만 쓴다. */
+@media (pointer: coarse) {
+  .farm-panel .pickup-key {
+    display: none;
+  }
+
+  .farm-panel-button {
+    padding: 6px 16px;
+  }
+}
+
 /* 땅의 골드에 마우스를 올리면 커서 오른쪽 위에 뜨는 액수 */
 .ground-tip {
   position: absolute;
@@ -2706,6 +2771,7 @@ canvas {
 .portal-name,
 .chat,
 .pickup-hint,
+.farm-panel,
 .ground-tip,
 .notices,
 .connection,
@@ -3164,4 +3230,401 @@ canvas {
 
 .shop-stat:has(.coop-field) {
   flex-wrap: wrap;
+}
+
+/* ───────── 늘 떠 있는 창 접기(2026-11-16 사용자 "기본으로 화면에 뜨는 여러 팝업창들 최소화 버튼", 디자인 세션 ui-minimize.md) ─────────
+ * 접는 창: 조작 안내, 현상범, 미니맵, 레벨 TOP 10, 채팅(src/ui/fold.ts). 계정 줄과 아래 막대는 접지 않는다.
+ * 버튼은 게임 버튼 그림(#hud button)을 그대로 쓰고, 안의 −/+는 2px 막대로 그린다(그림 파일 없음).
+ * 접으면 제목 줄만 남기고 나머지는 display: none이라 배치·그리기 비용이 없다. */
+
+/* 채팅(.chat)은 이미 absolute라 그대로 둔다. */
+.minimap.foldable,
+.rank-panel.foldable,
+.wanted.foldable,
+.help.foldable {
+  position: relative;
+}
+
+#hud .fold-btn {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-width: 6px 6px 8px;
+  border-image-width: 6px 6px 8px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#hud .fold-btn:active {
+  border-width: 8px 6px 6px;
+  border-image-width: 8px 6px 6px;
+}
+
+/* 안쪽 12×10칸에 가로 막대(−), 접혔으면 세로 막대를 더해 + */
+#hud .fold-btn::before,
+#hud .fold-btn.folded::after {
+  content: '';
+  position: absolute;
+  background: var(--button-text);
+}
+
+#hud .fold-btn::before {
+  left: 1px;
+  top: 4px;
+  width: 10px;
+  height: 2px;
+}
+
+#hud .fold-btn.folded::after {
+  left: 5px;
+  top: 0;
+  width: 2px;
+  height: 10px;
+}
+
+/* 손가락으로 누르는 화면은 버튼을 키운다(안쪽 20×18칸). */
+@media (pointer: coarse), (max-width: 620px) {
+  #hud .fold-btn {
+    top: -8px;
+    right: -8px;
+    width: 30px;
+    height: 30px;
+  }
+
+  #hud .fold-btn::before {
+    left: 5px;
+    top: 8px;
+  }
+
+  #hud .fold-btn.folded::after {
+    left: 9px;
+    top: 4px;
+  }
+}
+
+/* 제목 줄은 버튼과 겹치지 않게 오른쪽을 비운다. */
+.foldable .minimap-title,
+.foldable .rank-panel-title {
+  padding: 0 22px;
+}
+
+.foldable .wanted-title {
+  padding-right: 22px;
+}
+
+/* 접힌 창: 제목 줄만. 제목 줄을 눌러도 펴진다. 오른쪽 열은 폭을 맞춰 가지런히 둔다. */
+.minimap.folded,
+.rank-panel.folded {
+  align-self: stretch;
+}
+
+.minimap.folded .minimap-canvas,
+.minimap.folded .minimap-legend,
+.rank-panel.folded .rank-list,
+.rank-panel.folded .rank-panel-note,
+.wanted.folded .wanted-list {
+  display: none;
+}
+
+.wanted.folded {
+  min-width: 0;
+}
+
+.minimap.folded .minimap-title,
+.rank-panel.folded .rank-panel-title,
+.wanted.folded .wanted-title {
+  margin-bottom: 0;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* 조작 안내: 열린 상자 오른쪽 위에 버튼. 접으면 예전처럼 "조작 안내 [H]" 작은 상자. */
+.help.foldable {
+  padding-right: 30px;
+}
+
+/* 채팅: 기록 오른쪽 위에 버튼. 접으면 "채팅"과 새 메시지 수만 남는다. */
+#hud .chat .fold-btn.chat-fold {
+  top: 2px;
+  right: 2px;
+}
+
+.chat.foldable .chat-log {
+  padding-right: 30px;
+}
+
+.chat:has(.chat-log:empty) .chat-fold {
+  display: none;
+}
+
+.chat.folded .chat-log,
+.chat.folded .chat-fold {
+  display: none;
+}
+
+.chat-chip {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  padding: 3px 4px 3px 10px;
+  background: rgb(20 14 10 / 82%);
+  font-weight: 700;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.chat.folded .chat-chip {
+  display: inline-flex;
+}
+
+/* 접은 채로 Enter를 치면 입력 줄만 보인다. */
+.chat.folded:has(.chat-entry:not([hidden])) .chat-chip {
+  display: none;
+}
+
+#hud .chat-chip .fold-btn {
+  position: relative;
+  top: 0;
+  right: 0;
+}
+
+.chat-unread {
+  min-width: 20px;
+  padding: 0 5px;
+  color: #2a1d16;
+  background: var(--gold);
+  border-radius: 3px;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.chat-unread:empty {
+  display: none;
+}
+
+/* 휴대폰: 오른쪽 위 계정 줄(약 60px)이 왼쪽 위 칸과 겹치지 않게 왼쪽 위 칸(현상범, 조작 안내)을 그 아래로 내리고(사용자가 정함),
+ * 접힌 상자는 제목 폭만 차지해 왼쪽 칸과 나란히 들어가게 한다. */
+@media (max-width: 620px) {
+  .top-left {
+    top: 94px;
+  }
+
+  .minimap.folded,
+  .rank-panel.folded {
+    align-self: auto;
+  }
+}
+
+/* ───────── 도박장 홀짝·사다리·달팽이 경주 새 모습(2026-11-16 사용자 "홀짝게임, 사다리게임 의 ui가 너무 허접하다", 디자인 세션 casino-ui.md) ─────────
+ * 세 게임이 같은 틀(bet.ts)이라 버튼·칩·결과 줄이 함께 바뀐다. 달팽이 판 그림은 그대로다. 위 .casino-* 규칙을 덮어쓴다. */
+
+/* 게임 판: 두꺼운 검은 테와 금색 바깥 줄 */
+.casino .casino-stage {
+  margin: 10px 0 8px;
+  border: 3px solid #1c120c;
+  box-shadow: 0 0 0 2px #c8962e;
+  image-rendering: pixelated;
+}
+
+/* 결과 줄: 이기면 금색 띠, 지면 갈색 띠. 비었으면 자리만 둔다. */
+.casino .casino-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.casino .casino-message:empty {
+  visibility: hidden;
+}
+
+.casino .casino-message.win {
+  color: #3e1f1d;
+  background: #f2cf6a;
+  box-shadow: inset 0 0 0 2px #b8862b;
+}
+
+.casino .casino-message.lose {
+  color: #f7ecd6;
+  background: #6b4a32;
+}
+
+/* 금액 칸은 입력 칸 기본 폭(글자 20개) 아래로 줄지 못해 휴대폰에서 창보다 18px 넓었다(가로 스크롤, 전부터). 창 폭에 맞춰 줄게 한다. */
+.casino .casino-field {
+  min-width: 0;
+}
+
+/* 걸 곳: 색 점 + 큰 이름, 아래에 금색 배당 딱지 */
+#hud .casino-pick {
+  --pick: #f2cf6a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 4px 6px;
+  color: var(--button-text);
+}
+
+#hud .casino-pick[data-pick='odd'],
+#hud .casino-pick[data-pick='L'],
+#hud .casino-pick[data-pick='L3'],
+#hud .casino-pick[data-pick='L4'] {
+  --pick: #e0453a;
+}
+
+#hud .casino-pick[data-pick='even'],
+#hud .casino-pick[data-pick='R'],
+#hud .casino-pick[data-pick='R3'],
+#hud .casino-pick[data-pick='R4'] {
+  --pick: #4a82e8;
+}
+
+#hud .casino-picks-snail .casino-pick[data-pick='1'] {
+  --pick: #ff9a3c;
+}
+
+#hud .casino-picks-snail .casino-pick[data-pick='2'] {
+  --pick: #9a6adf;
+}
+
+#hud .casino-picks-snail .casino-pick[data-pick='3'] {
+  --pick: #3ab0d8;
+}
+
+#hud .casino-pick-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--button-text);
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+#hud .casino-pick-label::before {
+  content: '';
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: var(--pick);
+  border: 2px solid #1c120c;
+  border-radius: 50%;
+}
+
+#hud .casino-pick-odds {
+  padding: 0 6px;
+  color: #3e1f1d;
+  background: #f2cf6a;
+  border-radius: 3px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+/* 사다리 8칸은 이름을 한 줄로 */
+#hud .casino-picks-ladder .casino-pick-label {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+/* 홀짝은 두 칸이라 더 크게 */
+#hud .casino-picks-oddeven .casino-pick {
+  padding: 10px 4px 8px;
+}
+
+#hud .casino-picks-oddeven .casino-pick-label {
+  font-size: 22px;
+}
+
+/* 고른 곳: 밝은 눌린 버튼 + 금색 테 */
+#hud .casino-pick.chosen {
+  box-shadow: 0 0 0 2px #f2cf6a;
+}
+
+#hud .casino-pick.chosen .casino-pick-label {
+  color: #ffffff;
+}
+
+/* 금액 칩: +100(흰), +1,000(빨강), +10,000(파랑)은 둥근 칩, 최대·지우기는 작은 버튼 */
+#hud .casino-amount .casino-chip:nth-of-type(-n + 3) {
+  --chip: #e8e2d4;
+  --chip-edge: #8a7a6a;
+  --chip-text: #3e1f1d;
+  border: 0;
+  border-image: none;
+  border-radius: 999px;
+  padding: 6px 4px;
+  color: var(--chip-text);
+  background: var(--chip);
+  box-shadow: inset 0 0 0 3px var(--chip), inset 0 0 0 5px var(--chip-edge), 0 0 0 2px #1c120c, 0 3px 0 0 #1c120c;
+  font-weight: 700;
+}
+
+#hud .casino-amount .casino-chip:nth-of-type(2) {
+  --chip: #c8382f;
+  --chip-edge: #f7ecd6;
+  --chip-text: #ffffff;
+}
+
+#hud .casino-amount .casino-chip:nth-of-type(3) {
+  --chip: #2f5fb8;
+  --chip-edge: #f7ecd6;
+  --chip-text: #ffffff;
+}
+
+#hud .casino-amount .casino-chip:nth-of-type(-n + 3):active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: inset 0 0 0 3px var(--chip), inset 0 0 0 5px var(--chip-edge), 0 0 0 2px #1c120c;
+}
+
+#hud .casino-amount .casino-chip:nth-of-type(n + 4) {
+  flex: 0 0 auto;
+  font-size: 14px;
+}
+
+/* 걸기 버튼: 밝은 큰 버튼 */
+#hud .casino .office-sell {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+#hud .casino .office-sell:not(:disabled) {
+  border-image-source: url('./ui/skin/button-light.png');
+}
+
+@media (max-width: 620px) {
+  /* 사다리 걸 곳 8개는 휴대폰에서도 4칸 두 줄 */
+  .casino-picks-ladder {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  #hud .casino-picks-ladder .casino-pick-label {
+    font-size: 14px;
+    gap: 3px;
+  }
+
+  #hud .casino-picks-ladder .casino-pick-label::before {
+    width: 8px;
+    height: 8px;
+  }
+
+  #hud .casino-pick-odds {
+    font-size: 12px;
+    padding: 0 4px;
+  }
+
+  #hud .casino-amount .casino-chip:nth-of-type(-n + 3) {
+    padding: 6px 2px;
+    font-size: 13px;
+  }
 }

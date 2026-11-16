@@ -6,9 +6,21 @@
 
 위가 최근이다. 각 배포의 커밋은 `git log`로 본다.
 
+- 대장간 결과 연출 뒤로, 땅 지도 버튼, 작물 곁 안내 창, 창 접기와 미니맵, 농장 울타리·꾸미기, 등 빛, 도박장 홀짝·사다리 화면(2026-11-16, 넷째 배포). 사용자가 SQL `20261116040000_farm_gate.sql`을 실제 DB에서 실행했고(확인 select의 count 200, (3,3) false. 세 값의 열 이름이 같아 마지막 값만 보였다. 정책 select는 돌리지 않았고 같은 파일이라 들어간 것으로 봄, PM 전달), 실제 DB의 농장 소품 33칸과 입구 200칸 확인 SQL은 0줄이었다. PM 세션(rpg총괄세션)이 전한 사용자 말 "배포해줘"로 첫 묶음 넷과 둘째 묶음 셋을 한 번에 배포했다. 작업 폴더 `iso-sandbox-gold`(브랜치 `big-gold`)에서 커밋해 `git push origin big-gold:main`으로 올렸다. 게시판 업데이트 내역에 2026-11-16 넷째 항목을 더했다. 셋째 배포의 "배포 뒤 확인" 줄도 이 커밋에 함께 들어갔다. 로컬 확인과 잰 값은 공유 노트 `code-report-2026-11-16b.md`, 규칙은 `game.md`(대장간, 농장, 등과 조명 빛, 도박장, 늘 떠 있는 창 접기).
+  - 2026-11-16 저녁 PM 인계(공유 노트 `code-handoff-2026-11-16b.md`) 세 가지와 창 접기(같은 날 PM이 더 맡김)를 작업 폴더에서 만들고 로컬에서 확인했다. 새 SQL 없음. 
+    - 대장간: 망치질 결과(단계, 목록, 결과 글)를 번개 연출이 사라진 뒤 붙인다(`src/main.ts`의 `land`, `src/ui/forge.ts`의 `hammer`). 골드는 바로 맞춘다.
+    - 농협 땅 지도: + / − 와 '끌기' 버튼이 눌린다(`src/ui/landMap.ts`의 `onDown` 첫 줄). 키보드 +/− 키는 넣지 않는다(사용자가 "버튼만 고쳐 넘기기"를 고름).
+    - 농장 작물 곁 안내 창(`farm.md` 9.3): `src/ui/farmPanel.ts`(새 파일), `src/ui/ground.ts`, `src/game/farm.ts`, `src/game/GameScene.ts`, `src/style.css`의 `.farm-panel`. F로 심기, 휴대폰 버튼 조작이 생긴다. 땅 지도의 칸 글은 같은 조각을 쓰게 되어 "당근 · 3분 남음"이 "당근 3분 남음"으로 바뀐다.
+    - 늘 떠 있는 창 접기(디자인 세션 설계 `ui-minimize.md`, 사용자가 "같이 넘기기"): 새 파일 `src/ui/fold.ts`, `minimap.ts`, `fame.ts`(RankPanel), `wanted.ts`, `chat.ts`, `hud.ts`(조작 안내 버튼), `main.ts`(ChatBox에 내 id), `style.css` 끝의 접기 블록. 미니맵은 바뀔 때만 그린다(`GameScene.updateMinimap`). 시안 원본 `art-source/ui-minimize/`는 커밋하지 않는다.
+  - 둘째 묶음(2026-11-16 밤 PM 인계 `code-handoff-2026-11-16c.md`): 농장 꾸미기·울타리, 등 빛, 도박장 홀짝·사다리 화면. 같은 작업 폴더에서 만들고 로컬에서 확인했다.
+    - **새 SQL `supabase/migrations/20261116040000_farm_gate.sql`(사용자가 실제 DB에서 실행함).** `farm_is_gate`(입구 바로 안쪽 땅 200칸)를 만들고 블록 놓기 정책 "players place blocks"를 농장 조건에 `and not public.farm_is_gate(...)`만 더해 다시 만든다. 다시 실행해도 된다. 맨 위 주석에 확인 select 둘(true, true, false, 200 / with_check에 farm_is_gate). 로컬에는 `npx supabase migration up`으로 적용했고, 입구 칸 insert는 RLS로 거절, 입구 아닌 내 땅은 들어감을 봤다.
+    - 실제 DB의 농장 소품 33칸과 입구 200칸은 모두 비어 있다(2026-11-16 사용자가 확인 SQL을 실행해 0줄: 블록, 큰 가구, 떨어진 물건, 서 있는 사람 없음, PM 전달). 그래서 정리 SQL은 없고 새 SQL은 위의 입구 칸 하나뿐이다.
+    - 농장 꾸밈: `src/game/farmLayout.ts`(새), `map.ts`(소품, `fences`), `world.ts`(`canStep`, `fenceBetween`, `crossesFence`), `workGround.ts`(`farm` 셰이더), `GameScene.ts`(울타리 그림, 점프, 입구 칸), `sprites.ts`(농장 그림 8장과 빠져 있던 `work-wheelbarrow`), `public/sprites/farm-*.png` 8장(디자인 세션 `art-source/farm-decor/sprites`에서 복사).
+    - 등 빛: `src/game/lights.ts`, `src/art/glow.ts`(새), `daylight.ts`(`onPhase`, `current`), `blockChunks.ts`(`onView`), `GameScene.ts`.
+    - 도박장: `src/ui/pixelArt.ts`(새), `oddeven.ts`, `ladder.ts`, `bet.ts`(`data-pick`, 안 쓰는 RED·BLUE 지움), `style.css` 끝 블록, `public/casino/oddeven-table.png`·`ladder-board.png`(디자인 세션 `art-source/casino-ui/assets`에서 복사).
 - 작업장 네 곳 새 디자인과 소품 칸 블록 지우기, 블록이 많은 맵의 렉 고치기, 대장간 무기 사는 값 고정 B안(2026-11-16, 셋째 배포). 사용자가 SQL `20261116020000_forge_luk.sql`과 `20261116030000_work_prop_cells.sql`을 실제 DB에서 실행했다고 했고, PM 세션(rpg총괄세션)이 전한 사용자 말 "실행했다 배포해줘"로 배포했다. 푸시 전에 공개 키로 `forge_luk_refunds` 표가 있는지 보려 했으나 이 세션의 권한 검사(auto mode)에 막혀 하지 못했다. 소품 칸 SQL은 데이터만 지워 공개 키로는 볼 수 없다. 작업 폴더 `iso-sandbox-gold`(브랜치 `big-gold`)에서 커밋해 `git push origin big-gold:main`으로 올렸다. 게시판 업데이트 내역에 2026-11-16 셋째 항목(작업장, 렉, 대장간)을 더했다. 소품 앞에서 소품을 가리는 돌은 지우지 않았다(사용자 "소품 칸만 지우기").
   - **배포 뒤 할 일: 실제 사이트에 새 번들이 뜨면 사용자가 `20261116030000_work_prop_cells.sql`을 한 번 더 실행한다**(새로고침하지 않은 사람의 예전 화면이 그사이 소품 칸에 놓은 블록을 지움). 테스트 항목 ①.
-  - 배포 뒤 확인: (푸시 뒤 채움)
+  - 배포 뒤 확인: 커밋 18a8b5b(53개 파일). 푸시는 auto mode 권한 검사가 PM을 거친 승인으로는 막아, 사용자가 코드 세션에서 직접 "Push it"이라고 한 뒤 올렸다. Actions "Deploy to GitHub Pages" 성공. 실제 사이트 번들 `index-C4OEDrnA.js`(CSS `index-zhVO0QqX.css`는 그대로)에 새 업데이트 문구 셋, `work-cliff`·`work-dryrack`, `followupdate`가 들어 있고, `work-*.png` 34장을 실제 사이트에서 받아 커밋 것과 cmp해 모두 같다. 원래 폴더 `C:\Users\its\iso-sandbox`는 `workGround.ts`, `workLayouts.ts`, `work-*.png` 34장(origin/main 것과 같음)만 `git add`하고 `git merge --ff-only origin/main`으로 18a8b5b에 맞췄다. `NEWUI/`, `newassets/`, `docs/balance/`, `art-source/`는 커밋 안 된 채 그대로 남았다. 사용량은 대화 기억 42%, 주간 27%였다.
   - **작업장 네 곳 새 디자인 붙이기.** 사용자 "지금 맡겨"(PM 전달). 작업 폴더 `iso-sandbox-gold`(브랜치 `big-gold`, d7c766a 위)에서 했다. 소품 칸의 블록을 지우는 SQL이 하나 있다(아래).
     - 디자인 세션 파일을 원래 폴더 `C:\Users\its\iso-sandbox`에서 복사함(원래 폴더 것은 그대로 둠): `src/art/workGround.ts`(md5 62a6ccdacc2bf3f77c91526c88c83481), `src/game/workLayouts.ts`(md5 3f7416efaf2cee8b6fa806b707ef58e4, PM "칸 확정" 판: 블록은 따지지 않고 소품 자리를 정함, 공유 노트 `workplace-art.md` '칸 확정' 절), `public/sprites/work-*.png` 34장(쓰는 것 25장, `-x` 9장은 안 씀). 칸 확정 때 원래 폴더와 cmp해 다른 것은 workLayouts.ts 하나였다. 배포 직전에 다시 cmp한다.
     - 코드: `sprites.ts`(work- 25장), `map.ts`(작업장이면 `WORK_LAYOUTS` 소품을 `buildings`에 넣고 `removeWalls`이면 `WORK_WALLS`를 세우지 않음), `GameScene.groundTexture`(작업장이면 `paintWorkGround`), `maps.ts`의 `arrivalFor`(작업장이면 포탈 앞 (42, 44)), `updates.ts`(2026-11-16 셋째 항목), `game.md`.
@@ -160,10 +172,12 @@
 
 ## 로컬에만 있는 변경 (커밋 전)
 
-- 없음. 2026-11-16 셋째 배포로 작업 폴더의 변경을 모두 올렸다.
+- 없음. 2026-11-16 넷째 배포로 작업 폴더의 변경을 모두 올렸다(이 넷째 배포의 "배포 뒤 확인" 줄만 다음 배포 때 함께 커밋한다).
 - 대장간 구현 계획은 저장소 밖 공유 노트 폴더(`forge-plan.md`)에 있다. 배포는 A(골드·스탯 칸, 상점 안 맵과 함께 2026-11-15 배포함), B+C(대장간과 전투, 던전 몬스터 새 값, 대장간 안 맵, 2026-11-16 배포함), D(방어구·장신구), E(이펙트) 네 번이다(사용자가 정함). 다음은 D다. 코드 세션의 작업 폴더 `C:\Users\its\iso-sandbox-gold`(브랜치 `big-gold`)는 2026-11-16 건물 안 배포(d7c766a) 위에 작업장, 렉 고치기, 대장간 B안을 올린 2026-11-16 셋째 배포 커밋과 같다.
 
 ## 사용자가 실제 사이트에서 해 보는 중 (결과 아직 없음)
+
+첫·둘째 묶음의 테스트 항목(2026-11-16 넷째 배포, 열어 둔 창은 새로고침, 자세한 것은 공유 노트 `code-report-2026-11-16b.md`): ① 새 소식 창에 2026-11-16 넷째 항목이 뜨는지 ② 대장간 망치질 중 뒤 창·단축키 칸이 그대로이다가 연출 뒤 바뀌는지(유지 두 번 잇달아, 건너뛰기, Esc) ③ 농협 땅 지도 + / − 와 "끌기" 버튼(휴대폰 포함) ④ 작물 곁 안내 창 글·버튼과 F 심기, 휴대폰 버튼 농사 ⑤ 다섯 창 접기·펴기, Space·Enter가 버튼을 다시 누르지 않는지, 새로고침 뒤 기억, 휴대폰 처음 모습 ⑥ 농장 울타리를 걷기·달리기·점프·클릭 이동으로 못 넘고 입구로만 드나드는지, 입구 바로 안쪽 칸에 블록이 안 놓이는지, 울타리 너머 심기·거두기 ⑦ 저녁에 등·모닥불·조명 블록이 빛나고 아침에 꺼지는지, 채석장 저녁 렉 ⑧ 도박장 세 게임 걸기·연출·결과 줄, 긴 창이 창 안에서 스크롤되는지.
 
 작업장·렉·대장간 사는 값의 테스트 항목(2026-11-16 셋째 배포, 열어 둔 창은 새로고침): ① 새 소식 창에 2026-11-16 셋째 항목이 보이면(새 번들이 뜬 것) SQL Editor에서 `20261116030000_work_prop_cells.sql`을 한 번 더 실행하고, 맨 끝 결과의 합계(그사이 소품 칸에 놓인 블록 수, 없으면 0)를 본다 ② 대장간 사기 탭의 무기 값이 LUK와 상관없이 1,000G인지, LUK가 있으면 "사는 값은 LUK와 상관없습니다" 문구가 보이는지, 사서 바로 팔면 500G를 받는지, +8 이상 무기의 판매가에만 LUK가 붙는지, LUK가 있고 무기를 가졌던 사람의 골드가 늘었는지 ③ 노동청 안 창구에서 채석장·벌목장·채집장·낚시터를 고르면 각 작업장 포탈 앞에 서는지, 바닥의 길·밭고랑·물가와 소품(바위 벽, 기중기, 통나무 더미, 모닥불, 사과나무, 허수아비, 선착장, 나룻배, 등 기둥)이 보이는지, F로 일해 자원을 받는지, 포탈로 나가면 시작마을 노동청 앞에 서는지 ④ 소품 칸은 지나갈 수 없고 블록을 놓을 수 없는지, 소품 자리에 있던 블록이 없어졌는지, 소품 옆 빈 칸에는 블록이 놓이고 회수되는지 ⑤ 돌이 많은 벌목장을 걸어 다녀도 끊기지 않는지, 화면 끝 쪽으로 걸을 때 블록이 잠깐 비거나 늦게 뜨지 않는지, 블록 놓기·쌓기·회수가 그대로 되는지, 돌 뒤에 서면 돌이 반투명해지는지 ⑥ 휴대폰에서 작업장 들어가기·걷기·일하기와 대장간 사기 창이 잘 되는지.
 
@@ -259,7 +273,7 @@ UI 스킨·글꼴·조작 안내·마우스 손전등·놓는 범위의 테스�
 
 ## 실제 DB에 들어간 SQL
 
-`supabase/migrations`의 모든 파일(마지막 `20261116030000_work_prop_cells.sql`)을 사용자가 SQL Editor에서 실행했다고 알렸다. 2026-11-16 셋째 배포 전에 `20261116020000_forge_luk.sql`과 `20261116030000_work_prop_cells.sql`을 실행했다(PM 전달 "실행했다 배포해줘", 공개 키 확인은 권한 검사에 막혀 못 함). `work_prop_cells`는 새 번들이 뜬 뒤 한 번 더 실행한다. forge_luk를 되돌리는 SQL은 공유 노트 `sql-drafts/forge_luk_rollback.sql`(보상은 되돌리지 않음, 실행 전 PM에 알림). 그 앞 `20261116010000_interior_rooms.sql`은 2026-11-16 실행 success를 PM이 전했다(그 앞 다섯 파일은 공개 키로 들어간 것을 확인, `interior_rooms`는 `hit_player` 본문만 바꿔 공개 키로는 확인 못 함). 대장간 SQL을 되돌리는 SQL은 공유 노트 폴더 `sql-drafts/forge_rollback.sql`(실행한 적 없음). 2026-11-08 이후 파일의 확인 결과는 위 배포 항목에 적었다. `20261107050000_tower_size.sql`까지 공개 키로 확인한 것과 못 한 것:
+`supabase/migrations`의 모든 파일(마지막 `20261116040000_farm_gate.sql`)을 사용자가 SQL Editor에서 실행했다고 알렸다. 2026-11-16 넷째 배포 전에 `20261116040000_farm_gate.sql`을 실행했다(확인 select의 count 200, PM 전달). 2026-11-16 셋째 배포 전에 `20261116020000_forge_luk.sql`과 `20261116030000_work_prop_cells.sql`을 실행했다(PM 전달 "실행했다 배포해줘", 공개 키 확인은 권한 검사에 막혀 못 함). `work_prop_cells`는 새 번들이 뜬 뒤 한 번 더 실행한다. forge_luk를 되돌리는 SQL은 공유 노트 `sql-drafts/forge_luk_rollback.sql`(보상은 되돌리지 않음, 실행 전 PM에 알림). 그 앞 `20261116010000_interior_rooms.sql`은 2026-11-16 실행 success를 PM이 전했다(그 앞 다섯 파일은 공개 키로 들어간 것을 확인, `interior_rooms`는 `hit_player` 본문만 바꿔 공개 키로는 확인 못 함). 대장간 SQL을 되돌리는 SQL은 공유 노트 폴더 `sql-drafts/forge_rollback.sql`(실행한 적 없음). 2026-11-08 이후 파일의 확인 결과는 위 배포 항목에 적었다. `20261107050000_tower_size.sql`까지 공개 키로 확인한 것과 못 한 것:
 
 - 확인함: `rooms` 표와 `give_room` 함수가 없어짐(`20261107040000_tower.sql`), `top_players`, `tools` 있음.
 - 확인 못 함: 블록 insert 정책(`20261107050000`), `hit_player` 본문(1층 공격 금지), 스텟 0.1% 공식(`20261107020000`). 사용자의 블록과 전투 테스트로 확인한다.

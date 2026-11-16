@@ -35,6 +35,8 @@ export class Daylight {
   private outdoor = false;
   /** 시간대 대신 늘 덮는 색(지옥 던전처럼 분위기가 정해진 맵) */
   private mood: { color: number; alpha: number } | null = null;
+  /** 시간대가 정해지거나 바뀔 때 부른다(등 빛이 진하기를 맞춘다, lights.ts). fade면 2.5초 동안 바뀌는 중이다. */
+  onPhase: ((phase: DayPhase, fade: boolean) => void) | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -60,7 +62,12 @@ export class Daylight {
     this.paint(true);
   }
 
+  get current() {
+    return this.phase;
+  }
+
   private paint(fade: boolean) {
+    this.onPhase?.(this.phase, fade);
     const { color, alpha } = this.mood ?? LOOK[this.phase];
     const target = this.mood ? alpha : this.outdoor ? alpha : 0;
     this.cover.setFillStyle(color, 1);

@@ -28,6 +28,8 @@ export class BlockChunks {
   private readonly chunks = new Map<number, Chunk>();
   private readonly bounds = new Phaser.Geom.Rectangle();
   private viewKey = '';
+  /** 화면 범위를 다시 볼 때 부른다(등 빛이 켤 플레이어 조명을 다시 고른다, lights.ts). */
+  onView: ((view: Phaser.Geom.Rectangle) => void) | null = null;
 
   add(image: Phaser.GameObjects.Image, x: number, y: number) {
     const key = Math.floor(x / CHUNK) * 1000 + Math.floor(y / CHUNK);
@@ -82,5 +84,6 @@ export class BlockChunks {
     }
     // Phaser는 이 프레임의 깊이 정렬을 카메라 준비(이 함수)보다 먼저 끝낸다. 다시 넣은 그림이 목록 끝에서 맨 앞에 그려지지 않게 바로 정렬한다.
     added?.scene.children.depthSort();
+    this.onView?.(view);
   }
 }

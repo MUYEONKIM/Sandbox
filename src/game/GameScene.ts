@@ -37,7 +37,7 @@ import {
   ZOOM,
 } from '../config';
 import { depthOf, gridToWorld, keepDepth, tileCenter, worldToGrid } from '../iso';
-import { cropOfSeed, isBlockItem, isGearRef, isPotion, isSeed, WEAPON_IDS, WEAPONS, type ItemId, type PotionId, type WeaponId } from '../items';
+import { cropOfSeed, isBlockItem, isGearRef, isPotion, isSeed, itemName, WEAPON_IDS, WEAPONS, type ItemId, type PotionId, type WeaponId } from '../items';
 import type {
   Bounty,
   ChatMessage,
@@ -135,7 +135,9 @@ import { inSafeZone, spawnCandidates, type MonsterKind } from './dungeon';
 import { isMonsterTarget, MonsterField, registerMonsterAnims } from './monsters';
 import type { DungeonWindow } from '../ui/dungeon';
 import type { MonsterMessage } from '../net/session';
-import { FarmField, formatLeft, GRADE_NAME, gradeOf, isPlot, registerFarmTextures, ripeAt, type CropId, type Plot } from './farm';
+import { isGate } from './farmLayout';
+import { Lights } from './lights';
+import { cropStateText, FARM_DO_LABEL, FarmField, formatLeft, GRADE_NAME, isPlot, leftTick, ownerWord, plotAction, plotCardLines, registerFarmTextures, ripeAt, showsCard, votesText, type CropId, type Plot, type PlotSituation } from './farm';
 import type { CoopWindow } from '../ui/coop';
 import { Modal } from '../ui/modal';
 import { element } from '../ui/dom';
@@ -308,6 +310,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private walk: Walk | null = null;
   /** 방향키 없이 Shift를 누르면 이 방향으로 대시한다. 처음에는 화면 아래를 본다. */
   private lastDir: Dir = { dx: 1, dy: 1 };
+  /** 작물 곁 안내 창에 지난번 넣은 값. 모두 같으면 창을 고치지 않는다(docs/balance/farm.md 9.3 '그리는 법'). */
+  private readonly farmCard = { plot: null as Plot | null, held: null as ItemId | null, seeds: -1, blocked: false, tick: 0 };
   private level: bigint;
   /** 숨은 방이 보이는지. 그 칸들을 밟고 있는 동안에만 보인다. */
   private hideoutShown = false;
@@ -334,6 +338,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private readonly covers = new CoverFader(this);
   /** 화면 밖 블록 그림을 덩어리째 숨긴다(src/game/blockChunks.ts). */
   private readonly blockChunks = new BlockChunks();
+  /** 바깥 맵의 등과 조명 빛(2026-11-16, lights.ts) */
+  private glows!: Lights;
   /** 바깥 맵의 KST 시간대 밝기 */
   private daylight!: Daylight;
   /** 전쟁터의 손전등 시야 */
@@ -371,6 +377,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private nextNoticeAt = 0;
   private shotsFired = 0;
   private nextMinimapAt = 0;
+  /** 미니맵에 지난번 그린 값(그림 번호, 블록 판, 숨은 방, 내 칸, 다른 사람 칸들). 모두 같으면 다시 그리지 않는다. */
+  private readonly minimapSeen: number[] = [];
+  /** 맵을 옮기거나 미니맵을 펴면 올려서 다음 확인 때 꼭 그리게 한다. */
+  private minimapEpoch = 0;
+  /** 미니맵을 그린 횟수(성능 확인용) */
+  minimapDraws = 0;
 
   /** 엘리베이터에 탄 층. 버튼판의 내리기를 누르면 이 층으로 나간다. 새로고침하면 1층이다. */
   private elevatorFloor: TowerId = 'tower1';
@@ -441,6 +453,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.createTextures();
     this.ground = this.add.image(0, 0, this.groundTexture(this.mapId)).setOrigin(0, 0).setDepth(DEPTH_GROUND);
     this.daylight = new Daylight(this, DEPTH_DAYLIGHT);
+    // 등 빛무리는 밤 덮개 바로 위, 지옥 던전 Gloom(+0.5)보다 아래다. 진하기는 시간대를 따른다.
+    this.glows = new Lights(this, DEPTH_DAYLIGHT + 0.2, this.daylight.current);
+    this.daylight.onPhase = (phase, fade) => this.glows.setPhase(phase, fade);
+    // 블록 덩어리가 화면을 다시 볼 때 켤 플레이어 조명을 다시 고른다.
+    this.blockChunks.onView = (view) => this.glows.setView(view);
     this.flashlight = new Flashlight(this, DEPTH_DARKNESS);
     this.gloom = new Gloom(this, DEPTH_DAYLIGHT + 0.5);
     this.showMap(this.mapId);
@@ -449,6 +466,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.groundUi.onHintClick = () => {
       if (this.canAct) this.tryPickUp();
     };
+    this.groundUi.farm.onAction = () => {
+      if (this.canAct) this.farmKey();
+    };
+    // 미니맵을 펴면 바로 한 번 그린다(접혀 있는 동안은 그리지 않았다).
+    this.minimap.fold.onChange((folded) => {
+      if (folded) return;
+      this.minimapEpoch++;
+      this.nextMinimapAt = 0;
+    });
     // 숨은 방 안에서 접속을 끊었다면 방이 열린 채로 시작한다.
     const saved = this.session.profile;
     if (this.mapId === HIDEOUT.map && inHideout(saved.x, saved.y)) this.showHideout(false);
@@ -555,7 +581,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const key = `ground-${id}`;
     if (!this.textures.exists(key)) {
       const map = generateMap(id);
-      this.textures.addCanvas(key, MAPS[id].work ? paintWorkGround(map, id as WorkId) : paintGround(map));
+      // 농장도 길·둑·풀밭을 칠한 바닥이다(2026-11-16 농장 꾸밈, workGround.ts).
+      this.textures.addCanvas(key, MAPS[id].work ? paintWorkGround(map, id as WorkId) : id === 'farm' ? paintWorkGround(map, 'farm') : paintGround(map));
     }
     return key;
   }
@@ -699,6 +726,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       rect.height + CAMERA_PAD_Y * 2,
     );
     this.minimap.setMap(info.name, info.color, this.world.map.bounds);
+    this.minimapEpoch++;
     this.cameras.main.setBackgroundColor(
       info.mood
         ? info.mood.background
@@ -743,6 +771,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const plain = PLAIN_SIGNS[building.sprite];
       if (plain && id === DEFAULT_MAP) this.addSign(plain.name, left + plain.x, top + plain.y);
     }
+    if (id === 'farm') this.showFences();
+    // 등 빛: 시간대 덮개가 있는 바깥 맵만(건물 안, 전쟁터, 분위기 색 맵은 뺀다, lantern-glow.md 7-5)
+    this.glows.enter(!isTower(id) && !info.dark && !info.mood, this.world.map.buildings);
     this.showSpots(id);
     this.showWalls();
     const boards: Phaser.GameObjects.Image[] = [];
@@ -769,6 +800,24 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     });
     // 블록은 이 뒤에 서버에서 받아 놓는다(spawnBlock이 덮는지 본다).
     this.keepClear.guard([...this.portalSprites.map(({ image }) => image), ...boards]);
+  }
+
+  /**
+   * 농장 울타리 488조각(2026-11-16 농장 꾸밈, farmLayout.ts). 바뀌지 않는 그림이라 맵에 들어올 때 한 번 놓는다.
+   * 1×1 소품처럼 그림 아래 꼭짓점을 칸 앞 꼭짓점에 맞추고, 깊이는 그 칸에 선 사람·작물보다 조금 뒤(depthOf − 5)다.
+   * 블록처럼 덩어리(BlockChunks)에 넣어 화면 밖 조각은 표시 목록에서 뺀다.
+   */
+  private showFences() {
+    for (const { x, y, side } of this.world.map.fences) {
+      const name = side === 'top' ? 'farm-fence' : 'farm-fence-x';
+      this.spriteTexture(name);
+      const image = sprite(name);
+      const left = gridToWorld(x, y + 1).x - Math.floor((image.width - TILE_W) / 2);
+      const top = gridToWorld(x + 1, y + 1).y - image.height;
+      const fence = this.add.image(left, top, name).setOrigin(0, 0).setDepth(depthOf(x, y) - 5);
+      this.mapImages.push(fence);
+      this.blockChunks.add(fence, x, y);
+    }
   }
 
   /** 작업장의 장식 벽 */
@@ -1013,6 +1062,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const image of this.blockImages.values()) image.destroy();
     this.blockImages.clear();
     this.blockChunks.clear();
+    this.glows.clear();
     this.keepClear.clear();
     for (const { image, tag } of this.portalSprites) {
       image.destroy();
@@ -1035,6 +1085,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.farm = null;
     this.groundUi.setHint(null);
     this.groundUi.setTip(null);
+    this.hideFarmPanel();
   }
 
   update(time: number) {
@@ -1057,7 +1108,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.animatePortals(time);
     this.covers.update(time, this.me.sprite);
     this.updateHover();
-    this.updatePickupHint();
+    const picking = this.updatePickupHint();
+    this.updateFarmPanel(picking);
     this.placeNameTags();
     this.updateMinimap(time);
     // 거래소 안에 있으면 시세판을 1분마다 새로 받는다(Market.refresh가 1분 안에는 건너뛴다).
@@ -1098,7 +1150,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.traveling || this.down) return;
 
     // F는 발밑에 주울 것이 있으면 줍고, 없으면 일을 시작하거나 멈춘다.
-    if (this.keys.takeWork() && this.canAct && !this.tryPickUp() && !this.farmAction(false)) this.toggleWork();
+    if (this.keys.takeWork() && this.canAct && !this.tryPickUp() && !this.farmKey()) this.toggleWork();
 
     if (this.keys.takeJump() && this.canAct && !this.me.jumping) this.jump();
 
@@ -1259,12 +1311,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.walk = null;
   }
 
-  /** 벽 너머에 설 곳이 있으면 거기로, 없으면 바로 앞이나 제자리로 내린다. 두 개 이상 쌓은 블록과 건물 안 벽은 못 넘는다. */
+  /**
+   * 벽 너머에 설 곳이 있으면 거기로, 없으면 바로 앞이나 제자리로 내린다. 두 개 이상 쌓은 블록과 건물 안 벽은 못 넘는다.
+   * 농장 울타리도 못 넘는다(2026-11-16 사용자 "막음"): 넘는 걸음이 있으면 그 너머에 내리지 않는다(farm-decor.md 2-3의 4번).
+   */
   private jumpLanding(from: Tile, { dx, dy }: Dir): Tile {
     const near = { x: from.x + dx, y: from.y + dy };
     const far = { x: from.x + dx * JUMP_TILES, y: from.y + dy * JUMP_TILES };
-    if (!this.world.blocksJump(near.x, near.y) && this.world.isWalkable(far.x, far.y)) return far;
-    return this.world.isWalkable(near.x, near.y) ? near : from;
+    const toNear = !this.world.crossesFence(from, near);
+    if (toNear && !this.world.crossesFence(near, far) && !this.world.blocksJump(near.x, near.y) && this.world.isWalkable(far.x, far.y)) return far;
+    return toNear && this.world.isWalkable(near.x, near.y) ? near : from;
   }
 
   private moveTo(to: Tile, ms: number, motion: Motion = 'walk') {
@@ -1548,16 +1604,46 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const { tag, x, y } of this.signs) place(tag, x, y);
   }
 
+  /**
+   * 미니맵. 접혀 있으면 아무것도 하지 않는다. 펼쳐 있으면 0.1초마다 내 칸, 다른 사람 칸, 블록(World.version), 맵이 바뀌었는지만 보고
+   * 바뀌었을 때만 블록 목록을 만들어 다시 그린다(2026-11-16 PM "바뀔 때만 그리기", 렌더링 성능 우선).
+   */
   private updateMinimap(time: number) {
-    if (time < this.nextMinimapAt) return;
+    if (this.minimap.folded || time < this.nextMinimapAt) return;
     this.nextMinimapAt = time + MINIMAP_INTERVAL_MS;
+    // 전쟁터에서는 미니맵에도 다른 사람을 그리지 않는다(빛 밖의 사람이 들키지 않게).
+    // 숨은 방 안의 사람도 방을 열지 않은 사람의 미니맵에는 그리지 않는다.
+    const others = MAPS[this.mapId].dark
+      ? []
+      : [...this.others.values()].map((avatar) => avatar.tile).filter(({ x, y }) => !this.world.isVoid(x, y));
+    const seen = this.minimapSeen;
+    let n = 0;
+    let changed = false;
+    const see = (value: number) => {
+      if (seen[n] !== value) {
+        seen[n] = value;
+        changed = true;
+      }
+      n++;
+    };
+    see(this.minimapEpoch);
+    see(this.world.version);
+    see(this.hideoutShown ? 1 : 0);
+    see(this.me.tile.x);
+    see(this.me.tile.y);
+    for (const { x, y } of others) {
+      see(x);
+      see(y);
+    }
+    if (seen.length !== n) {
+      seen.length = n;
+      changed = true;
+    }
+    if (!changed) return;
+    this.minimapDraws++;
     this.minimap.draw({
       me: this.me.tile,
-      // 전쟁터에서는 미니맵에도 다른 사람을 그리지 않는다(빛 밖의 사람이 들키지 않게).
-      // 숨은 방 안의 사람도 방을 열지 않은 사람의 미니맵에는 그리지 않는다.
-      others: MAPS[this.mapId].dark
-        ? []
-        : [...this.others.values()].map((avatar) => avatar.tile).filter(({ x, y }) => !this.world.isVoid(x, y)),
+      others,
       blocks: [...this.world.blockTiles(), ...this.world.map.walls, ...this.world.map.partitions],
       portals: this.world.portals,
     });
@@ -1604,7 +1690,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       void this.drinkPotion(potion);
       return;
     }
-    if (this.farmAction(true)) return;
+    if (this.farmClick()) return;
     const arm = this.inventory.selectedArm;
     if (arm && this.isSafeMap) this.notice(`${this.safeName}은 비무장지대입니다`, '이곳에서는 무기를 쓸 수 없습니다.');
     else if (arm) this.attack(arm);
@@ -1936,16 +2022,85 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.groundUi.setTip(text, pointer.x, pointer.y);
   }
 
-  /** 발밑에 주울 것이 있으면 "F키로 줍기" 안내를 띄운다. 여럿이면 맨 나중에 놓인 것부터 줍는다. */
+  /** 발밑에 주울 것이 있으면 "F키로 줍기" 안내를 띄운다. 여럿이면 맨 나중에 놓인 것부터 줍는다. 띄웠으면 true */
   private updatePickupHint() {
     const items = this.traveling || this.down || this.me.moving ? [] : this.drops.at(this.me.tile.x, this.me.tile.y);
     const [top] = items;
     if (!top) {
       this.groundUi.setHint(null);
-      return;
+      return false;
     }
     const what = top.amount === null ? '메모' : goldText(top.amount);
     this.groundUi.setHint(items.length > 1 ? `${what} 외 ${items.length - 1}개` : what);
+    return true;
+  }
+
+  /**
+   * 작물 곁 안내 창과 F가 다룰 칸(docs/balance/farm.md 9.3): (PC) 마우스로 가리킨 손 닿는 칸, 발밑 칸, 바라보는 앞 칸 차례로 보고
+   * 작물이 있거나(누구 것이든) 내 빈 땅인 첫 칸. 없으면 null
+   */
+  private farmTarget(): Plot | null {
+    const farm = this.farm;
+    if (!farm) return null;
+    const myId = this.session.profile.id;
+    const hovered = this.hoveredGround ?? this.hoveredBlock;
+    if (hovered && inBuildReach(this.me.tile, hovered)) {
+      const plot = farm.at(hovered.x, hovered.y);
+      if (showsCard(plot, myId)) return plot;
+    }
+    const { x, y } = this.me.tile;
+    const under = farm.at(x, y);
+    if (showsCard(under, myId)) return under;
+    const ahead = farm.at(x + this.lastDir.dx, y + this.lastDir.dy);
+    return showsCard(ahead, myId) ? ahead : null;
+  }
+
+  /** 안내 창 글을 만들 칸 상태. seedId는 단축키 칸에서 고른 씨앗(안 골랐으면 null) */
+  private farmSituation(plot: Plot, now = Date.now()) {
+    const held = this.inventory.selectedStack?.id ?? null;
+    const seedId = held && isSeed(held) ? held : null;
+    const situation: PlotSituation = {
+      plot,
+      crop: plot.crop ? this.farm?.crop(plot.crop) : undefined,
+      myId: this.session.profile.id,
+      blocked: !!this.world.heightAt(plot.x, plot.y),
+      seed: seedId ? { name: itemName(seedId), count: this.economy.seedCount(cropOfSeed(seedId)) } : null,
+      now,
+    };
+    return { situation, seedId };
+  }
+
+  /**
+   * 작물 곁 안내 창. 서 있을 때만 띄운다(걷는 중, 맵 이동 중, 쓰러짐, 창이 열림, 줍기 안내가 떴으면 숨김).
+   * 대상 칸의 Plot 참조, 든 칸과 씨앗 수, 블록 유무, 남은 시간 표시 값이 지난번과 같으면 글을 만들지 않는다.
+   */
+  private updateFarmPanel(picking: boolean) {
+    const plot = !this.farm || picking || this.me.moving || !this.canAct ? null : this.farmTarget();
+    if (!plot) {
+      this.hideFarmPanel();
+      return;
+    }
+    const held = this.inventory.selectedStack?.id ?? null;
+    const seeds = held && isSeed(held) ? this.economy.seedCount(cropOfSeed(held)) : -1;
+    const blocked = !!this.world.heightAt(plot.x, plot.y);
+    const crop = plot.crop ? this.farm!.crop(plot.crop) : undefined;
+    const now = Date.now();
+    const tick = crop ? leftTick(ripeAt(plot, crop) - now) : 0;
+    const last = this.farmCard;
+    if (last.plot === plot && last.held === held && last.seeds === seeds && last.blocked === blocked && last.tick === tick) return;
+    last.plot = plot;
+    last.held = held;
+    last.seeds = seeds;
+    last.blocked = blocked;
+    last.tick = tick;
+    const { situation } = this.farmSituation(plot, now);
+    const action = plotAction(situation);
+    this.groundUi.farm.set({ lines: plotCardLines(situation), action: action && FARM_DO_LABEL[action] });
+  }
+
+  private hideFarmPanel() {
+    this.farmCard.plot = null;
+    this.groundUi.farm.set(null);
   }
 
   /** 발밑에 주울 것이 있으면 하나 줍는다. 주울 것이 있었으면 true(F로 일을 시작하지 않는다). */
@@ -2133,7 +2288,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!stack || !isBlockItem(stack.id)) return;
     const id = stack.id;
     const spot = this.placementSpot(id);
-    if (!spot) return;
+    if (!spot) {
+      const ground = this.hoveredGround;
+      if (this.farm && ground && !this.hoveredBlock && isGate(ground.x, ground.y) && inBuildReach(this.me.tile, ground)) {
+        this.notice('입구 칸입니다', '입구 칸에는 블록을 놓을 수 없습니다.');
+      }
+      return;
+    }
     const { x, y, z } = spot;
 
     // 블록은 무제한이라 가방에서 빼지 않는다. 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
@@ -2184,6 +2345,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const image = this.dressBlock(this.add.image(0, 0, 'tiles'), id, x, y, z);
     this.blockImages.set(`${x},${y},${z}`, image);
     this.blockChunks.add(image, x, y);
+    this.glows.addBlock(id, x, y, z, image.depth);
     // 포탈이나 안내판을 덮으면 늘 반투명하게 그린다(2026-11-16 사용자 "가려지면 안 된다").
     if (this.keepClear.covers(image)) {
       image.setAlpha(KEEP_CLEAR_ALPHA);
@@ -2255,6 +2417,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       image.destroy();
     }
     this.blockImages.delete(key);
+    this.glows.removeBlock(x, y, z);
   }
 
   currentTile() {
@@ -2560,14 +2723,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.farm?.remove(x, y);
   }
 
-  /** 농장에 들어왔다: 땅을 읽어 그리고, 블록은 내 땅의 빈 칸에만 놓게 한다. */
+  /** 농장에 들어왔다: 땅을 읽어 그리고, 블록은 내 땅의 빈 칸에만 놓게 한다. 울타리 입구 바로 안쪽 칸에는 놓지 못한다(서버 정책도 같음). */
   private startFarm() {
     const crops = new Map(this.economy.crops.map((crop) => [crop.id, crop]));
     const myId = this.session.profile.id;
     this.farm = new FarmField(this, crops, myId);
     this.world.buildFilter = (x, y) => {
       const plot = this.farm?.at(x, y);
-      return !!plot && plot.owner === myId && !plot.crop;
+      return !!plot && plot.owner === myId && !plot.crop && !isGate(x, y);
     };
     void this.reloadFarm();
   }
@@ -2582,20 +2745,30 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!this.farm || !isPlot(x, y)) return null;
     const plot = this.farm.at(x, y);
     if (!plot) return '빈 땅 · 농협에서 삽니다';
-    const who = plot.owner === this.session.profile.id ? '내 땅' : `${plot.nickname || '누군가'}의 땅`;
+    const who = `${ownerWord(plot, this.session.profile.id)} 땅`;
     const crop = plot.crop && this.farm.crop(plot.crop);
     if (!crop) return `${who} · 비어 있음`;
-    const left = ripeAt(plot, crop) - Date.now();
-    const votes = `칭찬 ${plot.praise} · 비난 ${plot.blame}`;
-    if (left <= 0) return `${who} · ${GRADE_NAME[gradeOf(plot)]}${crop.name} 다 자람 · ${votes}`;
-    return `${who} · ${crop.name} ${formatLeft(left)} 남음 · ${votes}`;
+    return `${who} · ${cropStateText(plot, crop)} · ${votesText(plot)}`;
   }
 
   /**
-   * 농장에서 가리킨 칸에 하는 일. 손이 닿는 칸(8방위 2칸)만이다. click이면 좌클릭(씨앗을 들고 있으면 심기), 아니면 F.
-   * 내 다 자란 작물은 거두고, 자라는 작물은 칭찬·비난 창을 연다(F만). 한 일이 있으면 true
+   * 농장에서 F(휴대폰은 안내 창의 버튼): 안내 창이 다루는 칸(farmTarget)에 창에 적힌 일을 한다. 내 다 자란 작물은 거두고,
+   * 자라는 작물은 칭찬·비난 창을 열고, 내 빈 땅이면 고른 씨앗을 심는다. 그런 칸이 있으면 할 일이 없어도 true(F로 일을 시작하지 않는다)
    */
-  private farmAction(click: boolean) {
+  private farmKey() {
+    if (!this.farm || !this.canAct) return false;
+    const plot = this.farmTarget();
+    if (!plot) return false;
+    const { situation, seedId } = this.farmSituation(plot);
+    const action = plotAction(situation);
+    if (action === 'harvest') void this.harvestPlot(plot);
+    else if (action === 'vote') this.openVote(plot);
+    else if (action === 'plant' && seedId) void this.plantSeed(plot, cropOfSeed(seedId));
+    return true;
+  }
+
+  /** 농장에서 좌클릭: 마우스로 가리킨 손 닿는 칸(8방위 2칸)이 내 다 자란 작물이면 거두고, 씨앗을 들었으면 심는다. 한 일이 있으면 true */
+  private farmClick() {
     if (!this.farm || !this.canAct) return false;
     const tile = this.hoveredGround ?? this.hoveredBlock;
     if (!tile || !isPlot(tile.x, tile.y) || !inBuildReach(this.me.tile, tile)) return false;
@@ -2607,13 +2780,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         void this.harvestPlot(plot);
         return true;
       }
-      if (!click) {
-        this.openVote(plot);
-        return true;
-      }
       return false;
     }
-    if (click && held && isSeed(held)) {
+    if (held && isSeed(held)) {
       if (!plot || plot.owner !== myId) this.notice('내 땅이 아닙니다', '씨앗은 농협에서 산 내 땅에만 심습니다.');
       else if (this.world.heightAt(tile.x, tile.y)) this.notice('블록이 놓여 있습니다', '블록을 회수한 뒤 심습니다.');
       else void this.plantSeed(plot, cropOfSeed(held));

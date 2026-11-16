@@ -27,6 +27,7 @@ import { layoutBattlefield, type BattleProp } from './battlefield';
 import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 import { WORK_LAYOUTS } from './workLayouts';
+import { FARM_PROPS, farmFences, type FenceEdge } from './farmLayout';
 
 /** Void는 아무것도 없는 칸이다. 건물 안처럼 맵의 일부만 쓸 때 나머지를 채운다. */
 export const Terrain = { Ground: 0, Water: 1, Void: 2 } as const;
@@ -75,6 +76,8 @@ export interface GameMap extends Scenery {
   reserved: Tile[];
   /** 전쟁터 전용 장애물과 포탄 구덩이 */
   battleProps: BattleProp[];
+  /** 칸 사이 변을 막는 울타리(농장만, farmLayout.ts). 걸음(World.canStep)과 점프가 넘지 못한다. */
+  fences: FenceEdge[];
 }
 
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
@@ -232,6 +235,8 @@ export function generateMap(id: MapId): GameMap {
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) if (!isPlot(x, y)) scenery.floorTiles.set(x + y * size, FARM_ROAD_TILES[(x * 7 + y * 13) % FARM_ROAD_TILES.length]);
     }
+    // 농장 꾸밈 소품(2026-11-16, farmLayout.ts): 작업장 소품처럼 건물로 놓고 아래 반복문이 칸을 막는다.
+    buildings.push(...FARM_PROPS);
   } else if (isDungeon(id)) {
     const dungeon = layoutDungeon(id);
     scenery.trees.push(...dungeon.trees);
@@ -278,7 +283,8 @@ export function generateMap(id: MapId): GameMap {
   // 던전에는 놓지 않는다(몬스터 길을 막지 않게, 에이전트가 정함).
   const buildZones = isDungeon(id) ? [] : id === HIDEOUT.map ? [bounds, HIDEOUT.area] : [bounds];
   const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger, HIDEOUT.passage] : [];
-  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved, battleProps };
+  const fences = id === 'farm' ? farmFences() : [];
+  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved, battleProps, fences };
 }
 
 /** 장식 벽을 놓을 수 있는 칸에만 세우고 그 칸을 막는다. */

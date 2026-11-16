@@ -1,5 +1,6 @@
 import { Terrain, type GameMap } from '../game/map';
 import type { WorkId } from '../game/maps';
+import { isPlot } from '../game/farm';
 import { ORIGIN_X, ORIGIN_Y } from '../iso';
 import { paintGround, worldRect } from './ground';
 import { frac, hash2, type Color } from './pixels';
@@ -338,8 +339,94 @@ function fishing(size: number): { ground: Shader; water: Shader } {
   return { ground, water };
 }
 
-/** 작업장 바닥 한 장. paintGround와 같은 크기와 자리(왼쪽 위 = worldRect(size).left, 0)다. */
-export function paintWorkGround(map: GameMap, id: WorkId): HTMLCanvasElement {
+// ───────── 농장(2026-11-16 사용자 "농장도 꾸며졌으면 좋겠다", 디자인 세션 farm-decor.md 2-1) ─────────
+// 구획 사이 길과 둘레 길은 바퀴 자국이 난 다진 흙길, 길 쪽 구획 가장자리는 풀 둑, 아직 안 산 땅은 고랑 진 풀,
+// 맵 앞쪽 띠와 뒤쪽 가장자리는 들꽃 풀밭, 포탈 앞과 창고 앞은 흙 마당이다. 산 땅은 FarmField의 밭 타일과 작물이 덮는다.
+
+const FARM_MEADOW = [0x6aa844, 0x74b24c, 0x7ebc54];
+const FALLOW = [0x93c45c, 0x9bcb63, 0xa3d16b];
+const FARM_DIRT = [0xa98154, 0xb38a5b, 0xbd9462];
+/** 땅 구획 가장자리에서 길 쪽으로 이만큼(칸)은 풀 둑(논두렁)이다. */
+const BANK = 0.22;
+
+/** 칸 종류: 0 땅(구획), 1 흙길, 2 풀밭 */
+function farmKind(cx: number, cy: number) {
+  if (isPlot(cx, cy)) return 0;
+  const between = (v: number) => v >= 2 && v <= 41 && (v - 2) % 8 >= 6;
+  const inside = (v: number) => v >= 2 && v <= 41;
+  if ((between(cx) && inside(cy)) || (between(cy) && inside(cx))) return 1;
+  if (cx <= 6 && cy >= 42) return 1;
+  if (cx >= 42 && cy >= 42) return 1;
+  return 2;
+}
+
+function farm(size: number): Shader {
+  const kinds = new Uint8Array(size * size);
+  const near = new Uint8Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      kinds[x + y * size] = farmKind(x, y);
+      near[x + y * size] = (isPlot(x - 1, y) ? 1 : 0) | (isPlot(x + 1, y) ? 2 : 0) | (isPlot(x, y - 1) ? 4 : 0) | (isPlot(x, y + 1) ? 8 : 0);
+    }
+  }
+  const fallow = new Field(size, 4, (x, y) => noise(x / 2, y / 2, 21));
+  const dirt = new Field(size, 4, (x, y) => noise(x * 1.5, y * 1.5, 22));
+  const clover = new Field(size, 4, (x, y) => noise(x / 2, y / 2, 12));
+  const meadow = new Field(size, 4, (x, y) => noise(x / 3, y / 3, 11));
+  return (gx, gy, sx, sy) => {
+    const cx = gx | 0;
+    const cy = gy | 0;
+    const kind = kinds[cx + cy * size];
+    if (kind === 0) {
+      // 아직 아무도 사지 않은 땅: 고르게 자란 풀에 고랑 줄
+      const row = frac(gy * 3);
+      let c = FALLOW[(fallow.at(gx, gy) * 3) | 0];
+      if (row < 0.16) c = 0x82b752;
+      else if (row > 0.84) c = mix(c, 0xb4dc7a, 0.5);
+      if (hash2(sx, sy) > 0.97) c = 0x6f9f44;
+      return c;
+    }
+    // 땅 구획까지의 거리(칸)로 둑을 칠한다. 이웃이 땅인지는 칸마다 미리 셈해 둔 표(near)로 본다.
+    let bank = 9;
+    const m = near[cx + cy * size];
+    if (m) {
+      const fx = frac(gx);
+      const fy = frac(gy);
+      if (m & 1) bank = fx;
+      if (m & 2) bank = Math.min(bank, 1 - fx);
+      if (m & 4) bank = Math.min(bank, fy);
+      if (m & 8) bank = Math.min(bank, 1 - fy);
+    }
+    if (bank < BANK) {
+      if (bank > BANK - 0.05) return 0x5a8f38;
+      return hash2(sx, sy) > 0.8 ? 0x8cc85e : 0x74b24c;
+    }
+    if (kind === 1) {
+      // 흙길: 2칸 길 가운데 양쪽에 바퀴 자국, 작은 돌
+      const alongY = (cx - 2) % 8 >= 6 && cx >= 2 && cx <= 41;
+      const alongX = (cy - 2) % 8 >= 6 && cy >= 2 && cy <= 41;
+      let c = FARM_DIRT[(dirt.at(gx, gy) * 3) | 0];
+      const rut = (v: number) => {
+        const f = frac((v - 2) / 8) * 8 - 6;
+        return Math.abs(f - 0.55) < 0.08 || Math.abs(f - 1.45) < 0.08;
+      };
+      if ((alongY && !alongX && rut(gx)) || (alongX && !alongY && rut(gy))) c = 0x8e6a40;
+      const h = hash2(sx, sy);
+      if (h > 0.985) c = 0xd2c2a0;
+      else if (h < 0.02) c = 0x7a5a36;
+      return c;
+    }
+    // 풀밭: 들풀과 꽃
+    let c = clover.at(gx, gy) > 0.7 ? 0x5f9a3c : FARM_MEADOW[(meadow.at(gx, gy) * 3) | 0];
+    const h = hash2(sx, sy);
+    if (h > 0.985) return FLOWERS[(hash2(sy, sx) * FLOWERS.length) | 0];
+    if (h < 0.06) c = 0x5a8c36;
+    return c;
+  };
+}
+
+/** 작업장(과 농장) 바닥 한 장. paintGround와 같은 크기와 자리(왼쪽 위 = worldRect(size).left, 0)다. */
+export function paintWorkGround(map: GameMap, id: WorkId | 'farm'): HTMLCanvasElement {
   const canvas = paintGround(map);
   // 칠한 픽셀만 불투명한 덧그림을 따로 만들어 위에 얹는다(바닥 그림을 읽어 오는 getImageData는 느리다).
   const image = new ImageData(canvas.width, canvas.height);
@@ -349,7 +436,7 @@ export function paintWorkGround(map: GameMap, id: WorkId): HTMLCanvasElement {
   let ground: Shader;
   let water: Shader | null = null;
   if (id === 'fishing') ({ ground, water } = fishing(size));
-  else ground = id === 'quarry' ? quarry(size) : id === 'logging' ? logging(size) : gathering(size);
+  else ground = id === 'farm' ? farm(size) : id === 'quarry' ? quarry(size) : id === 'logging' ? logging(size) : gathering(size);
   const kindAt = (gx: number, gy: number) => (gx < 0 || gy < 0 || gx >= size || gy >= size ? -1 : terrain[(gx | 0) + (gy | 0) * size]);
   const bottom = Math.min(canvas.height, ORIGIN_Y + size * 16 + WATER_DROP);
   const width = canvas.width;

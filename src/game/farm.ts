@@ -81,6 +81,81 @@ export function formatGrow(seconds: number) {
   return seconds >= 3600 ? `${seconds / 3600}시간` : `${Math.round(seconds / 60)}분`;
 }
 
+/** formatLeft 글이 바뀌는 단위의 값: 1분 넘게 남았으면 분, 1분 안이면 초, 다 자랐으면 0. 이 값이 같으면 글도 같다. */
+export function leftTick(ms: number) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return s >= 60 ? -Math.floor(s / 60) : s;
+}
+
+// ───────── 칸 글: 마우스를 올린 글(GameScene.plotTip), 땅 지도(LandMap.describe), 작물 곁 안내 창이 같이 쓴다 ─────────
+
+/** 칸 주인을 가리키는 말: 내 것이면 '내', 남의 것이면 '○○의'(이름이 없으면 '누군가의') */
+export function ownerWord(plot: Plot, myId: string) {
+  return plot.owner === myId ? '내' : `${plot.nickname || '누군가'}의`;
+}
+
+export function votesText(plot: Plot) {
+  return `칭찬 ${plot.praise} · 비난 ${plot.blame}`;
+}
+
+/** 작물 상태 한 줄: 자라는 중이면 '당근 3시간 20분 남음', 다 자랐으면 '칭찬 당근 다 자람' */
+export function cropStateText(plot: Plot, crop: CropInfo, now = Date.now()) {
+  const left = ripeAt(plot, crop) - now;
+  return left > 0 ? `${crop.name} ${formatLeft(left)} 남음` : `${GRADE_NAME[gradeOf(plot)]}${crop.name} 다 자람`;
+}
+
+/** 작물 곁 안내 창과 F가 하는 일 */
+export type FarmDo = 'vote' | 'harvest' | 'plant';
+
+/** 안내 창에 보일 칸의 상태. GameScene이 모아 넘긴다. */
+export interface PlotSituation {
+  plot: Plot;
+  /** plot.crop의 정보. 비었으면 undefined */
+  crop: CropInfo | undefined;
+  myId: string;
+  /** 칸에 블록이 놓였는지 */
+  blocked: boolean;
+  /** 단축키 칸에서 고른 씨앗: 이름('당근 씨앗')과 가진 개수. 씨앗을 안 골랐으면 null */
+  seed: { name: string; count: number } | null;
+  now: number;
+}
+
+/** 안내 창을 띄울 칸인지: 작물이 있는 칸(누구 것이든)과 내 빈 땅 */
+export function showsCard(plot: Plot | undefined, myId: string): plot is Plot {
+  return !!plot && (plot.crop !== null || plot.owner === myId);
+}
+
+/** 그 칸에서 F(휴대폰은 창의 버튼)가 하는 일. 없으면 null */
+export function plotAction(s: PlotSituation): FarmDo | null {
+  const { plot, crop } = s;
+  if (crop) {
+    if (s.now < ripeAt(plot, crop)) return 'vote';
+    return plot.owner === s.myId ? 'harvest' : null;
+  }
+  if (plot.owner !== s.myId || s.blocked || !s.seed || s.seed.count <= 0) return null;
+  return 'plant';
+}
+
+export const FARM_DO_LABEL: Record<FarmDo, string> = { vote: '칭찬·비난', harvest: '거두기', plant: '심기' };
+
+/** 안내 창의 글 줄(첫 줄이 제목). docs/balance/farm.md 9.3의 표와 같다. */
+export function plotCardLines(s: PlotSituation): string[] {
+  const { plot, crop } = s;
+  if (crop) {
+    const title = `${ownerWord(plot, s.myId)} ${crop.name}`;
+    const left = ripeAt(plot, crop) - s.now;
+    if (left > 0) return [title, `다 자랄 때까지 ${formatLeft(left)}`, votesText(plot)];
+    const grade = gradeOf(plot);
+    const ripe = grade === 'normal' ? '다 자람' : `다 자람 · ${GRADE_NAME[grade]}작물`;
+    return plot.owner === s.myId ? [title, ripe, votesText(plot)] : [title, ripe, '주인만 거둘 수 있습니다', votesText(plot)];
+  }
+  const title = '내 빈 땅';
+  if (s.blocked) return [title, '블록을 회수해야 심을 수 있습니다'];
+  if (!s.seed) return [title, '단축키 칸에서 씨앗을 고르면 심을 수 있습니다'];
+  if (s.seed.count <= 0) return [title, `${s.seed.name}이 없습니다 · 농협에서 삽니다`];
+  return [title, `${s.seed.name} ${s.seed.count}개`];
+}
+
 /** 흙길 타일(tiles.png). 땅이 아닌 칸에 깐다. */
 export const FARM_ROAD_TILES = [0, 1, 2, 3, 4, 5];
 /** 산 땅에 덮는 갈아 놓은 밭 타일(tiles.png) */

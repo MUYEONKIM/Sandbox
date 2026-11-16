@@ -2,6 +2,7 @@ import { MAP_SIZE } from '../config';
 import type { Area } from '../game/maps';
 import type { Tile } from '../game/world';
 import { element } from './dom';
+import { FoldBox } from './fold';
 
 /** 칸 하나를 미니맵에서 몇 픽셀 옮길지. 맵처럼 2:1 마름모로 그린다. */
 const STEP_X = 2;
@@ -30,6 +31,8 @@ export class Minimap {
   private ground = '#5bab43';
   /** 바닥이 있는 범위. 건물 안처럼 좁은 맵은 이 범위를 미니맵 가득 키워 그린다. */
   private bounds: Area = [0, 0, MAP_SIZE - 1, MAP_SIZE - 1];
+  /** 접으면 맵 이름 한 줄만 남는다. 접혀 있는 동안 GameScene은 그리지 않는다. */
+  readonly fold: FoldBox;
 
   constructor(parent: HTMLElement) {
     const box = element('minimap', parent);
@@ -49,6 +52,11 @@ export class Minimap {
       item.textContent = label;
       item.style.setProperty('--dot', color);
     }
+    this.fold = new FoldBox('minimap', box, this.title);
+  }
+
+  get folded() {
+    return this.fold.folded;
   }
 
   setMap(name: string, ground: number, bounds: Area) {

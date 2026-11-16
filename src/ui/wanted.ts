@@ -1,4 +1,5 @@
 import { element } from './dom';
+import { FoldBox } from './fold';
 
 export interface WantedEntry {
   id: string;
@@ -18,7 +19,10 @@ const REFRESH_MS = 60_000;
  */
 export class WantedPanel {
   private readonly root: HTMLElement;
+  private readonly title: HTMLElement;
   private readonly list: HTMLElement;
+  private readonly fold: FoldBox;
+  private count = 0;
   private karma = new Map<string, number>();
   private readonly listeners: ((karma: ReadonlyMap<string, number>) => void)[] = [];
 
@@ -29,8 +33,12 @@ export class WantedPanel {
   ) {
     this.root = element('wanted', parent);
     this.root.hidden = true;
-    element('wanted-title', this.root).textContent = '현상범';
+    this.title = element('wanted-title', this.root);
     this.list = element('wanted-list', this.root);
+    // 접으면 "현상범 N명" 한 줄만 남는다. 이름 색이 이 명단에서 오므로 60초마다 읽기는 접혀도 한다.
+    this.fold = new FoldBox('wanted', this.root, this.title);
+    this.fold.onChange(() => this.showTitle());
+    this.showTitle();
     void this.refresh();
     window.setInterval(() => void this.refresh(), REFRESH_MS);
   }
@@ -46,6 +54,8 @@ export class WantedPanel {
     if (!entries) return;
     this.karma = new Map(entries.map(({ id, karma }) => [id, karma]));
     this.root.hidden = entries.length === 0;
+    this.count = entries.length;
+    this.showTitle();
     this.list.replaceChildren();
     for (const { id, nickname, karma } of entries) {
       const row = element(`wanted-row karma-${karma}${id === this.me ? ' mine' : ''}`, this.list);
@@ -53,5 +63,10 @@ export class WantedPanel {
       element('wanted-level', row, 'span').textContent = `악업 ${karma} · 현상금 ${Math.round(BOUNTY_SHARE[karma] * 100)}%`;
     }
     for (const fn of this.listeners) fn(this.karma);
+  }
+
+  private showTitle() {
+    const text = this.fold.folded ? `현상범 ${this.count}명` : '현상범';
+    if (this.title.textContent !== text) this.title.textContent = text;
   }
 }

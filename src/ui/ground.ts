@@ -1,6 +1,7 @@
 import { paintMemoPadIcon, paintNoteIcon } from '../art/drops';
 import type { DropFail, HeldMemo } from '../net/session';
 import { element } from './dom';
+import { FarmPanel } from './farmPanel';
 import { Modal } from './modal';
 import { goldText, type Gold } from '../game/gold';
 
@@ -35,6 +36,8 @@ export class GroundUi {
   placeHeld: ((memo: HeldMemo) => Promise<string | null>) | null = null;
   /** 안내를 누르면 줍는다(휴대폰에는 F 키가 없다). GameScene이 정한다. */
   onHintClick: (() => void) | null = null;
+  /** 농장에서 작물 곁에 서면 뜨는 안내 창. 줍기 안내와 같은 자리다. */
+  readonly farm: FarmPanel;
 
   constructor(private readonly root: HTMLElement) {
     this.hint = element('pickup-hint', root, 'button');
@@ -45,6 +48,7 @@ export class GroundUi {
     this.hint.addEventListener('click', () => this.onHintClick?.());
     this.tip = element('ground-tip', root);
     this.tip.hidden = true;
+    this.farm = new FarmPanel(root);
   }
 
   get held(): readonly HeldMemo[] {

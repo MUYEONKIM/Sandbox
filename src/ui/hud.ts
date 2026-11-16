@@ -5,6 +5,7 @@ import { formatLevel, levelNeed } from '../game/level';
 import { goldText, type Gold } from '../game/gold';
 import { isPotion, isSeed, paintItem, POTION_IDS, SEED_IDS, WEAPON_IDS, type GearRef, type ItemId, type PotionId, type SeedId } from '../items';
 import { element } from './dom';
+import { foldButton } from './fold';
 import type { MyStatus } from './info';
 
 /** 이미지를 읽은 뒤에 그릴 수 있어서 Hud를 만들 때 준비한다. */
@@ -139,6 +140,9 @@ export class Hud {
       });
       if (note) element('help-note', row, 'span').textContent = note;
     }
+    // 열린 안내 오른쪽 위의 접기 버튼(2026-11-16 창 접기, ui-minimize.md). H와 같은 일을 한다.
+    help.classList.add('foldable');
+    foldButton(help, () => this.toggleHelp());
     // 닫아 두면 다시 여는 키만 작게 보인다.
     this.helpClosed = element('help help-closed', this.topLeft);
     element('help-label', this.helpClosed, 'span').textContent = '조작 안내';
