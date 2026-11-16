@@ -2389,9 +2389,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const source = sprite(art.sprite);
       const foot = groundPoint(art.sprite);
       const c = tileCenter(x, y);
+      // 같은 그림을 맵 소품(showBuilding)으로도 쓰면 세로 조각 프레임이 생겨 Phaser가 첫 조각을 기본 프레임으로 삼는다.
+      // 블록은 늘 그림 전체(__BASE)를 쓴다(2026-11-16, 가로등이 기둥만 보이던 것).
       return keepDepth(
         image
-          .setTexture(art.sprite)
+          .setTexture(art.sprite, '__BASE')
           .setOrigin(foot.x / source.width, foot.y / source.height)
           .setPosition(c.x, c.y - lift),
         depth,

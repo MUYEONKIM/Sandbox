@@ -55,6 +55,8 @@ export const LIGHT_BLOCKS: Readonly<Record<string, GlowLookId>> = {
   f_heater_round_on_2: 'heater_round',
   f_heater_rect_on_1: 'heater_rect',
   f_heater_rect_on_2: 'heater_rect',
+  // 2026-11-16 사용자 "가로등을 플레이어도 설치": 작업장·농장 등 기둥과 같은 그림과 빛
+  street_lamp: 'lantern',
 };
 
 /** 맵 소품 그림 → 빛 모양과 칸 안 빛 자리(gx, gy 비율). 높이는 모양의 head다. */

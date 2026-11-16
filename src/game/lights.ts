@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
-import { BLOCK_HEIGHT } from '../config';
+import { BLOCK_HEIGHT, TILE_W } from '../config';
+import { groundPoint, sprite } from '../art/sprites';
+import { BLOCKS } from '../blocks';
 import { ensureGlowTexture, FIXED_LIGHTS, GLOW_LOOKS, GLOW_TEXTURE, LIGHT_BLOCKS, type GlowLook, type GlowLookId } from '../art/glow';
 import { gridToWorld, keepDepth, tileCenter } from '../iso';
 import type { DayPhase } from './daylight';
@@ -49,6 +51,33 @@ interface PlayerLight {
   z: number;
   /** 그 조명 그림의 깊이. 빛무리는 바로 위에 둔다. */
   depth: number;
+  /** 웅덩이 가운데(px, py)와 빛무리 가운데(hx, hy). 놓을 때 한 번 셈한다. */
+  px: number;
+  py: number;
+  hx: number;
+  hy: number;
+}
+
+/**
+ * 플레이어 조명의 빛 자리. 보통은 칸 가운데 위로 head만큼 올린 곳이다.
+ * 맵 소품 그림을 블록으로 놓은 것(가로등)은 블록이 그림 발끝을 칸 가운데에 두고(GameScene.dressBlock) 소품은 그림 아래를 칸 앞
+ * 꼭짓점에 두어(showBuilding) 자리가 다르므로, 소품으로 놓을 때의 빛 자리와 그림 발끝의 차이를 그대로 써서 등 머리에 맞춘다.
+ */
+function lightSpot(id: string, look: GlowLook, x: number, y: number, z: number) {
+  const c = tileCenter(x, y);
+  const lift = z * BLOCK_HEIGHT;
+  const art = (BLOCKS as Record<string, { art: { kind: string; sprite?: string } }>)[id]?.art;
+  const fixed = art?.kind === 'sprite' && art.sprite ? FIXED_LIGHTS[art.sprite] : undefined;
+  if (!fixed || !art?.sprite) return { px: c.x, py: c.y, hx: c.x, hy: c.y - lift - look.head };
+  const name = art.sprite as Parameters<typeof sprite>[0];
+  const image = sprite(name);
+  const foot = groundPoint(name);
+  const footX = gridToWorld(0, 1).x - Math.floor((image.width - TILE_W) / 2) + foot.x;
+  const footY = gridToWorld(1, 1).y;
+  const ground = gridToWorld(fixed.gx, fixed.gy);
+  const dx = ground.x - footX;
+  const dy = ground.y - footY;
+  return { px: c.x + dx, py: c.y + dy, hx: c.x + dx, hy: c.y - lift + dy - look.head };
 }
 
 interface Slot extends Lit {
@@ -155,7 +184,7 @@ export class Lights {
     const look = LIGHT_BLOCKS[id];
     if (!look || !this.enabled) return;
     const key = `${x},${y},${z}`;
-    this.blocks.set(key, { key, look, x, y, z, depth });
+    this.blocks.set(key, { key, look, x, y, z, depth, ...lightSpot(id, GLOW_LOOKS[look], x, y, z) });
     this.queueChoose();
   }
 
@@ -246,20 +275,17 @@ export class Lights {
 
   /** 슬롯 이미지를 그 조명 자리·모양·깊이로 옮긴다. 같으면 건드리지 않는다. */
   private place(slot: Slot, light: PlayerLight, withPool: boolean) {
-    const look = GLOW_LOOKS[light.look];
-    const c = tileCenter(light.x, light.y);
-    slot.look = look;
+    slot.look = GLOW_LOOKS[light.look];
     slot.phase = phaseOf(light.x, light.y, light.z);
     const haloFrame = `halo:${light.look}`;
     if (slot.halo.frame.name !== haloFrame) slot.halo.setFrame(haloFrame);
-    const hy = c.y - light.z * BLOCK_HEIGHT - look.head;
-    if (slot.halo.x !== c.x || slot.halo.y !== hy) slot.halo.setPosition(c.x, hy);
+    if (slot.halo.x !== light.hx || slot.halo.y !== light.hy) slot.halo.setPosition(light.hx, light.hy);
     keepDepth(slot.halo, light.depth + 0.005);
     const pool = slot.pool!;
     if (withPool) {
       const poolFrame = `pool:${light.look}`;
       if (pool.frame.name !== poolFrame) pool.setFrame(poolFrame);
-      if (pool.x !== c.x || pool.y !== c.y) pool.setPosition(c.x, c.y);
+      if (pool.x !== light.px || pool.y !== light.py) pool.setPosition(light.px, light.py);
     }
     slot.poolOn = withPool;
   }

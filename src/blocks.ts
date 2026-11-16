@@ -102,6 +102,8 @@ export const BLOCKS = {
   vine_mound: { name: '덩굴 흙더미', solid: true, art: { kind: 'tile', tiles: [19, 20] } },
   cafe_table: { name: '카페 테이블', solid: true, art: { kind: 'sprite', sprite: 'cafe-table' } },
   plant: { name: '화분', solid: true, art: { kind: 'sprite', sprite: 'plant' } },
+  // 2026-11-16 사용자 "빛나는 가로등을 플레이어도 설치": 작업장·농장의 등 기둥 그림. 바깥 맵에서 밤에 빛난다(src/game/lights.ts).
+  street_lamp: { name: '가로등', solid: true, art: { kind: 'sprite', sprite: 'work-lantern' } },
   // 2026-11-13 사용자 요청 "데코 에셋도 장식품으로": 가구 91종(방향마다 한 블록). 목록은 art-source/deco/make-furniture.cjs가 만든다.
   ...FURNITURE_BLOCKS,
 } as const satisfies Record<string, BlockInfo>;
