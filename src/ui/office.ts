@@ -2,6 +2,7 @@ import { HARVEST_COUNT, type Economy } from '../game/economy';
 import type { WorkId } from '../game/maps';
 import { spriteUrl } from '../art/sprites';
 import { element } from './dom';
+import { byInput } from './touch';
 
 /** 작업장 버튼에 붙이는 그림 */
 export const PLACE_ICONS: Record<WorkId, string> = {
@@ -55,7 +56,7 @@ export class OfficeWindow {
 
     const close = element('office-close', this.root, 'button') as HTMLButtonElement;
     close.type = 'button';
-    close.textContent = '나가기 (Esc)';
+    close.textContent = byInput('나가기 (Esc)', '나가기');
     close.addEventListener('click', () => this.close());
   }
 

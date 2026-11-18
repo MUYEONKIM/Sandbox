@@ -54,7 +54,8 @@ import type {
 import { dropFailText, type GroundUi } from '../ui/ground';
 import { GroundItems } from './drops';
 import type { ChatBox } from '../ui/chat';
-import type { Hud } from '../ui/hud';
+import type { Hud, RunStatus } from '../ui/hud';
+import { COUNT } from '../ui/countUp';
 import type { Minimap } from '../ui/minimap';
 import type { NameTags } from '../ui/nametags';
 import type { CastleWindow } from '../ui/castle';
@@ -68,7 +69,8 @@ import type { FameWindow } from '../ui/fame';
 import type { OfficeWindow } from '../ui/office';
 import type { ShopWindow } from '../ui/shop';
 import type { ForgeWindow } from '../ui/forge';
-import { Avatar, TEAM_H, TEAM_W } from './avatar';
+import { opaqueAt } from './alphaMask';
+import { Avatar, memberOf, TEAM_H, TEAM_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
 import { BlockChunks } from './blockChunks';
 import { CoverFader } from './covers';
@@ -77,8 +79,8 @@ import type { Economy, ShopTool } from './economy';
 import type { Arm, Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { formatLevel, levelNeed } from './level';
-import { goldText } from './gold';
-import { generateMap, type Building } from './map';
+import { goldText, toGold } from './gold';
+import { generateMap, type Building, type GameMap } from './map';
 import {
   arrivalFor,
   CASTLE,
@@ -96,7 +98,10 @@ import {
   SMITHY,
   COOP,
   GUIDEPOSTS,
+  isAdventure,
   isDungeon,
+  ADVENTURE_GATE_MAP,
+  type AdventureMapId,
   type DungeonId,
   type MapId,
   type Portal,
@@ -137,10 +142,22 @@ import type { DungeonWindow } from '../ui/dungeon';
 import type { MonsterMessage } from '../net/session';
 import { isGate } from './farmLayout';
 import { Lights } from './lights';
+import type { Adventure } from './adventure';
+import { AdventureField } from './adventureField';
+import { playBattle } from './adventureBattle';
+import { loadAdventureArt } from '../art/adventureArt';
+import { adventureBattle, adventureMove, adventureReturn, adventureStart, type AdvResult } from '../net/adventure';
+import { confirmReturn, failText, showAdventureResult, type AdventureWindow } from '../ui/adventure';
+import { advEntry, advMap, infernus, loadAdventureMaps, adventureMapsReady, monstersOf, type FieldMonster } from './adventureMaps';
+import { paintAdventureGround } from '../art/adventureGround';
+import { FIGHT_GAP_MS } from './adventureRules';
+import { BattleIntro, LEAVE_MS, swirlKind } from './battleIntro';
+import { bigText } from './adventure';
 import { cropStateText, FARM_DO_LABEL, FarmField, formatLeft, GRADE_NAME, isPlot, leftTick, ownerWord, plotAction, plotCardLines, registerFarmTextures, ripeAt, showsCard, votesText, type CropId, type Plot, type PlotSituation } from './farm';
 import type { CoopWindow } from '../ui/coop';
 import { Modal } from '../ui/modal';
 import { element } from '../ui/dom';
+import { byInput } from '../ui/touch';
 
 /** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
 const WORK_TICK_MS = 250;
@@ -202,6 +219,8 @@ const PLAIN_SIGNS: Partial<Record<string, { name: string; x: number; y: number }
   tavern: { name: '인생한방 도박장', x: 64, y: 7 },
   thatched: { name: COOP.name, x: 66, y: 8 },
   smithy: { name: SMITHY.name, x: 64, y: 27 },
+  // 동굴 언덕 꼭대기(디자인 세션 adventure-cave.md 1장이 권한 자리, 글은 에이전트가 정함)
+  'cave-x': { name: '던전', x: 64, y: 4 },
 };
 /** 증권거래소: 옥상 가운데 */
 const EXCHANGE_SIGN = { x: 99, y: 55 };
@@ -244,6 +263,8 @@ const CAMERA_PAD_X = 80;
 const CAMERA_PAD_Y = 110;
 
 const FADE_MS = 200;
+/** 되돌림 칸을 밟은 걸음이 끝난 뒤 입구로 옮긴다(한 칸 걷는 시간보다 조금 길게). */
+const RESET_DELAY_MS = 160;
 const MINIMAP_INTERVAL_MS = 100;
 
 /** 프레임이 오래 끊겼을 때 캐릭터가 순간이동하지 않도록 한 프레임의 시간을 제한한다. */
@@ -261,8 +282,14 @@ const RELOAD_RING = { dx: 12, dy: -34, radius: 4, steps: 12 };
 /** 산탄 한 알이 부채꼴 자리에서 더 틀어지는 폭 (라디안, 에이전트가 정함) */
 const PELLET_JITTER = 0.035;
 const RESPAWN_MS = 3000;
-/** 휴대폰에서 다른 플레이어를 눌렀다고 보는 거리 (칸) */
+/** 휴대폰에서 다른 플레이어나 몬스터를 눌렀다고 보는 거리 (칸) */
 const TAP_TARGET_TILES = 1.5;
+/** 휴대폰에서 이만큼 누르고 있으면 길게 누르기(블록 회수)다(에이전트가 정함). */
+const LONG_PRESS_MS = 450;
+/** 길게 누르는 동안 손가락이 이만큼(화면 px) 넘게 움직이면 길게 누르기로 보지 않는다. */
+const PRESS_SLOP_PX = 12;
+/** 두 손가락 사이가 이만큼 배로 벌어지거나 좁아질 때마다 배율을 한 단계 바꾼다(에이전트가 정함). */
+const PINCH_STEP = 1.25;
 const RESPAWN_RETRY_MS = 1000;
 
 interface PortalSprite {
@@ -306,6 +333,25 @@ function slideOptions({ dx, dy }: Dir): Dir[] {
 export class GameScene extends Phaser.Scene implements SessionEvents {
   world!: World;
   private mapId: MapId;
+  /** 모험 필드에 있을 때의 조우 게이지·띠 표시(2026-11-17) */
+  private advField: AdventureField | null = null;
+  /** 모험 전투를 서버에 묻거나 전투 화면을 보이는 중 */
+  private advBusy = false;
+  /** 마지막으로 모험 전투를 서버에 물은 시각(performance.now). 서버 2.5초 간격을 지키려고 */
+  private advFoughtAt = -Infinity;
+  /** 마지막 전투 창이 닫힌 때(3초 안에 또 싸우면 짧은 소용돌이) */
+  private advClosedAt = -Infinity;
+  /** 다른 사람의 모험 판 레벨(움직임·접속 상태와 전투 끝 알림으로 옴) */
+  private readonly otherRuns = new Map<string, string | null>();
+  /** 정보 칸·내 이름표에 그린 판 레벨(바뀔 때만 다시 그림) */
+  private shownRunLevel: string | null = null;
+  /**
+   * 전투가 끝나 판 값을 넣는 동안만 true: 레벨 업 애니메이션은 전투 결과 칸 안에서 이미 보였으니(2026-11-18 사용자 "여기에 애니메이션이 있어야 된다")
+   * 맵으로 돌아온 뒤 정보 칸 막대는 다시 돌리지 않고 끝 값으로 맞춘다. 위 HUD 금화는 배경이 걷힌 뒤 오른다(goldDelay, PM이 정함).
+   */
+  private runQuiet = false;
+  /** 누른 몬스터: 옆 칸까지 걸어가 닿으면 싸운다(기획 19장 3번). */
+  private advPending: FieldMonster | null = null;
   private me!: Avatar;
   private walk: Walk | null = null;
   /** 방향키 없이 Shift를 누르면 이 방향으로 대시한다. 처음에는 화면 아래를 본다. */
@@ -351,6 +397,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private readonly drops = new GroundItems(this, (x, y) => this.world.isVoid(x, y));
   /** 줍기를 서버에 묻는 중이면 true. F를 연달아 눌러도 한 번만 묻는다. */
   private picking = false;
+  /** 메모 위에 서면 뜨는 글: 지난번 본 메모 id(없으면 0)와 칸 */
+  private readonly memoPeek = { id: 0, x: -1, y: -1 };
+  /** 땅의 메모 id마다 받아 둔 쓴 사람과 글. 메모 글은 바뀌지 않는다. */
+  private readonly memoTexts = new Map<number, { author: string; body: string }>();
+  /** 글을 서버에 묻는 중인 메모 id */
+  private readonly memoReading = new Set<number>();
+  /** 메모 글을 서버에 물은 횟수(성능 확인용) */
+  memoReads = 0;
   /** 칸별 자원 그림. 작업할 때 흔들린다. */
   private readonly spotImages = new Map<string, Phaser.GameObjects.Image>();
   private chimneySmoke: Phaser.GameObjects.Image[] = [];
@@ -391,8 +445,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private route: Tile[] = [];
   private routeGoal: Tile | null = null;
   private routeMarker!: Phaser.GameObjects.Graphics;
-  /** 휴대폰에서 다른 플레이어를 눌러 공격을 시작했으면 손을 뗄 때까지 연사한다. */
+  /** 휴대폰에서 다른 플레이어나 몬스터를 눌러 공격을 시작했으면 손을 뗄 때까지 연사한다. */
   private touchFiring = false;
+  /**
+   * 휴대폰에서 누르고 있는 손가락: 누른 화면 자리, 그 자리의 맵 좌표, 누른 시각, 길게 누르기를 이미 봤는지.
+   * 손을 떼면 누르기(걷기, 놓기, 일하기), 오래 누르면 블록 회수다. 맵 좌표는 누를 때 정한다(걷는 동안 화면이 따라 움직여서).
+   */
+  private press: { x: number; y: number; wx: number; wy: number; at: number; checked: boolean } | null = null;
+  /** 휴대폰에서 자원을 눌러 걸어가는 중이면 그 자원 칸. 닿으면 일을 시작한다. */
+  private workGoal: Tile | null = null;
+  /** 두 손가락으로 화면을 확대·축소하는 중이면 기준 거리(화면 px), 아니면 null */
+  private pinch: number | null = null;
 
   /** 던전 몬스터. 던전이 아니면 null */
   private monsters: MonsterField | null = null;
@@ -441,6 +504,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly monsterKinds: MonsterKind[],
     private readonly coop: CoopWindow,
     private readonly forge: ForgeWindow,
+    private readonly adventure: Adventure,
+    private readonly adventureWindow: AdventureWindow,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -462,6 +527,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.gloom = new Gloom(this, DEPTH_DAYLIGHT + 0.5);
     this.showMap(this.mapId);
     this.market.onChange(() => this.paintTickers());
+    // 모험 맵: 보스를 처음 잡아 다음 지역이 열리면 포탈을 세우고, 스텟이 바뀌면 입구 맵 포탈 이름표 색을 다시 칠한다.
+    this.adventure.onChange(() => this.syncAdventurePortals());
+    // 모험 맵에서는 정보 칸과 내 이름표가 판 레벨이다(값이 바뀔 때만 다시 그림).
+    this.adventure.onChange(() => this.refreshRunLevel());
+    // 레벨 업 막대가 도는 동안 내 이름표 레벨 숫자도 정보 칸과 같은 때에 바뀌고 튄다(다른 사람 이름표는 끝 레벨만, 디자인 adventure-ui.md 15절).
+    this.hud.bar.onLevel = (level, pop) => this.showAnimatedLevel(level, pop);
     this.groundUi.placeHeld = (memo) => this.placeHeldMemo(memo);
     this.groundUi.onHintClick = () => {
       if (this.canAct) this.tryPickUp();
@@ -507,32 +578,31 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     cam.on(Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE, (camera: Phaser.Cameras.Scene2D.Camera) => this.blockChunks.update(camera.worldView));
     // 마우스 휠로 화면을 넓게 보거나 크게 본다(2026-11-15 사용자 요청). 도트가 뭉개지지 않게 정해 둔 단계로만 바꾸고 이 브라우저에 기억한다.
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
-      if (dy === 0 || performance.now() < this.nextZoomAt) return;
-      this.nextZoomAt = performance.now() + ZOOM_STEP_MS;
-      const at = ZOOM_LEVELS.indexOf(nearestZoom(cam.zoom));
-      const next = ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, at + (dy > 0 ? -1 : 1)))];
-      if (next === cam.zoom) return;
-      cam.setZoom(next);
-      try {
-        localStorage.setItem(ZOOM_KEY, String(next));
-      } catch {
-        // 저장하지 못해도 지금 화면에서는 바뀐다.
-      }
+      if (dy !== 0) this.stepZoom(dy > 0 ? -1 : 1);
     });
+    // 휴대폰은 두 손가락을 벌리거나 모아 같은 단계로 바꾼다(2026-11-18 휴대폰 고치기, 에이전트가 정함). 두 번째 손가락을 받으려고 터치 하나를 더 둔다.
+    this.input.addPointer(1);
+    this.input.on('pointermove', () => this.updatePinch());
 
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (!this.canAct && !this.chat.isOpen) return;
       if (pointer.wasTouch) {
-        this.tap();
+        this.touchDown(pointer);
         return;
       }
       this.updateHover();
       if (pointer.rightButtonDown()) void this.collectBlock();
-      else if (pointer.leftButtonDown()) this.useSelectedItem();
+      else if (pointer.leftButtonDown() && !this.clickMonster()) this.useSelectedItem();
     });
-    this.input.on('pointerup', () => {
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       this.touchFiring = false;
+      if (pointer.wasTouch) this.touchUp();
+    });
+    // 손가락이 화면 밖(창이나 버튼 위)에서 떨어지면 누르기로 치지 않는다.
+    this.input.on('pointerupoutside', () => {
+      this.touchFiring = false;
+      this.press = null;
     });
 
     this.drawRange();
@@ -542,6 +612,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 저장된 자리에 건물이 들어섰다면 맵 입구에서 시작한다. */
   private startTile(): Tile {
+    // 모험 맵은 늘 그 맵 입구에 선다(기획 3장 "새로고침하면 남긴 맵 입구").
+    if (isAdventure(this.mapId)) return advEntry(this.mapId);
     const { x, y } = this.session.profile;
     return this.world.isWalkable(x, y) ? { x, y } : respawnTile(this.mapId);
   }
@@ -578,17 +650,48 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 맵 바닥 그림은 처음 들어갈 때 한 번만 그린다. 작업장은 길·밭고랑·물가까지 칠한 바닥이다(workGround.ts). */
   private groundTexture(id: MapId) {
-    const key = `ground-${id}`;
+    // 모험 맵 자료를 아직 못 읽었으면(읽기 실패) 빈 바닥을 따로 둔다. 읽은 뒤에 들어가면 제대로 그린다.
+    const key = isAdventure(id) && !adventureMapsReady() ? `ground-${id}-empty` : `ground-${id}`;
     if (!this.textures.exists(key)) {
       const map = generateMap(id);
       // 농장도 길·둑·풀밭을 칠한 바닥이다(2026-11-16 농장 꾸밈, workGround.ts).
-      this.textures.addCanvas(key, MAPS[id].work ? paintWorkGround(map, id as WorkId) : id === 'farm' ? paintWorkGround(map, 'farm') : paintGround(map));
+      const canvas = MAPS[id].work ? paintWorkGround(map, id as WorkId) : id === 'farm' ? paintWorkGround(map, 'farm') : paintGround(map);
+      // 모험 맵: 바닥 조각, 일곱 빛, 별, 보스 고리, 떠 있는 몬스터 그림자를 같은 바닥 그림에 한 번 그린다.
+      const data = isAdventure(id) ? advMap(id) : undefined;
+      if (data) paintAdventureGround(canvas, data, map, monstersOf(id));
+      this.textures.addCanvas(key, canvas);
     }
     return key;
   }
 
+  /** Infernus 조각 묶음 그림(2026-11-18). 고해상도 그림을 반으로 줄인 것이라 이 텍스처만 부드럽게 늘린다(PM 제안). */
+  private infernusTexture() {
+    const art = infernus();
+    if (!art) return null;
+    if (!this.textures.exists('infernus')) {
+      const texture = this.textures.addImage('infernus', art.pieces)!;
+      for (const [name, f] of Object.entries(art.meta.props)) texture.add(name, 0, f.x, f.y, f.w, f.h);
+      texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    }
+    return art;
+  }
+
+  /** 모험 맵의 Infernus 조각을 세운다. (x, y)가 맨 앞 칸이고, 그림 안 (ax, ay)를 그 칸 가운데에 맞춘다. */
+  private showPieces(map: GameMap) {
+    const art = map.pieces.length ? this.infernusTexture() : null;
+    if (!art) return;
+    for (const { id, x, y } of map.pieces) {
+      const f = art.meta.props[id];
+      const c = tileCenter(x, y);
+      const image = this.add.image(c.x, c.y, 'infernus', id).setOrigin(f.ax / f.w, f.ay / f.h).setDepth(depthOf(x, y));
+      this.mapImages.push(image);
+      // 막는 칸이 있는 조각은 내 캐릭터를 가리면 반투명해진다(나무와 같음). 떠 있는 섬(fp 0)은 허공 위라 넣지 않는다.
+      if (f.fp > 0) this.covers.add([image]);
+    }
+  }
+
   private portalTexture(portal: Portal, frame: number) {
-    const key = `portal-${portal.to}-${frame}`;
+    const key = `portal-${portalColor(portal)}-${frame}`;
     if (!this.textures.exists(key)) this.textures.addCanvas(key, paintPortal(portalColor(portal), frame).canvas);
     return key;
   }
@@ -715,7 +818,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.hideoutShown = false;
     this.hideoutBlocks.clear();
     const info = MAPS[id];
-    this.world = new World(generateMap(id), portalsOf(id));
+    this.world = new World(generateMap(id), this.visiblePortals(id));
     // 7, 8층처럼 넓은 맵은 월드 범위가 왼쪽 아래로 더 나가서 바닥 그림과 카메라 범위를 맵마다 맞춘다.
     const rect = worldRect(this.world.map.size);
     this.ground.setTexture(this.groundTexture(id)).setPosition(rect.left, 0);
@@ -730,7 +833,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.cameras.main.setBackgroundColor(
       info.mood
         ? info.mood.background
-        : info.dark
+        : info.background
+          ? info.background
+          : info.dark
           ? DARK_BACKGROUND
           : id === 'rooftop' || id === 'stairs'
             ? ROOF_BACKGROUND
@@ -751,6 +856,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (isTower(id)) this.showInterior(id);
     if (isDungeon(id)) this.startMonsters(id);
     if (id === 'farm') this.startFarm();
+    if (isAdventure(id)) void this.startAdventureField(id);
+    // 모험 맵에서는 이름표 아래 필드 HP 막대를 빼고(CSS), 정보 칸·내 이름표를 판 레벨로 바꾼다. 마을로 돌아오면 마을 것.
+    document.getElementById('hud')?.classList.toggle('in-adventure', isAdventure(id));
+    this.refreshRunLevel();
     if (id === DEFAULT_MAP) {
       for (const post of GUIDEPOSTS) {
         const c = tileCenter(post.x, post.y);
@@ -783,23 +892,70 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (sprite === 'board') boards.push(tree);
     }
     for (const { tile, x, y } of this.world.map.props) this.addTileProp(tile, x, y);
+    this.showPieces(this.world.map);
     for (const { kind, x, y } of this.world.map.battleProps) {
       const image = this.addMapArt(`battle-${kind}`, BATTLE_ART[kind], x, y);
       if (kind === 'crater') image.setDepth(DEPTH_DECAL);
     }
 
-    this.portalSprites = this.world.portals.map((portal) => {
-      const c = tileCenter(portal.x, portal.y);
-      const image = this.add
-        .image(c.x, c.y, this.portalTexture(portal, 0))
-        .setOrigin(0.5, PORTAL_ORIGIN_Y)
-        .setDepth(depthOf(portal.x, portal.y));
-      const tag = `portal-${portal.to}-${portal.x}-${portal.y}`;
-      this.tags.add(tag, `→ ${portalName(portal)}`, 'portal');
-      return { portal, image, tag };
-    });
+    this.portalSprites = this.world.portals.map((portal) => this.addPortalSprite(portal));
     // 블록은 이 뒤에 서버에서 받아 놓는다(spawnBlock이 덮는지 본다).
     this.keepClear.guard([...this.portalSprites.map(({ image }) => image), ...boards]);
+  }
+
+  private addPortalSprite(portal: Portal): PortalSprite {
+    const c = tileCenter(portal.x, portal.y);
+    const image = this.add
+      .image(c.x, c.y, this.portalTexture(portal, 0))
+      .setOrigin(0.5, PORTAL_ORIGIN_Y)
+      .setDepth(depthOf(portal.x, portal.y));
+    const tag = `portal-${portal.to}-${portal.x}-${portal.y}`;
+    this.tags.add(tag, portal.adventure === 'zone' ? '' : `→ ${portalName(portal)}`, 'portal');
+    if (portal.adventure === 'zone') this.paintZonePortal(tag, portal);
+    return { portal, image, tag };
+  }
+
+  /**
+   * 모험 맵에서 지금 보일 포탈(2026-11-18, 기획 11장): 입구 맵은 열린 지역 포탈만, 지역 맵은 그 지역 보스를 잡은 뒤에 다음 지역 포탈.
+   * 다음 지역 포탈은 다음 지역이 열렸을 때(지금 지역 보스를 처음 잡음) 보인다. 별 하늘은 보스방이 둘이고 둘 다 같은 지역 보스다.
+   */
+  private visiblePortals(id: MapId): Portal[] {
+    const all = portalsOf(id);
+    if (!isAdventure(id)) return all;
+    const view = this.adventure.view;
+    if (!view) return [];
+    // 같은 지역 앞뒤 맵 포탈은 늘 열려 있다. 지역·다음 지역 포탈은 그 지역이 열렸을 때만.
+    return all.filter((p) => p.adventure === 'next_map' || p.adventure === 'prev_map' || view.zones.find((z) => z.map === p.to)?.open === true);
+  }
+
+  /** 서버 값이 바뀌면(보스를 처음 잡음) 모험 맵 포탈을 맞춘다. 바뀐 것이 없으면 아무것도 하지 않는다. */
+  private syncAdventurePortals() {
+    if (!isAdventure(this.mapId) || this.traveling || !this.world) return;
+    const want = this.visiblePortals(this.mapId);
+    const key = (p: Portal) => `${p.x},${p.y},${p.to}`;
+    const have = new Set(this.world.portals.map(key));
+    const next = new Set(want.map(key));
+    if (have.size === next.size && [...next].every((k) => have.has(k))) {
+      for (const { portal, tag } of this.portalSprites) if (portal.adventure === 'zone') this.paintZonePortal(tag, portal);
+      return;
+    }
+    for (const sprite of this.portalSprites.filter(({ portal }) => !next.has(key(portal)))) {
+      sprite.image.destroy();
+      this.tags.remove(sprite.tag);
+    }
+    this.portalSprites = this.portalSprites.filter(({ portal }) => next.has(key(portal)));
+    for (const portal of want) if (!have.has(key(portal))) this.portalSprites.push(this.addPortalSprite(portal));
+    this.world.portals.splice(0, this.world.portals.length, ...want);
+    this.keepClear.guard(this.portalSprites.map(({ image }) => image));
+  }
+
+  /** 입구 맵 지역 포탈 이름표 두 줄(디자인 세션 시안): "1 평원" / "Lv 1 ~ 5,200". 이길 확률 색은 없앴다(2026-11-18 사용자). */
+  private paintZonePortal(tag: string, portal: Portal) {
+    const view = this.adventure.view;
+    const i = view ? view.zones.findIndex((z) => z.map === portal.to) : -1;
+    const zone = view?.zones[i];
+    if (!zone) return;
+    this.tags.setLines(tag, `${i + 1} ${zone.name}`, `Lv ${bigText(zone.first)} ~ ${bigText(zone.bossLevel)}`);
   }
 
   /**
@@ -1083,6 +1239,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.stopMonsters();
     this.farm?.destroy();
     this.farm = null;
+    this.advField?.destroy();
+    this.advField = null;
     this.groundUi.setHint(null);
     this.groundUi.setTip(null);
     this.hideFarmPanel();
@@ -1092,6 +1250,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // Phaser의 delta는 포커스가 바뀐 뒤 잠시 16.7ms로 묶여 프레임이 낮으면 움직임이 느려진다.
     const delta = Math.min(this.game.loop.rawDelta, MAX_FRAME_MS);
     this.advancePlayer(delta);
+    this.updatePress(time);
     this.checkHideout();
     this.checkHush(time);
     for (const avatar of this.others.values()) avatar.update(delta);
@@ -1130,9 +1289,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.exchange.isOpen ||
       this.elevator.isOpen ||
       this.casino.isOpen ||
+      this.adventureWindow.isOpen ||
       this.chat.isOpen ||
+      this.advField?.levelUpOpen === true ||
       anyModalOpen();
-    return !windowOpen && !this.traveling && !this.down;
+    return !windowOpen && !this.traveling && !this.down && !this.advBusy;
   }
 
   /** 시작마을처럼 공격이 막힌 맵인지 */
@@ -1164,6 +1325,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (portal) {
       if (portal.to === 'office') this.office.open();
       else if (portal.to === 'dungeon') this.dungeonWindow.open();
+      else if (portal.to === 'adventure') void this.adventureWindow.open();
       else if (portal.to === 'coop') this.coop.open();
       else if (portal.to === 'shop') this.shop.open();
       else if (portal.to === 'forge-shop') this.forge.openAt('buy');
@@ -1174,50 +1336,282 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'trade') this.exchange.open();
       else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor);
       else if (isGame(portal.to)) this.casino.open(portal.to);
+      else if (isAdventure(portal.to)) void this.goAdventureMap(portal.to);
       else this.travel(portal.to);
       return;
+    }
+    // 누른 몬스터의 옆 칸에 닿았다: 싸운다.
+    if (this.advPending && !this.route.length) {
+      const m = this.advPending;
+      this.advPending = null;
+      if (this.canAct && Math.max(Math.abs(m.x - this.me.tile.x), Math.abs(m.y - this.me.tile.y)) === 1) this.bumpMonster(m);
     }
     const dir = this.keys.takeDirection();
     if (dir && this.canAct) {
       this.clearRoute();
+      this.advPending = null;
+      this.workGoal = null;
       this.beginStep(this.me.tile, dir);
     } else if (this.route.length && this.canAct) {
       this.followRoute();
+    } else if (this.workGoal && this.canAct) {
+      this.reachWork();
     }
   }
 
   /**
-   * 휴대폰에서 화면을 누르면 그 칸까지 걸어간다.
-   * 무기를 들고 다른 플레이어를 누르면 걷지 않고 그쪽으로 공격한다.
+   * 휴대폰에서 화면에 손가락을 댔다. 무기를 들고 다른 플레이어(던전은 몬스터)를 누르면 바로 그쪽으로 공격하고 손을 뗄 때까지 연사한다.
+   * 그 밖에는 손을 뗄 때(touchUp) 할 일을 정하고, 오래 누르면 블록을 회수한다(updatePress).
    */
-  private tap() {
-    const w = this.pointerWorld();
+  private touchDown(pointer: Phaser.Input.Pointer) {
+    const { pointer1, pointer2 } = this.input;
+    if (pointer1.isDown && pointer2.isDown) {
+      // 두 손가락: 화면 확대·축소만 한다. 누르기와 연사는 멈춘다.
+      this.press = null;
+      this.touchFiring = false;
+      this.pinch = Math.hypot(pointer1.x - pointer2.x, pointer1.y - pointer2.y);
+      return;
+    }
+    const w = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const arm = this.inventory.selectedArm;
-    if (arm && !this.isSafeMap && this.workStartedAt === null && this.tappedPlayer(w.x, w.y)) {
+    if (arm && !this.isSafeMap && this.workStartedAt === null && this.tappedTarget(w.x, w.y)) {
+      this.press = null;
       this.clearRoute();
+      this.workGoal = null;
       this.touchFiring = true;
       this.attack(arm);
       return;
     }
-    const g = worldToGrid(w.x, w.y);
+    this.press = { x: pointer.x, y: pointer.y, wx: w.x, wy: w.y, at: this.time.now, checked: false };
+  }
+
+  private touchUp() {
+    const press = this.press;
+    this.press = null;
+    this.pinch = null;
+    if (press && this.canAct) this.tap(press.wx, press.wy);
+  }
+
+  /** 두 손가락 사이가 처음보다 PINCH_STEP배 넘게 벌어지거나 좁아지면 배율을 한 단계 바꾸고 그 거리를 새 기준으로 삼는다. */
+  private updatePinch() {
+    if (this.pinch === null) return;
+    const { pointer1, pointer2 } = this.input;
+    if (!pointer1.isDown || !pointer2.isDown) {
+      this.pinch = null;
+      return;
+    }
+    const distance = Math.hypot(pointer1.x - pointer2.x, pointer1.y - pointer2.y);
+    const ratio = distance / Math.max(1, this.pinch);
+    if (ratio < PINCH_STEP && ratio > 1 / PINCH_STEP) return;
+    if (this.stepZoom(ratio > 1 ? 1 : -1)) this.pinch = distance;
+  }
+
+  /** 화면 배율을 정해 둔 단계(ZOOM_LEVELS)로 한 칸 올리거나(1) 내린다(-1). 도트가 뭉개지지 않게 단계로만 바꾸고 이 브라우저에 기억한다. 바꿀 차례였으면 true */
+  private stepZoom(step: 1 | -1) {
+    if (performance.now() < this.nextZoomAt) return false;
+    this.nextZoomAt = performance.now() + ZOOM_STEP_MS;
+    const cam = this.cameras.main;
+    const at = ZOOM_LEVELS.indexOf(nearestZoom(cam.zoom));
+    const next = ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, at + step))];
+    if (next === cam.zoom) return true;
+    cam.setZoom(next);
+    try {
+      localStorage.setItem(ZOOM_KEY, String(next));
+    } catch {
+      // 저장하지 못해도 지금 화면에서는 바뀐다.
+    }
+    return true;
+  }
+
+  /** 휴대폰에서 블록을 오래 누르면(손가락을 거의 움직이지 않고 LONG_PRESS_MS) 우클릭처럼 회수한다. 회수할 것이 없으면 손을 뗄 때 누르기로 친다. */
+  private updatePress(time: number) {
+    const press = this.press;
+    if (!press || press.checked || time - press.at < LONG_PRESS_MS) return;
+    press.checked = true;
+    const pointer = this.input.activePointer;
+    if (!pointer.isDown || Math.hypot(pointer.x - press.x, pointer.y - press.y) > PRESS_SLOP_PX || !this.canAct) return;
+    this.pointAt(press.wx, press.wy);
+    const target = this.hoveredBlock;
+    if (!target || !this.reachesBlock(target)) return;
+    this.press = null;
+    void this.collectBlock();
+  }
+
+  /**
+   * 휴대폰에서 화면을 눌렀다 뗐다(맵 좌표 wx, wy). 차례로 본다:
+   * 메모장을 들고 내 칸 → 메모 쓰기, 작업장의 자원 → 옆으로 가서 일하기, 손 닿는 칸에 든 블록 놓기·농장 심기·거두기,
+   * 그 밖에는 그 칸까지 걷는다(낮은 벽 바로 너머 칸이면 넘어 뛴다).
+   */
+  private tap(wx: number, wy: number) {
+    // 모험 맵: 몬스터를 누르면 그 옆 칸까지 걸어가 싸운다(기획 19장 3번). 누른 자리로 본다.
+    if (this.clickMonster(wx, wy)) return;
+    const g = worldToGrid(wx, wy);
     const goal = { x: Math.floor(g.gx), y: Math.floor(g.gy) };
+    this.advPending = null;
     // 메모장을 들고 내 칸을 누르면 메모를 쓴다.
     if (this.inventory.memoSelected && goal.x === this.me.tile.x && goal.y === this.me.tile.y) {
       this.writeMemo();
       return;
     }
-    this.walkTo(goal);
+    const spot = this.tappedSpot(wx, wy, goal);
+    if (spot) {
+      this.workAt(spot);
+      return;
+    }
+    if (this.tapUse(wx, wy)) return;
+    this.workGoal = null;
+    if (!this.tapJump(goal)) this.walkTo(goal);
   }
 
-  /** 누른 곳 가까이에 쓰러지지 않은 다른 플레이어가 있는지 본다. 몸통을 눌러도 되도록 총알 높이만큼 내려서 잰다. */
-  private tappedPlayer(wx: number, wy: number) {
-    const { gx, gy } = worldToGrid(wx, wy + BULLET_HEIGHT);
-    for (const avatar of this.others.values()) {
-      if (avatar.isDown) continue;
-      const { x, y } = avatar.position();
-      if (Math.hypot(x + 0.5 - gx, y + 0.5 - gy) <= TAP_TARGET_TILES) return true;
+  /** 누른 칸에 든 것을 쓴다: 농장 칸이면 심기·거두기(좌클릭과 같음), 블록을 들었으면 손 닿는 칸에 놓기. 한 일이 있으면 true */
+  private tapUse(wx: number, wy: number) {
+    this.pointAt(wx, wy);
+    const stack = this.inventory.selectedStack;
+    let used = this.farmClick();
+    if (!used && stack && isBlockItem(stack.id) && this.placementSpot(stack.id)) {
+      this.placeBlock();
+      used = true;
     }
-    return false;
+    this.hoveredBlock = this.hoveredGround = null;
+    return used;
+  }
+
+  /** 맵 좌표 (wx, wy)가 가리키는 블록과 빈 바닥 칸을 hoveredBlock·hoveredGround에 넣는다(마우스의 updateHover와 같은 셈, 그리지 않음). */
+  private pointAt(wx: number, wy: number) {
+    const g = worldToGrid(wx, wy);
+    const x = Math.floor(g.gx);
+    const y = Math.floor(g.gy);
+    let hit: Tile | null = null;
+    for (let k = MAX_STACK; k >= 0 && !hit; k--) {
+      for (const [cx, cy] of [
+        [x + k + 1, y + k + 1],
+        [x + k + 1, y + k],
+        [x + k, y + k + 1],
+        [x + k, y + k],
+      ]) {
+        if (this.world.heightAt(cx, cy) && this.hitsCube(cx, cy, wx, wy)) {
+          hit = { x: cx, y: cy };
+          break;
+        }
+      }
+    }
+    const owner = hit ? undefined : this.world.ownerOf(x, y);
+    this.hoveredBlock = hit ?? owner ?? null;
+    this.hoveredGround = !hit && !owner && this.world.inBounds(x, y) ? { x, y } : null;
+  }
+
+  /**
+   * 작업장에서 누른 자원 칸. 그림의 불투명한 픽셀을 눌렀거나(나무 꼭대기처럼 칸 위로 솟은 곳도) 자원 칸이나 바로 옆 칸을 누르면 그 자원이다.
+   * 그림이 겹치면 앞(깊이가 큰) 것을 고른다.
+   */
+  private tappedSpot(wx: number, wy: number, tile: Tile): Tile | null {
+    if (!MAPS[this.mapId].work) return null;
+    let best: { spot: Tile; depth: number } | null = null;
+    for (const spot of this.world.map.spots) {
+      const image = this.spotImages.get(`${spot.x},${spot.y}`);
+      if (!image || (best && image.depth <= best.depth)) continue;
+      const px = Math.floor(wx - (image.x - image.displayOriginX));
+      const py = Math.floor(wy - (image.y - image.displayOriginY));
+      if (opaqueAt(image.frame, px, py)) best = { spot, depth: image.depth };
+    }
+    if (best) return best.spot;
+    const near = this.world.map.spots.filter((spot) => inReach(tile, spot));
+    near.sort((a, b) => Math.hypot(a.x - tile.x, a.y - tile.y) - Math.hypot(b.x - tile.x, b.y - tile.y));
+    return near[0] ?? null;
+  }
+
+  /** 휴대폰에서 자원을 눌렀다: 손이 닿으면 바로 일하고, 아니면 옆으로 걸어가서 일한다(reachWork). 그 자원을 이미 하고 있으면 그대로 둔다. */
+  private workAt(spot: Tile) {
+    if (this.workSpot && this.workSpot.x === spot.x && this.workSpot.y === spot.y) return;
+    if (!this.me.moving && inReach(this.me.tile, spot)) {
+      this.clearRoute();
+      this.workGoal = null;
+      this.startWork(spot);
+      return;
+    }
+    this.walkTo(spot);
+    this.workGoal = spot;
+  }
+
+  /** 자원을 눌러 걸어가다 멈췄다. 손이 닿으면 일을 시작하고, 길이 막혀 닿지 못했으면 알린다. */
+  private reachWork() {
+    const spot = this.workGoal!;
+    this.workGoal = null;
+    if (inReach(this.me.tile, spot)) this.startWork(spot);
+    else this.hud.toast('손이 안 닿습니다', '자원 바로 옆에 붙어야 합니다');
+  }
+
+  /** 누른 곳 가까이에 맞을 수 있는 상대(다른 플레이어, 던전은 몬스터)가 있는지 본다. 몸통을 눌러도 되도록 총알 높이만큼 내려서 잰다. 빛 밖에 숨은 사람은 치지 않는다. */
+  private tappedTarget(wx: number, wy: number) {
+    const { gx, gy } = worldToGrid(wx, wy + BULLET_HEIGHT);
+    const myId = this.session.profile.id;
+    return this.bulletTargets().some(({ id, x, y }) => id !== myId && !this.others.get(id)?.isHidden && Math.hypot(x - gx, y - gy) <= TAP_TARGET_TILES);
+  }
+
+  /**
+   * 휴대폰에서 낮은 벽 바로 너머 칸(두 칸 앞)을 눌렀는데 걸어서는 못 가면 Space처럼 넘어 뛴다. 뛰었으면 true.
+   * 걸어갈 길이 있으면 걷는다(벽을 돌아가는 길이 있어도 뛰지 않는다).
+   */
+  private tapJump(goal: Tile) {
+    if (this.me.moving || this.me.jumping) return false;
+    const from = this.me.tile;
+    const dx = goal.x - from.x;
+    const dy = goal.y - from.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== JUMP_TILES || (dx % JUMP_TILES) || (dy % JUMP_TILES)) return false;
+    const dir = { dx: dx / JUMP_TILES, dy: dy / JUMP_TILES };
+    if (this.world.isWalkable(from.x + dir.dx, from.y + dir.dy)) return false;
+    const landing = this.jumpLanding(from, dir);
+    if (landing.x !== goal.x || landing.y !== goal.y) return false;
+    const path = findPath(this.world, from, goal);
+    const last = path[path.length - 1];
+    if (last && last.x === goal.x && last.y === goal.y) return false;
+    this.jump(dir);
+    return true;
+  }
+
+  /** 모험 맵에서 몬스터(그림이나 칸)를 눌렀으면 그쪽으로 가 싸운다. 눌렀으면 true. */
+  private clickMonster(wx?: number, wy?: number) {
+    if (!this.advField || !this.canAct) return false;
+    // 휴대폰은 손가락을 댄 자리(wx, wy), 마우스는 지금 가리키는 자리
+    const w = wx === undefined || wy === undefined ? this.pointerWorld() : { x: wx, y: wy };
+    const g = worldToGrid(w.x, w.y);
+    const m = this.advField.monsterAtPoint(w.x, w.y) ?? this.advField.monsterAt({ x: Math.floor(g.gx), y: Math.floor(g.gy) });
+    if (!m) return false;
+    this.approachMonster(m);
+    return true;
+  }
+
+  /** 몬스터를 눌렀다: 옆 칸이면 바로, 아니면 가장 가까운 옆 칸까지 걸어가 닿으면 싸운다(기획 19장 3번). */
+  private approachMonster(m: FieldMonster) {
+    this.clearRoute();
+    this.advPending = null;
+    const me = this.me.tile;
+    if (Math.max(Math.abs(m.x - me.x), Math.abs(m.y - me.y)) === 1) {
+      this.bumpMonster(m);
+      return;
+    }
+    let best: Tile[] | null = null;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const t = { x: m.x + dx, y: m.y + dy };
+        if (!this.world.isWalkable(t.x, t.y)) continue;
+        const path = findPath(this.world, me, t);
+        if (path.length && (!best || path.length < best.length)) best = path;
+      }
+    }
+    if (!best) return;
+    this.route = best;
+    this.routeGoal = best[best.length - 1];
+    this.drawRouteMarker();
+    this.advPending = m;
+  }
+
+  /** 몬스터 쪽을 보고 부딪힌다(싸울 수 있으면 싸움). */
+  private bumpMonster(m: Tile) {
+    const me = this.me.tile;
+    this.me.face(Math.sign(m.x - me.x), Math.sign(m.y - me.y));
+    this.advField?.bump(m);
   }
 
   private walkTo(goal: Tile) {
@@ -1276,6 +1670,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private beginStep(from: Tile, dir: Dir) {
     this.lastDir = dir;
+    // 모험 맵 몬스터 칸 쪽이면 걷거나 옆으로 미끄러지지 않고 부딪힌다(서 있을 때만, 기획 19장 3번).
+    if (this.world.isMonsterTile(from.x + dir.dx, from.y + dir.dy)) {
+      if (!this.me.moving) this.bumpMonster({ x: from.x + dir.dx, y: from.y + dir.dy });
+      return;
+    }
     const canGo = ({ dx, dy }: Dir) => this.world.canStep(from, dx, dy);
     const step = canGo(dir) ? dir : slideOptions(dir).find(canGo);
     if (!step) {
@@ -1295,13 +1694,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return justLeft ? this.walk!.from : this.me.tile;
   }
 
-  /** 방향을 누르고 Space를 누르면 벽 하나를 넘을 수 있다. 벽 앞에서는 방향 없이 눌러도 넘는다. */
-  private jump() {
+  /** 방향을 누르고 Space를 누르면 벽 하나를 넘을 수 있다. 벽 앞에서는 방향 없이 눌러도 넘는다. toward는 휴대폰에서 벽 너머를 눌렀을 때의 방향이다. */
+  private jump(toward?: Dir) {
     this.clearRoute();
+    this.workGoal = null;
     const from = this.actionStart;
     const ahead = { x: from.x + this.lastDir.dx, y: from.y + this.lastDir.dy };
     const facingWall = this.world.inBounds(ahead.x, ahead.y) && !this.world.isWalkable(ahead.x, ahead.y);
-    const dir = this.keys.takeDirection() ?? (facingWall ? this.lastDir : null);
+    const dir = toward ?? this.keys.takeDirection() ?? (facingWall ? this.lastDir : null);
 
     this.moveTo(dir ? this.jumpLanding(from, dir) : from, JUMP_MS, 'jump');
     if (dir) {
@@ -1331,6 +1731,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.session.sendMove(to.x, to.y, ms, motion);
     this.session.saveLater(to);
     this.drawRange();
+    this.advField?.step(to);
   }
 
   /** 엘리베이터 안에서 층을 골랐을 때: 그 층에서 문이 열린다. */
@@ -1349,6 +1750,245 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   goToDungeon(dungeon: DungeonId) {
     this.dungeonWindow.close();
     this.travel(dungeon);
+  }
+
+  get currentMap(): MapId {
+    return this.mapId;
+  }
+
+  /**
+   * 모험 창 [들어가기]·[이어 하기](2026-11-18 모험 손보기): 판을 열고(판 중이면 그대로) 그 판이 있는 맵 입구로 간다.
+   * 새 판은 입구 맵(adv_gate)에서 시작한다. 맵 자료와 Infernus 그림을 같이 읽는다(처음 한 번).
+   */
+  async enterAdventure() {
+    if (this.traveling || this.advBusy) return;
+    this.advBusy = true;
+    try {
+      const [view] = await Promise.all([adventureStart(), loadAdventureMaps().catch(() => null)]);
+      if (typeof view === 'string') {
+        this.hud.toast('들어가지 못했습니다', failText(view));
+        return;
+      }
+      this.adventure.set(view);
+      if (!adventureMapsReady()) {
+        this.hud.toast('들어가지 못했습니다', '모험 맵을 읽지 못했습니다. 잠시 후 다시 해 주세요.');
+        return;
+      }
+      const map = view.runMap && isMapId(view.runMap) && isAdventure(view.runMap) ? view.runMap : ADVENTURE_GATE_MAP;
+      this.adventureWindow.close();
+      this.travel(map);
+    } finally {
+      this.advBusy = false;
+    }
+  }
+
+  /** 모험 맵 포탈을 탔을 때: 서버에 이 판의 맵을 남기고(앞으로만, adventure_move) 그 맵 입구로 간다. BP는 쓰지 않는다. */
+  private async goAdventureMap(to: AdventureMapId) {
+    if (this.advBusy) return;
+    this.advBusy = true;
+    this.clearRoute();
+    const view = await adventureMove(to);
+    this.advBusy = false;
+    if (typeof view === 'string') {
+      this.hud.toast('갈 수 없습니다', failText(view));
+      return;
+    }
+    this.adventure.set(view);
+    this.travel(to);
+  }
+
+  /**
+   * 모험 맵에 들어왔다: 서버 값을 읽고(없으면) 띠 글씨와 조우 게이지를 띄운다.
+   * 판이 없는데 모험 맵에 있으면(판이 끝난 뒤 새로고침) 시작마을로, 판이 다른 맵에 있으면 그 맵 입구로 보낸다.
+   */
+  private async startAdventureField(id: AdventureMapId) {
+    const pending = this.adventure.view ? null : await this.adventure.refresh();
+    // 맵을 올린 뒤 travel이 나를 들어온 칸으로 옮기므로, 한 번 기다린 다음 그 칸에서 시작한다.
+    await Promise.resolve();
+    const view = this.adventure.view;
+    if (this.mapId !== id || this.advField || !view) return;
+    if (!view.inRun) {
+      if (pending && typeof pending !== 'string') this.showAdventureResult(pending);
+      else this.travel(DEFAULT_MAP);
+      return;
+    }
+    if (view.runMap && view.runMap !== id && isMapId(view.runMap) && isAdventure(view.runMap)) {
+      this.travel(view.runMap);
+      return;
+    }
+    const data = advMap(id);
+    // 맵 자료를 못 읽었으면(새로고침 때 읽기 실패) 시작마을로 보낸다. 판은 서버에 남아 다시 들어가면 이어 한다.
+    if (!data) {
+      this.travel(DEFAULT_MAP);
+      return;
+    }
+    void loadAdventureArt();
+    const zone = this.adventure.zoneOfMap(id) ?? null;
+    // 몬스터 이름표는 밤 덮개 바로 아래(나무에 가리지 않게) 둔다.
+    this.advField = new AdventureField(this, document.getElementById('hud')!, this.adventure, { id, data, zone }, DEPTH_DAYLIGHT - 1, {
+      fight: (monster) => zone && void this.adventureFight(zone.id, monster),
+      canFight: () => this.canAct,
+      reset: () => this.time.delayedCall(RESET_DELAY_MS, () => this.resetToEntry()),
+      leave: () => this.askReturn(),
+      // 전투 뒤(runQuiet)면 배경이 걷힌 뒤 금화가 오른다.
+      goldDelay: () => (this.runQuiet ? LEAVE_MS : null),
+    });
+    // 몬스터 칸은 막는다(걷기·점프·길찾기, 부딪히면 싸움).
+    this.world.setMonsterTiles(this.advField.monsters);
+    this.advField.enter(this.me.tile);
+    this.syncAdventurePortals();
+    // 전투 중에 새로고침했다면 그 판의 결과가 여기서 한 번 온다.
+    if (pending && typeof pending !== 'string') this.showAdventureResult(pending);
+  }
+
+  /** 얽힌 숲 되돌림 칸(기획 11장): 밟으면 미로 입구로 옮긴다(같은 맵 안, 맵을 다시 올리지 않음). */
+  private resetToEntry() {
+    if (!isAdventure(this.mapId) || this.traveling) return;
+    const tile = advEntry(this.mapId);
+    this.clearRoute();
+    this.keys.releaseDirections();
+    this.me.teleport(tile);
+    this.drawRange();
+    this.session.sendMove(tile.x, tile.y, 0);
+    this.session.saveLater(tile);
+    this.advField?.enter(tile);
+    this.hud.toast('미로 입구로 돌아왔습니다.');
+  }
+
+  /** [귀환]: 확인 창 뒤 판을 끝낸다(BP 0과 같은 양을 가져감). */
+  private askReturn() {
+    if (this.advBusy || anyModalOpen() || !this.adventure.view?.inRun) return;
+    confirmReturn(document.getElementById('hud')!, () => void this.adventureLeave());
+  }
+
+  private async adventureLeave() {
+    if (this.advBusy) return;
+    this.advBusy = true;
+    const view = await adventureReturn();
+    this.advBusy = false;
+    if (typeof view === 'string') {
+      this.hud.toast('귀환하지 못했습니다', failText(view));
+      return;
+    }
+    const { result, ...rest } = view;
+    this.adventure.set(rest);
+    // 가져온 골드는 결과 화면 뒤 마을에 서면 계정 줄에서 오른다(디자인 adventure-ui.md 16절).
+    this.hud.holdGold();
+    this.economy.setGold(toGold(rest.townGold, this.economy.gold));
+    if (result) this.showAdventureResult(result);
+    else this.travel(DEFAULT_MAP, () => this.hud.releaseGold());
+  }
+
+  /**
+   * 모험 전투 하나(맵 위 몬스터 곁에서 버튼·Enter). 결과는 서버가 정하고(레벨과 구역 보너스도 몬스터 자리로) 여기서는 차례 목록을 그린다.
+   * 서버는 직전 전투와 2.5초 안이면 받지 않으므로, 결과 줄을 일찍 닫고 바로 다시 누르면 남은 시간만큼 기다렸다가 부른다.
+   * 누르면 서버 요청을 먼저 보내고 그동안 들어가기 소용돌이를 돌린다(battleIntro.ts). 둘 다 끝나면 전투 창을 연다.
+   * 소용돌이가 필드를 찍은 뒤부터 전투 창이 닫힐 때까지 뒤의 필드는 그리지 않는다(Phaser 루프를 재움, 기획 13장).
+   */
+  private async adventureFight(zone: string, monster: FieldMonster) {
+    if (this.advBusy) return;
+    this.advBusy = true;
+    // 정보 칸 레벨 업 막대(마을 레벨 등)나 위 HUD 금화 오르기가 돌고 있으면 끝 모습으로 가고 싸운다.
+    this.hud.finishLevel();
+    this.advField?.finishGold();
+    this.clearRoute();
+    const root = document.getElementById('hud')!;
+    const before = this.adventure.view;
+    const art = infernus();
+    const frame = art?.monsters.frames[monster.art];
+    const mapId = this.mapId;
+    const request = (async () => {
+      const gap = FIGHT_GAP_MS - (performance.now() - this.advFoughtAt);
+      if (gap > 0) await new Promise((resolve) => window.setTimeout(resolve, gap));
+      this.advFoughtAt = performance.now();
+      return adventureBattle(mapId, monster.x, monster.y);
+    })().catch(() => 'failed');
+    const cam = this.cameras.main;
+    const body = this.advField?.bodyOf(monster);
+    const view = cam.worldView;
+    const at = body ? { x: (body.x - view.x) / view.width, y: (body.y - view.y) / view.height } : { x: 0.5, y: 0.5 };
+    const intro = new BattleIntro(this.game, swirlKind(frame?.role ?? (monster.kind === 'normal' ? 'normal' : 'boss'), this.advClosedAt), at);
+    const [battle] = await Promise.all([request, intro.done]);
+    if (typeof battle === 'string') {
+      this.game.loop.wake();
+      intro.leave();
+      this.keys.releaseDirections();
+      this.advBusy = false;
+      this.advField?.settle();
+      this.hud.toast('싸우지 못했습니다', failText(battle));
+      return;
+    }
+    const zones = before?.zones ?? battle.state.zones;
+    const place = zones.findIndex((z) => z.id === zone);
+    const main = this.adventure.weapon(battle.state.mainWeapon);
+    const dropped = this.adventure.weapon(battle.drop);
+    const mini = monster.kind === 'mini' ? zones[place]?.minis.find((m) => m.name === monster.slot) : undefined;
+    this.session.sendFight(true);
+    const levelBefore = before?.inRun ? before.level : '1';
+    // 이긴 전투로 판 레벨이 오르고 판이 이어지며 포인트가 남으면(저절로 나누기 끔) 필드로 돌아온 뒤 레벨 업 창을 띄운다.
+    const s = battle.state;
+    const levelUp = battle.win && !battle.ended && battle.level !== levelBefore && !s.auto && s.points !== '0';
+    try {
+      await playBattle(root, battle, {
+        zoneName: zones[place]?.name ?? '',
+        miniName: mini?.name ?? null,
+        foe: frame ? { art: monster.art, name: frame.name, role: frame.role } : null,
+        member: this.session.profile.skin ?? memberOf(this.session.profile.id),
+        levelBefore,
+        expBefore: before?.inRun ? before.exp : '0',
+        weapon: main ? { id: main.id, art: main.art } : null,
+        drop: dropped ? { name: dropped.name, star: dropped.star, art: dropped.art } : null,
+        onBackdrop: intro.hasBackdrop,
+      });
+    } finally {
+      this.game.loop.wake();
+      intro.leave();
+      this.advClosedAt = performance.now();
+      // 결과 칸이 닫힐 때 누르고 있던 방향 키는 잊는다(손을 떼고 다시 눌러야 걷는다. 방금 싸운 몬스터 쪽이면 저절로 또 싸우게 되므로, 에이전트가 정함).
+      this.keys.releaseDirections();
+      // 레벨 업 창이 뜰 때까지(장막이 걷히는 동안) 필드 입력은 계속 막는다.
+      if (!levelUp) this.advBusy = false;
+      // 레벨 막대·금화는 결과 칸에서 보였으니 정보 칸과 위 HUD는 끝 값으로 조용히 맞춘다.
+      this.runQuiet = true;
+      this.adventure.set(battle.state);
+      this.runQuiet = false;
+      this.session.sendFight(false);
+    }
+    this.advField?.settle();
+    // BP를 다 써서 모험이 끝났으면 가져온 골드는 결과 화면 뒤 마을에 서면 오른다.
+    if (battle.ended) this.hud.holdGold();
+    this.economy.setGold(toGold(battle.state.townGold, this.economy.gold));
+    if (levelUp) {
+      // 장막이 걷힌 뒤(150ms) 레벨 업 창
+      await new Promise((resolve) => window.setTimeout(resolve, LEAVE_MS));
+      this.advBusy = false;
+      this.advField?.openLevelUp(levelBefore, battle.level, battle.points);
+    }
+    // 판이 끝났으면 결과는 서버에 남아 있고 adventure_state가 한 번 준다(새로고침해도 다음에 뜸).
+    if (battle.ended) {
+      const result = await this.adventure.refresh();
+      if (result && typeof result !== 'string') this.showAdventureResult(result);
+      else this.hud.releaseGold(COUNT.gold);
+    }
+  }
+
+  /** 모험 맵에서 P: 스텟 판을 열고 닫는다. 모험 맵이 아니면 false. */
+  adventureStatsKey() {
+    if (!this.advField || anyModalOpen()) return false;
+    this.advField.toggleStats();
+    return true;
+  }
+
+  /** 판 결과 화면. 모험 맵에서 끝난 판이면(BP 0, 귀환) [마을로]로 시작마을 모험하기 포탈 앞에 간다. */
+  /**
+   * 모험 결과 화면. [마을로]면 마을에 선 뒤 붙잡아 둔 계정 줄 골드가 600ms 동안 오른다.
+   * 마을로 가지 않고 닫으면(Esc, [확인]) 닫을 때 오른다.
+   */
+  private showAdventureResult(result: AdvResult) {
+    const toVillage = isAdventure(this.mapId) ? () => this.travel(DEFAULT_MAP, () => this.hud.releaseGold()) : undefined;
+    showAdventureResult(document.getElementById('hud')!, result, this.adventure, toVillage).whenClosed(() => {
+      if (!this.traveling) this.hud.releaseGold();
+    });
   }
 
   /** 가진 자원을 모두 판다. 금액은 서버가 계산한다. */
@@ -1409,6 +2049,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.hud.toast('손이 안 닿습니다', '자원 바로 옆에 붙어서 F를 누르세요');
       return;
     }
+    this.startWork(spot);
+  }
+
+  /** 손이 닿는 자원 칸 spot에서 일을 시작한다(F, 휴대폰은 자원 누르기). 다른 자원을 하고 있었으면 바꾼다. */
+  private startWork(spot: Tile) {
+    if (!MAPS[this.mapId].work) return;
+    this.stopWork();
     this.me.face(Math.sign(spot.x - this.me.tile.x), Math.sign(spot.y - this.me.tile.y));
     this.workStartedAt = performance.now();
     this.workSpot = spot;
@@ -1485,7 +2132,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (reason === 'elsewhere') {
       this.hud.toast('분신술은 아직 못 배웠습니다', '같은 계정이 다른 창에서 다른 곳에 가 있어 일을 멈췄습니다. 다른 창을 닫고 새로고침하세요');
     } else {
-      this.hud.toast('일이 손에 안 잡힙니다', '서버가 연달아 받아 주지 않아 일을 멈췄습니다. F로 다시 시작하세요');
+      this.hud.toast('일이 손에 안 잡힙니다', byInput('서버가 연달아 받아 주지 않아 일을 멈췄습니다. F로 다시 시작하세요', '서버가 연달아 받아 주지 않아 일을 멈췄습니다. 자원을 눌러 다시 시작하세요'));
     }
   }
 
@@ -1495,20 +2142,63 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const leveled = level > this.level;
     this.level = level;
     this.exp = exp;
-    this.hud.setLevel(level, exp, leveled);
+    // 레벨이 오르면 정보 칸 막대가 돌고, 그동안 내 이름표 숫자는 막대(showAnimatedLevel)가 맞춘다.
+    const animated = this.hud.setLevel(level, exp, leveled);
     if (!leveled) return;
     this.session.refreshPresence();
-    this.showLevel(this.session.profile.id, level);
+    if (!animated) this.showLevel(this.session.profile.id, level);
     this.hud.toast(`레벨 업! Lv. ${formatLevel(level)}`, `다음 레벨까지 경험치 ${levelNeed(level).toLocaleString()}`);
   }
 
+  /**
+   * 이름표 레벨. 모험 맵에서는 판 레벨(연보라 .adv-run, 판이 없으면 이름만)이고 그 밖은 마을 레벨이다
+   * (2026-11-18 사용자 "게임에 들어가면 인게임 레벨이 나오도록", 디자인 adventure-ui.md 14절).
+   */
   private showLevel(id: string, level: bigint) {
-    this.tags.setLevel(id, `Lv.${formatLevel(level, true)}`);
+    if (!isAdventure(this.mapId)) {
+      this.tags.setLevel(id, `Lv.${formatLevel(level, true)}`, false);
+      return;
+    }
+    const run = id === this.session.profile.id ? this.currentRun() : (this.otherRuns.get(id) ?? null);
+    this.tags.setLevel(id, run ? `Lv.${formatLevel(BigInt(run), true)}` : '', true);
+  }
+
+  /**
+   * 정보 칸 레벨 업 막대가 도는 동안 보이는 레벨을 내 이름표에도 쓴다(pop이면 같이 튄다). 끝에는 끝 레벨로 한 번 온다.
+   * 막대가 마을 것인데 모험 맵에 와 있거나 그 반대면(도는 중에 맵을 옮김) 지금 맵의 레벨을 쓴다.
+   */
+  private showAnimatedLevel(level: bigint, pop: boolean) {
+    const id = this.session.profile.id;
+    const run = isAdventure(this.mapId);
+    if (this.hud.barMode !== (run ? 'run' : 'town')) {
+      this.showLevel(id, this.level);
+      return;
+    }
+    this.tags.setLevel(id, `Lv.${formatLevel(level, true)}`, run);
+    if (pop) this.tags.popLevel(id);
+  }
+
+  /** 모험 맵 판 값을 정보 칸과 내 이름표에 맞춘다. 판 레벨이 오르면 정보 칸 막대가 돌고(내 이름표도 같이) 같은 맵 사람들에게 알린다. */
+  private refreshRunLevel() {
+    const run = this.currentRun();
+    const leveled = !this.runQuiet && run !== null && this.shownRunLevel !== null && BigInt(run) > BigInt(this.shownRunLevel);
+    const changed = run !== this.shownRunLevel;
+    this.shownRunLevel = run;
+    const view = this.adventure.view;
+    let animated = false;
+    if (!isAdventure(this.mapId)) this.hud.setRun(null);
+    else if (!run || !view) this.hud.setRun('none');
+    else animated = this.hud.setRun(runStatus(run, view.exp, view.power.hp), leveled);
+    if (!changed) return;
+    if (!animated) this.showLevel(this.session.profile.id, this.level);
+    this.session.refreshPresence();
   }
 
   /** 포탈을 타면 화면을 어둡게 한 사이에 맵을 바꾼다. */
   private travel(to: MapId, onArrive?: () => void) {
     this.clearRoute();
+    this.workGoal = null;
+    this.press = null;
     if (to === 'elevator' && isTower(this.mapId)) this.elevatorFloor = this.mapId;
     this.traveling = true;
     this.stopWork();
@@ -1539,7 +2229,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 전쟁터: 손전등 빛을 다시 계산하고, 빛 밖에 있는 다른 플레이어와 이름표를 숨긴다.
+   * 전쟁터: 손전등 빛을 다시 계산한다. 빛 밖의 다른 플레이어는 숨기지 않고 어둠 아래에서 어둡게 보이고, 이름표만 흐리게 한다
+   * (2026-11-18 사용자 "시야각 밖에 있어도 어둡게라도 상대방 캐릭터는 보여야 된다. 시야각은 단순히 밝아지는 느낌이다").
    * 4층: 숨은 방 안에 선 다른 사람은 내가 방을 열지 않았으면(내 화면에서 그 칸이 허공이면) 숨긴다(2026-11-15).
    */
   private updateVision() {
@@ -1560,9 +2251,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     );
     for (const [id, avatar] of this.others) {
       const at = avatar.position();
-      const seen = this.flashlight.sees(at.x + 0.5, at.y + 0.5);
-      avatar.setHidden(!seen);
-      this.tags.setHidden(id, !seen);
+      this.tags.setDim(id, !this.flashlight.sees(at.x + 0.5, at.y + 0.5));
     }
   }
 
@@ -1611,11 +2300,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private updateMinimap(time: number) {
     if (this.minimap.folded || time < this.nextMinimapAt) return;
     this.nextMinimapAt = time + MINIMAP_INTERVAL_MS;
-    // 전쟁터에서는 미니맵에도 다른 사람을 그리지 않는다(빛 밖의 사람이 들키지 않게).
-    // 숨은 방 안의 사람도 방을 열지 않은 사람의 미니맵에는 그리지 않는다.
-    const others = MAPS[this.mapId].dark
-      ? []
-      : [...this.others.values()].map((avatar) => avatar.tile).filter(({ x, y }) => !this.world.isVoid(x, y));
+    // 숨은 방 안의 사람은 방을 열지 않은 사람의 미니맵에 그리지 않는다. 전쟁터도 이제 다른 사람을 그린다(2026-11-18, 빛 밖도 보이게 바꾸며 에이전트가 정함).
+    const others = [...this.others.values()].map((avatar) => avatar.tile).filter(({ x, y }) => !this.world.isVoid(x, y));
     const seen = this.minimapSeen;
     let n = 0;
     let changed = false;
@@ -2025,6 +2711,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 발밑에 주울 것이 있으면 "F키로 줍기" 안내를 띄운다. 여럿이면 맨 나중에 놓인 것부터 줍는다. 띄웠으면 true */
   private updatePickupHint() {
     const items = this.traveling || this.down || this.me.moving ? [] : this.drops.at(this.me.tile.x, this.me.tile.y);
+    this.updateMemoPeek(items);
     const [top] = items;
     if (!top) {
       this.groundUi.setHint(null);
@@ -2103,6 +2790,37 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.groundUi.farm.set(null);
   }
 
+  /**
+   * 땅의 메모 위에 서 있으면 맨 나중에 놓인 메모의 쓴 사람과 글을 캐릭터 위에 띄우고, 벗어나면 숨긴다(2026-11-18 사용자 요청).
+   * items는 발밑의 것(서 있을 때만, 그리지 않는 칸은 빔). 서 있는 칸이나 그 메모가 바뀔 때만 일하고, 글은 메모마다 한 번 서버에서 받아 다시 쓴다.
+   */
+  private updateMemoPeek(items: readonly GroundItem[]) {
+    const memo = items.find((item) => item.amount === null);
+    const id = memo?.id ?? 0;
+    const { x, y } = this.me.tile;
+    const peek = this.memoPeek;
+    if (peek.id === id && (!id || (peek.x === x && peek.y === y))) return;
+    peek.id = id;
+    peek.x = x;
+    peek.y = y;
+    if (!memo) {
+      this.groundUi.setPeek(null);
+      return;
+    }
+    const known = this.memoTexts.get(id);
+    this.groundUi.setPeek(known ?? null);
+    if (known || this.memoReading.has(id)) return;
+    this.memoReading.add(id);
+    this.memoReads++;
+    void this.session.readMemo(id).then((text) => {
+      this.memoReading.delete(id);
+      // 서버가 거절했으면(이미 주워 갔거나 다른 칸) 남겨 두지 않아 다음에 그 칸에 서면 다시 묻는다.
+      if (!text) return;
+      this.memoTexts.set(id, text);
+      if (this.memoPeek.id === id) this.groundUi.setPeek(text);
+    });
+  }
+
   /** 발밑에 주울 것이 있으면 하나 줍는다. 주울 것이 있었으면 true(F로 일을 시작하지 않는다). */
   private tryPickUp() {
     if (this.me.moving) return false;
@@ -2145,7 +2863,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const result = await this.session.dropMemo(body, x, y);
       if (!result.ok) return dropFailText(result.reason);
       this.drops.add(result.item);
-      this.hud.toast('쪽지를 놓았습니다', '누군가 F로 주워 읽을 겁니다');
+      this.hud.toast('쪽지를 놓았습니다', byInput('누군가 F로 주워 읽을 겁니다', '누군가 주워 읽을 겁니다'));
       return null;
     });
   }
@@ -2438,12 +3156,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.workSpot;
   }
 
+  /** 모험 맵에서 판이 있으면 판 레벨(글자), 아니면 null(다른 사람 이름표와 정보 칸에 쓴다) */
+  currentRun(): string | null {
+    const view = this.adventure.view;
+    return isAdventure(this.mapId) && view?.inRun ? view.level : null;
+  }
+
   currentLevel() {
     return this.level;
   }
 
-  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work }: PlayerMove) {
+  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work, run }: PlayerMove) {
     let avatar = this.others.get(id);
+    // 모험 맵 이름표의 판 레벨: 바뀌었을 때만 고친다.
+    const runChanged = (this.otherRuns.get(id) ?? null) !== run;
+    this.otherRuns.set(id, run);
     if (!avatar) {
       avatar = new Avatar(this, id, { x, y }, hp, skin, maxHp);
       this.others.set(id, avatar);
@@ -2459,6 +3186,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     // 닉네임 변경권으로 이름을 바꿨으면 이름표도 바꾼다.
     this.tags.setName(id, nickname);
+    if (runChanged && isAdventure(this.mapId)) this.showLevel(id, level);
     this.showRemoteWork(id, avatar, work);
     const { tile } = avatar;
     const reachable = inReach(tile, { x, y }, JUMP_TILES + 1);
@@ -2534,6 +3262,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.workFx.finish(id, rare);
   }
 
+  /** 같은 모험 필드 친구가 전투 중이면 이름표 위에 작은 칼(기획 11장, 시안 adventure-ui.md 5장) */
+  onFight(id: string, on: boolean, run: string | null) {
+    if (!this.others.has(id)) return;
+    this.tags.setFighting(id, on);
+    // 전투가 끝나면 바뀐 판 레벨이 같이 온다(이름표).
+    if (!on && (this.otherRuns.get(id) ?? null) !== run) {
+      this.otherRuns.set(id, run);
+      if (isAdventure(this.mapId)) this.showLevel(id, 0n);
+    }
+  }
+
   onNotice(notice: Notice) {
     this.notices.show(notice);
     this.chat.system(noticeText(notice));
@@ -2567,7 +3306,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   onLevel(id: string, level: bigint, exp: number) {
     if (id === this.session.profile.id) this.gainExp(level, exp);
-    else if (this.others.has(id)) this.showLevel(id, level);
+    else if (this.others.has(id) && !isAdventure(this.mapId)) this.showLevel(id, level);
   }
 
   onRoster(ids: Set<string>) {
@@ -2863,4 +3602,31 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   onConnection(connected: boolean, reason: string | null) {
     this.hud.setConnected(connected, reason);
   }
+}
+
+/**
+ * 정보 칸에 보일 판 값: 판 레벨 L에 닿는 경험치는 50·L·(L − 1)이라(서버 adventure_battle, adventureRules.levelFromExp)
+ * 다음 판 레벨까지는 100·L이다. 큰 수라 BigInt로 센다. HP는 판 스텟 HP(전투마다 다 차서 늘 가득).
+ */
+function runStatus(level: string, exp: string, hp: number): RunStatus {
+  let L = 1n;
+  let E = 0n;
+  try {
+    L = BigInt(level);
+    E = BigInt(exp);
+  } catch {
+    // 글자가 이상하면 1, 0으로 둔다.
+  }
+  if (L < 1n) L = 1n;
+  const need = 100n * L;
+  let cur = E - 50n * L * (L - 1n);
+  if (cur < 0n) cur = 0n;
+  if (cur > need) cur = need;
+  return {
+    level,
+    exp: bigText(cur.toString(), true),
+    need: bigText(need.toString(), true),
+    ratio: Number((cur * 1000n) / need) / 1000,
+    hp: bigText(Math.round(hp)),
+  };
 }

@@ -1,5 +1,6 @@
 import { ELEVATOR_STOPS, type TowerId } from '../game/tower';
 import { element } from './dom';
+import { byInput } from './touch';
 
 interface ElevatorActions {
   onGo(to: TowerId): void;
@@ -43,7 +44,7 @@ export class ElevatorWindow {
 
     const close = element('office-close', this.root, 'button') as HTMLButtonElement;
     close.type = 'button';
-    close.textContent = '닫기 (Esc)';
+    close.textContent = byInput('닫기 (Esc)', '닫기');
     close.addEventListener('click', () => this.close());
   }
 

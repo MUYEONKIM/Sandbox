@@ -2,7 +2,7 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { BOARD, CASTLE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, type Area } from './maps';
+import { BOARD, CASTLE, CAVE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, type Area } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
@@ -71,12 +71,13 @@ const STONE_ROADS: Area[] = [
   [34, 43, 44, 44],
 ];
 
-/** 아이티공간, 상점, 노동청 말고 세운 건물: 도박장이 된 주점, 증권거래소 */
+/** 아이티공간, 상점, 노동청 말고 세운 건물: 도박장이 된 주점, 농협, 증권거래소, 대장간, 동굴(기존 던전 입구) */
 const BUILDINGS: Building[] = [
   { sprite: TAVERN.sprite, x: TAVERN.x, y: TAVERN.y, w: TAVERN.w, d: TAVERN.d },
   { sprite: COOP.sprite, x: COOP.x, y: COOP.y, w: COOP.w, d: COOP.d },
   { sprite: EXCHANGE.sprite, x: EXCHANGE.x, y: EXCHANGE.y, w: EXCHANGE.w, d: EXCHANGE.d },
   { sprite: SMITHY.sprite, x: SMITHY.x, y: SMITHY.y, w: SMITHY.w, d: SMITHY.d },
+  { sprite: CAVE.sprite, x: CAVE.x, y: CAVE.y, w: CAVE.w, d: CAVE.d },
 ];
 
 const FIXED_TREES: Tree[] = [

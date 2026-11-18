@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { loadSprites } from './art/sprites';
+import { isAdventure, isMapId } from './game/maps';
+import { loadAdventureMaps } from './game/adventureMaps';
 import { Economy, type EconomyData } from './game/economy';
 import { goldText } from './game/gold';
 import { GameScene } from './game/GameScene';
@@ -28,6 +30,8 @@ import { CastleWindow } from './ui/castle';
 import { ElevatorWindow } from './ui/elevator';
 import { FameWindow, RankPanel } from './ui/fame';
 import { DungeonWindow } from './ui/dungeon';
+import { Adventure } from './game/adventure';
+import { AdventureWindow } from './ui/adventure';
 import { cropOfSeed, WEAPONS } from './items';
 import { ForgeWindow } from './ui/forge';
 import { CoopWindow } from './ui/coop';
@@ -37,6 +41,8 @@ import { GroundUi } from './ui/ground';
 import { anyModalOpen, closeTopModal } from './ui/modal';
 import { openRenameDialog } from './ui/rename';
 import { showWhatsNew } from './ui/whatsNew';
+import { byInput } from './ui/touch';
+import { WeaponTip } from './ui/weaponTip';
 
 /** 명예의 전당 창과 미니맵 밑 패널에 보여 줄 인원 */
 const FAME_SIZE = 50;
@@ -101,7 +107,13 @@ function enterGame(
       economy.setRenameTickets(Math.max(0, economy.renameTickets - 1));
       return null;
     });
-  const info = new InfoView(hud.infoPane, myName, economy, market, () => hud.status, rename);
+  // 휴대폰에는 Tab 키가 없어 I 창의 '킬/데스 순위' 버튼으로 연다. 창을 닫고 순위를 띄우며, 화면 어디든 누르면 닫힌다.
+  const showKillBoard = () => {
+    hud.close();
+    void killBoard.show();
+    window.addEventListener('pointerdown', () => killBoard.hide(), { once: true, capture: true });
+  };
+  const info = new InfoView(hud.infoPane, myName, economy, market, () => hud.status, rename, showKillBoard);
   hud.setInfoRenderer(() => info.render());
   void market.refresh();
 
@@ -124,6 +136,13 @@ function enterGame(
     goldOf: (gold) => economy.killGold(gold),
   });
 
+  // 모험(2026-11-17, 기획 docs/balance/dungeon-rework.md). 시작마을 아래 귀퉁이 '모험하기' 포탈이 이 창을 연다.
+  const adventure = new Adventure();
+  const adventureWindow = new AdventureWindow(root, adventure, {
+    enter: () => void scene.enterAdventure(),
+    mapId: () => scene.currentMap,
+  });
+
   // 농협(2026-11-15 사용자 요청, 기획 docs/balance/farm.md)
   const farmFailText: Record<string, string> = {
     taken: '그사이 다른 사람이 산 칸이 있어 모두 취소했습니다',
@@ -140,7 +159,7 @@ function enterGame(
       }
       economy.setGold(bought.gold);
       economy.setSeedCount(crop, bought.count);
-      hud.toast(`${economy.cropInfo(crop)?.name ?? ''} 씨앗 ${amount}개 구매`, '인벤토리(I)의 씨앗 탭에서 단축키 칸에 넣고, 농장의 내 땅을 좌클릭해 심습니다');
+      hud.toast(`${economy.cropInfo(crop)?.name ?? ''} 씨앗 ${amount}개 구매`, byInput('인벤토리(I)의 씨앗 탭에서 단축키 칸에 넣고, 농장의 내 땅을 좌클릭해 심습니다', '인벤토리의 씨앗 탭에서 단축키 칸에 넣고, 농장의 내 땅을 눌러 심습니다'));
     },
     onSellCrops: async () => {
       const sold = await session.sellCrops();
@@ -171,13 +190,17 @@ function enterGame(
   });
 
   // 대장간(2026-11-16, docs/balance/weapons.md). 사기·강화·팔기는 서버가 정하고, 여기서 골드와 가방을 맞춘다.
-  const forge = new ForgeWindow(root, economy, inventory, new ForgeTable(forgeData.steps), {
+  const forgeTable = new ForgeTable(forgeData.steps);
+  // 무기에 마우스를 올리면(휴대폰은 길게 누르면) 이름, 공격력, 강화, 판매가가 뜬다(2026-11-18 사용자 요청).
+  const weaponTip = new WeaponTip(root, economy, inventory, forgeTable);
+  weaponTip.onLongPress = () => hud.stopDrag();
+  const forge = new ForgeWindow(root, economy, inventory, forgeTable, {
     buy: async (kind) => {
       const bought = await session.buyGear(kind);
       if (typeof bought === 'string') return bought;
       economy.setGold(bought.gold);
       const placed = inventory.addGear(bought.gear);
-      hud.toast(`+0 ${WEAPONS[kind].name} 구매 (-${goldText(bought.paid)})`, placed ? '단축키 칸에 넣었습니다' : '인벤토리(I)의 무기 탭에 있습니다');
+      hud.toast(`+0 ${WEAPONS[kind].name} 구매 (-${goldText(bought.paid)})`, placed ? '단축키 칸에 넣었습니다' : byInput('인벤토리(I)의 무기 탭에 있습니다', '인벤토리의 무기 탭에 있습니다'));
       return null;
     },
     sell: async (gear) => {
@@ -216,7 +239,7 @@ function enterGame(
       }
       economy.setGold(bought.gold);
       economy.setPotionCount(id, bought.count);
-      hud.toast(`${economy.potion(id)?.name ?? '포션'} ${amount}개 구매`, `가진 것 ${bought.count}개 · 인벤토리(I)의 포션 탭에서 단축키 칸에 넣습니다`);
+      hud.toast(`${economy.potion(id)?.name ?? '포션'} ${amount}개 구매`, `가진 것 ${bought.count}개 · 인벤토리${byInput('(I)', '')}의 포션 탭에서 단축키 칸에 넣습니다`);
     },
     onBuyRenameTicket: async () => {
       const bought = await session.buyRenameTicket();
@@ -225,7 +248,7 @@ function enterGame(
         return;
       }
       economy.setRenameTickets(bought.tickets, bought.gold);
-      hud.toast('닉네임 변경권을 샀습니다', `가진 변경권 ${bought.tickets.toLocaleString()}장. I 창 정보창에서 씁니다.`);
+      hud.toast('닉네임 변경권을 샀습니다', `가진 변경권 ${bought.tickets.toLocaleString()}장. ${byInput('I 창', '인벤토리의')} 정보창에서 씁니다.`);
     },
     onSell: () => void scene.sellEverything(),
   });
@@ -286,6 +309,7 @@ function enterGame(
       hud.close();
       office.close();
       dungeon.close();
+      adventureWindow.close();
       coop.close();
       shop.close();
       forge.close();
@@ -296,9 +320,10 @@ function enterGame(
       elevator.close();
       casino.close();
     },
+    onStats: () => void scene.adventureStatsKey(),
     onChat: () => {
       const windowOpen =
-        hud.isOpen || office.isOpen || dungeon.isOpen || coop.isOpen || shop.isOpen || forge.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
+        hud.isOpen || office.isOpen || dungeon.isOpen || adventureWindow.isOpen || coop.isOpen || shop.isOpen || forge.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
       if (!windowOpen) chat.open();
     },
   });
@@ -310,7 +335,7 @@ function enterGame(
   hud.onDropGold = () => groundUi.openGoldDrop(economy.gold, (amount) => scene.dropGold(amount));
   void session.myMemos().then((memos) => groundUi.setHeld(memos));
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters, coop, forge);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters, coop, forge, adventure, adventureWindow);
 
   hud.onUsePotion = () => scene.drinkSelectedPotion();
   hud.onReselect = () => scene.reloadOrRotate();
@@ -331,7 +356,7 @@ function enterGame(
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { scene, inventory, hud, chat, session, economy, office, dungeon, coop, shop, forge, castle, fame, board, exchange, market, elevator, casino, groundUi } });
+    Object.assign(window, { sandbox: { weaponTip, scene, inventory, hud, chat, session, economy, office, dungeon, coop, shop, forge, castle, fame, board, exchange, market, elevator, casino, groundUi, adventure, adventureWindow } });
   }
 }
 
@@ -356,6 +381,8 @@ async function main() {
       loadFarm(),
       loadForge(),
       loadSprites(),
+      // 모험 맵에서 새로고침했으면 맵 자료를 먼저 읽는다(맵을 올리기 전에 있어야 함). 못 읽으면 GameScene이 시작마을로 보낸다.
+      isMapId(profile.map) && isAdventure(profile.map) ? loadAdventureMaps().catch(() => null) : null,
     ]);
     enterGame(profile, economy, dungeons, potions, farm, forge);
   }

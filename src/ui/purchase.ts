@@ -1,5 +1,6 @@
 import type { Economy } from '../game/economy';
 import { element } from './dom';
+import { byInput } from './touch';
 import { goldText } from '../game/gold';
 
 /** 골드를 내는 창의 공통 틀: 보유 골드 표시, 결제 중 버튼 잠금, 나가기 버튼 */
@@ -28,7 +29,7 @@ export abstract class PurchaseWindow {
   protected finish() {
     const close = element('office-close', this.root, 'button') as HTMLButtonElement;
     close.type = 'button';
-    close.textContent = '나가기 (Esc)';
+    close.textContent = byInput('나가기 (Esc)', '나가기');
     close.addEventListener('click', () => this.close());
 
     this.economy.onChange(() => this.render());

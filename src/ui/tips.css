@@ -1,0 +1,70 @@
+/*
+ * 떠 있는 작은 정보 창(2026-11-18 사용자 요청): 땅의 메모 위에 서면 캐릭터 위에 뜨는 글(src/ui/ground.ts의 setPeek),
+ * 무기에 마우스를 올리면(휴대폰은 길게 누르면) 뜨는 무기 정보(src/ui/weaponTip.ts). 둘 다 마우스와 손가락을 막지 않는다.
+ * 색은 작물 곁 안내 창(.farm-panel)과 같다.
+ */
+.memo-peek,
+.weapon-tip {
+  position: absolute;
+  z-index: 8;
+  width: max-content;
+  padding: 8px 12px;
+  color: #f7ecd6;
+  background: rgb(31 21 16 / 92%);
+  border: 2px solid #f2cf6a;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
+  font-size: 14px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.memo-peek[hidden],
+.weapon-tip[hidden] {
+  display: none;
+}
+
+/* 메모 글: 캐릭터 머리 위(이름표 위)에 가운데 맞춰 뜬다. 글은 200자까지라 폭만 정하고 줄을 바꾼다. */
+.memo-peek {
+  left: 50%;
+  bottom: calc(50% + 62px);
+  z-index: 6;
+  max-width: min(280px, calc(100% - 32px));
+  transform: translateX(-50%);
+}
+
+.memo-peek-author {
+  color: #f2cf6a;
+  font-weight: 700;
+}
+
+.memo-peek-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 무기 정보: 가리킨 칸 바로 위(화면 기준 자리는 weaponTip.ts가 정함). 이름 한 줄과 "이름 값" 줄들 */
+.weapon-tip {
+  position: fixed;
+  min-width: 140px;
+  max-width: 240px;
+}
+
+.weapon-tip-name {
+  color: #f2cf6a;
+  font-weight: 700;
+}
+
+.weapon-tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.weapon-tip-label {
+  color: #d8c6a8;
+}
+
+.weapon-tip-value {
+  font-weight: 700;
+  text-align: right;
+}

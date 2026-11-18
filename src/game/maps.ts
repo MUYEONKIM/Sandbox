@@ -2,6 +2,7 @@ import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
 import { GAMES, isGame, type GameId } from './casino';
 import { COUNTER_INFO, FLOORS, isTower, PANEL_INFO, type TowerId } from './tower';
+import { advEntry, advMap, advArrival } from './adventureMaps';
 
 const END = MAP_SIZE - 1;
 
@@ -31,7 +32,27 @@ export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
 /** 던전(2026-11-15 사용자 요청). id는 서버 dungeons 표와 같다. */
 export type DungeonId = 'meadow' | 'inferno';
 export const DUNGEON_IDS: readonly DungeonId[] = ['meadow', 'inferno'];
-export type MapId = 'plains' | 'snow' | 'farm' | 'forest' | TowerId | WorkId | DungeonId;
+/**
+ * 모험 맵 열세 장(2026-11-18 밤 맵 나누기, 기획 docs/balance/dungeon-rework.md 19장, 디자인 세션 adventure-maps13.md): 입구 맵 adv_gate와 지역 맵 열둘(평원 셋, 지옥 둘, 구름 정원 둘, 나머지 한 장씩).
+ * 맵 id는 서버 adventure_maps.map과 같다(지역은 adventure_maps.zone, 지역의 첫 맵이 adventure_zones.map). 맵 모양과 꾸밈은 디자인 세션 자료(adventureMaps.ts)를 읽는다.
+ */
+export type AdventureMapId =
+  | 'adv_gate'
+  | 'adv_1a'
+  | 'adv_1b'
+  | 'adv_1c'
+  | 'adv_2a'
+  | 'adv_2b'
+  | 'adv_3'
+  | 'adv_4'
+  | 'adv_5'
+  | 'adv_6a'
+  | 'adv_6b'
+  | 'adv_7'
+  | 'adv_8';
+export const ADVENTURE_GATE_MAP: AdventureMapId = 'adv_gate';
+export const ADVENTURE_MAPS: readonly AdventureMapId[] = ['adv_gate', 'adv_1a', 'adv_1b', 'adv_1c', 'adv_2a', 'adv_2b', 'adv_3', 'adv_4', 'adv_5', 'adv_6a', 'adv_6b', 'adv_7', 'adv_8'];
+export type MapId = 'plains' | 'snow' | 'farm' | 'forest' | TowerId | WorkId | DungeonId | AdventureMapId;
 
 /** tiles.png의 타일 번호. 왼쪽 위부터 오른쪽으로 센다. 번호를 여러 번 넣으면 더 자주 나온다. */
 const GRASS = [22, 23, 24];
@@ -65,6 +86,10 @@ export interface MapInfo {
   dark?: boolean;
   /** 던전이면 true. 몬스터가 나오고, 블록을 놓을 수 없고, 사람끼리는 총알이 맞지 않는다. */
   dungeon?: boolean;
+  /** 모험 맵이면 true. 몬스터는 보이지 않고, 걸으면 조우 게이지가 차서 혼자 하는 전투가 열린다. 블록과 공격이 없다. */
+  adventure?: boolean;
+  /** 맵 밖(빈 땅) 배경색. mood가 없을 때 쓴다(모험 맵, 디자인 세션 자료의 background). */
+  background?: string;
   /**
    * 늘 같은 분위기로 덮는 색(시간대 밝기 대신)과 맵 밖 배경색. 있으면 용암 불빛과 불똥, 화면 가장자리 어둠도 켠다(src/game/gloom.ts).
    * 지옥 던전(2026-11-15 사용자 요청 "조금 더 음습하게").
@@ -292,16 +317,63 @@ export const MAPS: Record<MapId, MapInfo> = {
     dungeon: true,
     mood: { color: 0x1a0207, alpha: 0.5, background: '#0b0305' },
   },
+  // 모험 맵(2026-11-18). 모양, 바닥, 꾸밈, 포탈 자리는 디자인 세션 자료(adv-maps.json)를 읽는다(map.ts generateMap).
+  // 나가는 포탈은 없다(마을로는 귀환과 BP 0뿐, 기획 3장). 공격은 서버 hit_player도 막는다. accent는 입구 맵 지역 포탈 색(디자인 세션 시안).
+  adv_gate: adventureInfo('모험 입구', 0x8a8f9e, 0xffffff, '#161a24'),
+  adv_1a: adventureInfo('평원 1', 0x86b048, 0x7fd36a, '#20301c'),
+  adv_1b: adventureInfo('평원 2', 0x86b048, 0x7fd36a, '#20301c'),
+  adv_1c: adventureInfo('평원 3', 0x86b048, 0x7fd36a, '#20301c'),
+  adv_2a: { ...adventureInfo('지옥 1', 0x5a2418, 0xff4a2a, '#1a0508'), mood: { color: 0x1a0207, alpha: 0.5, background: '#1a0508' } },
+  adv_2b: { ...adventureInfo('지옥 2', 0x5a2418, 0xff4a2a, '#1a0508'), mood: { color: 0x1a0207, alpha: 0.5, background: '#1a0508' } },
+  adv_3: adventureInfo('얽힌 숲', 0x2f5a2a, 0x2f8a3a, '#0e1a10'),
+  adv_4: adventureInfo('벼랑길', 0x6a6a72, 0x9a9aa6, '#0c0f16'),
+  adv_5: adventureInfo('일곱 빛 들판', 0x8a8a96, 0xffffff, '#14141c'),
+  adv_6a: adventureInfo('구름 정원 1', 0x8fd0ea, 0x8fd0ff, '#86bfe6'),
+  adv_6b: adventureInfo('구름 정원 2', 0x8fd0ea, 0x8fd0ff, '#86bfe6'),
+  adv_7: adventureInfo('별 하늘', 0x3a4a8a, 0x6a5cff, '#0a0f2c'),
+  adv_8: adventureInfo('그늘 동굴', 0x3a2a4a, 0x7a3aa8, '#060509'),
 };
+
+function adventureInfo(name: string, color: Color, accent: Color, background: string): MapInfo {
+  return { name, floor: GRASS, floorTop: BLOCK_TOP, color, accent, links: {}, safe: true, adventure: true, background };
+}
+
+/** 모험 지역 맵 다음 지역 포탈 색(디자인 세션 시안: 빨강) */
+const NEXT_PORTAL_COLOR = 0xff4a2a;
 
 export function isDungeon(id: MapId): id is DungeonId {
   return MAPS[id].dungeon === true;
 }
 
-/** 시작마을 아래쪽 귀퉁이의 던전 입장 포탈. 타면 던전 고르는 창이 열리고, 던전에서 돌아오면 이 앞에 선다. */
-export const DUNGEON_GATE = {
+export function isAdventure(id: MapId): id is AdventureMapId {
+  return MAPS[id].adventure === true;
+}
+
+/**
+ * 시작마을 아래쪽 귀퉁이의 '모험하기' 포탈(2026-11-17, 기획 docs/balance/dungeon-rework.md 14장). 예전에는 던전 입장 포탈이었고,
+ * 기존 던전 입구는 동굴(CAVE)로 옮겼다. 밟으면 모험 창이 열리고, 모험 필드에서 돌아오면 이 앞에 선다(배포 2).
+ * 포탈 색은 예전 던전 입장 빨강을 그대로 둔다(에이전트가 정함).
+ */
+export const ADVENTURE_GATE = {
   door: { x: END, y: END },
   landing: { x: END - LANDING_ALONG, y: END - LANDING_ACROSS },
+  name: '모험하기',
+  accent: 0xff5a5a,
+};
+
+/**
+ * 기존 던전 입구인 동굴(2026-11-17, 사용자가 디자인 세션 시안 "후보 2: 상점·증권거래소 사이"를 고름, 공유 노트 adventure-cave.md).
+ * 땅 4×4, 문이 오른쪽 면이라 문 칸은 (x + 4, y + 1)이고 성을 두르는 길 왼쪽 변을 본다. 길과 나무는 바꾸지 않았다.
+ * 문 앞 칸이 '던전 입장' 포탈이고 타면 던전 고르는 창이 열린다. 던전에서 돌아오면 이 앞에 선다. 포탈 색은 예전 던전 빨강이다.
+ */
+export const CAVE = {
+  sprite: 'cave-x' as const,
+  x: 9,
+  y: 27,
+  w: 4,
+  d: 4,
+  door: { x: 13, y: 28 },
+  landing: { x: 15, y: 29 },
   name: '던전 입장',
   accent: 0xff5a5a,
 };
@@ -383,7 +455,7 @@ export const TAVERN = { sprite: 'tavern' as const, x: 37, y: 36, w: 4, d: 4, nam
 export const GUIDEPOSTS = [
   { x: 31, y: 11, text: '농장 가는 길 ↗' },
   { x: 16, y: 36, text: '↙ 전쟁터 가는 길' },
-  { x: 31, y: 40, text: '던전 입장 ↘' },
+  { x: 31, y: 40, text: '모험하기 ↘' },
 ];
 
 /**
@@ -457,10 +529,17 @@ export function isMapId(value: unknown): value is MapId {
 export interface Portal {
   x: number;
   y: number;
-  /** 'office', 'dungeon', 'coop', 'shop', 'forge-shop', 'forge-anvil', 'counter', 'fame', 'board', 'trade', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
-  to: MapId | 'office' | 'dungeon' | 'coop' | 'shop' | 'forge-shop' | 'forge-anvil' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
+  /** 'office', 'dungeon', 'adventure', 'coop', 'shop', 'forge-shop', 'forge-anvil', 'counter', 'fame', 'board', 'trade', 'panel'과 도박장 게임은 맵을 옮기지 않고 창을 연다. */
+  to: MapId | 'office' | 'dungeon' | 'adventure' | 'coop' | 'shop' | 'forge-shop' | 'forge-anvil' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
+  /** 포탈 색. 없으면 가는 곳의 색이다. */
+  color?: Color;
+  /**
+   * 모험 맵 포탈(adventureMaps.ts): 입구 맵의 지역 포탈('zone'), 보스방 옆 다음 지역 포탈('next')은 서버 값에 따라 보이고 숨는다.
+   * 같은 지역 다음 맵('next_map')·앞 맵('prev_map')은 늘 열려 있다(2026-11-18 맵 열세 장).
+   */
+  adventure?: 'zone' | 'next' | 'next_map' | 'prev_map';
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
   landing: { x: number; y: number };
 }
@@ -470,8 +549,20 @@ function portalAt(corner: Corner, to: MapId): Portal {
   return { x, y, to, landing: { x: x + inX * LANDING_ALONG, y: y + inY * LANDING_ACROSS } };
 }
 
+/**
+ * 모험 맵 포탈 자리 전부(맵 자료). 보일지는 GameScene이 서버 값으로 고른다(열린 지역, 잡은 보스).
+ * 모험 맵에서는 나와서 서는 칸이 늘 그 맵 입구라 landing은 포탈 칸 그대로 둔다.
+ */
+function adventurePortals(id: AdventureMapId): Portal[] {
+  return (advMap(id)?.portals ?? []).flatMap((p): Portal[] => {
+    if (!isMapId(p.to)) return [];
+    return [{ x: p.x, y: p.y, to: p.to, landing: { x: p.x, y: p.y }, adventure: p.kind, ...(p.kind === 'next' ? { color: NEXT_PORTAL_COLOR, label: `${MAPS[p.to].name} 가는 길` } : {}) }];
+  });
+}
+
 export function portalsOf(id: MapId): Portal[] {
   if (isTower(id)) return FLOORS[id].portals;
+  if (isAdventure(id)) return adventurePortals(id);
   const portals = (Object.entries(MAPS[id].links) as [Corner, MapId][]).map(([corner, to]) => portalAt(corner, to));
   if (id === 'plains') {
     portals.push({ ...OFFICE.door, to: 'labor', landing: OFFICE.landing });
@@ -481,7 +572,8 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...BOARD.door, to: 'board', landing: BOARD.landing });
     portals.push({ ...EXCHANGE.door, to: 'exchange', landing: EXCHANGE.landing });
     portals.push({ ...CASINO_DOOR.door, to: 'casino', landing: CASINO_DOOR.landing });
-    portals.push({ ...DUNGEON_GATE.door, to: 'dungeon', landing: DUNGEON_GATE.landing });
+    portals.push({ ...ADVENTURE_GATE.door, to: 'adventure', landing: ADVENTURE_GATE.landing });
+    portals.push({ ...CAVE.door, to: 'dungeon', landing: CAVE.landing });
     portals.push({ ...COOP.door, to: 'farmcoop', landing: COOP.landing });
     portals.push({ ...SMITHY.door, to: 'smithy', landing: SMITHY.landing });
   }
@@ -490,7 +582,8 @@ export function portalsOf(id: MapId): Portal[] {
 
 function portalInfo({ to }: Portal) {
   if (to === 'office') return OFFICE;
-  if (to === 'dungeon') return DUNGEON_GATE;
+  if (to === 'dungeon') return CAVE;
+  if (to === 'adventure') return ADVENTURE_GATE;
   if (to === 'coop') return COOP;
   if (to === 'counter') return COUNTER_INFO;
   if (to === 'panel') return PANEL_INFO;
@@ -507,16 +600,19 @@ export function portalName(portal: Portal) {
 }
 
 export function portalColor(portal: Portal) {
-  return portalInfo(portal).accent;
+  return portal.color ?? portalInfo(portal).accent;
 }
 
 /**
- * from에서 to로 넘어갔을 때 서는 칸: 돌아오는 포탈 앞이다.
- * 엘리베이터로 오면 엘리베이터 앞이고, 작업장에서 돌아오면 노동청 앞, 던전에서 돌아오면 던전 입장 포탈 앞이다.
+ * from에서 to로 넘어갔을 때 서는 칸: 돌아오는 포탈 앞이다. 모험 맵은 늘 그 맵 입구 칸이다(맵 자료의 entry).
+ * 엘리베이터로 오면 엘리베이터 앞이고, 작업장에서 돌아오면 노동청 앞, 던전에서 돌아오면 동굴(던전 입장 포탈) 앞, 모험 필드에서 돌아오면 아래 귀퉁이 모험하기 포탈 앞이다.
  * 작업장은 노동청 안(labor)의 창에서 가도 작업장 포탈 앞에 선다(2026-11-16 노동청 안 맵을 낸 뒤 노동청 앞 좌표 (11, 7)에 서던 것을 고침).
  */
 export function arrivalFor(to: MapId, from: MapId) {
-  if (to === DEFAULT_MAP && isDungeon(from)) return DUNGEON_GATE.landing;
+  // 모험 맵: 타고 온 포탈의 도착 칸(앞 맵 포탈이면 그 맵의 돌아오는 자리), 없으면 입구.
+  if (isAdventure(to)) return (isAdventure(from) ? advArrival(from, to) : undefined) ?? advEntry(to);
+  if (to === DEFAULT_MAP && isDungeon(from)) return CAVE.landing;
+  if (to === DEFAULT_MAP && isAdventure(from)) return ADVENTURE_GATE.landing;
   const portals = portalsOf(to);
   const back =
     portals.find((p) => p.to === from) ??
@@ -525,7 +621,8 @@ export function arrivalFor(to: MapId, from: MapId) {
   return back ? back.landing : OFFICE.landing;
 }
 
-/** 쓰러진 뒤 일어나는 칸. 블록을 놓을 수 없는 칸이라 갇힐 일이 없다. */
+/** 쓰러진 뒤 일어나는 칸. 블록을 놓을 수 없는 칸이라 갇힐 일이 없다. 모험 맵은 입구 칸이다(나가는 포탈이 없음). */
 export function respawnTile(id: MapId) {
+  if (isAdventure(id)) return advEntry(id);
   return id === DEFAULT_MAP ? CASTLE.landing : portalsOf(id)[0].landing;
 }

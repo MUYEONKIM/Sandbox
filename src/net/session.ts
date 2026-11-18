@@ -144,6 +144,8 @@ export interface PlayerMove {
   skin: number | null;
   /** 일하고 있는 자원 칸. 일하지 않으면 null이다. 같은 맵 사람들이 작업 동작을 그리는 데 쓴다. */
   work: { x: number; y: number } | null;
+  /** 모험 판 레벨(모험 맵에서 판이 있을 때만, 큰 수라 글자). 모험 맵 이름표에 쓴다. */
+  run: string | null;
 }
 
 /** 다른 플레이어의 공격. 화면에 보여 주기만 하고 피해 판정은 공격한 쪽이 한다. */
@@ -253,6 +255,8 @@ export interface SessionEvents {
   currentWork(): { x: number; y: number } | null;
   /** 내 현재 레벨 */
   currentLevel(): bigint;
+  /** 모험 맵에서 판이 있으면 판 레벨(글자), 아니면 null */
+  currentRun(): string | null;
   onMove(move: PlayerMove): void;
   onShot(shot: PlayerShot): void;
   /** 서버가 알려 주는 체력 변화. max는 그 사람의 최대 체력이고, 옛 서버 함수는 보내지 않아 null이다. */
@@ -267,6 +271,8 @@ export interface SessionEvents {
   onPresence(move: PlayerMove): void;
   /** 같은 맵의 다른 사람이 자원을 하나 얻었다. rare면 희귀 자원이다. */
   onHarvest(id: string, rare: boolean): void;
+  /** 같은 모험 필드의 다른 사람이 전투를 시작하거나(on) 끝냈다. 머리 위 칼 표시에 쓴다(2026-11-17). 끝날 때는 바뀐 판 레벨도 온다. */
+  onFight(id: string, on: boolean, run: string | null): void;
   /** 서버가 알려 주는 레벨과 경험치 변화 */
   onLevel(id: string, level: bigint, exp: number): void;
   /** 지금 같은 맵에 접속 중인 플레이어 id 목록 */
@@ -373,7 +379,13 @@ function parseMove(value: unknown): PlayerMove | null {
     motion: m.motion === 'run' || m.motion === 'jump' ? m.motion : 'walk',
     skin: isSkin(m.skin) ? m.skin : null,
     work: work && isTileCoord(work.x) && isTileCoord(work.y) ? { x: work.x, y: work.y } : null,
+    run: parseRun(m.run),
   };
+}
+
+/** 판 레벨 글자(숫자만, 너무 길지 않게). 아니면 null */
+function parseRun(value: unknown): string | null {
+  return typeof value === 'string' && /^[1-9][0-9]{0,40}$/.test(value) ? value : null;
 }
 
 function parseShot(value: unknown): PlayerShot | null {
@@ -546,6 +558,9 @@ export class GameSession {
       .on('broadcast', { event: 'harvest' }, ({ payload }) => {
         if (current() && typeof payload?.id === 'string' && payload.id !== this.profile.id) events.onHarvest(payload.id, payload.rare === true);
       })
+      .on('broadcast', { event: 'fight' }, ({ payload }) => {
+        if (current() && typeof payload?.id === 'string' && payload.id !== this.profile.id) events.onFight(payload.id, payload.on === true, parseRun(payload.run));
+      })
       .on('broadcast', { event: 'mstate' }, ({ payload }) => this.monsterIn(current, 'mstate', payload))
       .on('broadcast', { event: 'mhit' }, ({ payload }) => this.monsterIn(current, 'mhit', payload))
       .on('broadcast', { event: 'mdead' }, ({ payload }) => this.monsterIn(current, 'mdead', payload))
@@ -695,6 +710,7 @@ export class GameSession {
       motion,
       skin,
       work: this.events.currentWork(),
+      run: this.events.currentRun(),
     };
   }
 
@@ -725,6 +741,12 @@ export class GameSession {
   sendHarvest(rare: boolean) {
     if (!this.joined || !this.channel) return;
     void this.channel.send({ type: 'broadcast', event: 'harvest', payload: { id: this.profile.id, rare } });
+  }
+
+  /** 모험 전투를 시작했다(on)거나 끝냈다고 같은 맵 사람들에게 알린다. 머리 위 칼 표시와, 끝날 때 바뀐 판 레벨(이름표)에 쓴다. */
+  sendFight(on: boolean) {
+    if (!this.joined || !this.channel) return;
+    void this.channel.send({ type: 'broadcast', event: 'fight', payload: { id: this.profile.id, on, run: this.events.currentRun() } });
   }
 
   private monsterIn(current: () => boolean, event: (typeof MONSTER_EVENTS)[number], payload: Record<string, unknown> | undefined) {
@@ -1049,6 +1071,18 @@ export class GameSession {
     if (d.amount !== undefined && d.amount !== null) return { ok: true, kind: 'gold', amount: Number(d.amount), gold: toGold(d.gold) };
     const memo = parseMemo(d.memo);
     return memo ? { ok: true, kind: 'memo', memo } : { ok: false, reason: 'failed' };
+  }
+
+  /**
+   * 땅의 메모 item의 쓴 사람과 글을 읽는다(줍지 않음, SQL read_memo). 서버는 내 칸이 그 메모 칸일 때만 돌려주므로
+   * 미뤄 둔 내 위치를 먼저 저장한다. 다른 칸이거나 없어졌으면 null
+   */
+  async readMemo(item: number): Promise<{ author: string; body: string } | null> {
+    await this.flush();
+    const { data, error } = await supabase.rpc('read_memo', { item });
+    const d = data as { author?: unknown; body?: unknown } | null;
+    if (error || !d || typeof d.body !== 'string') return null;
+    return { author: typeof d.author === 'string' ? d.author : '', body: d.body };
   }
 
   /** 내가 들고 있는 메모, 새것부터 */

@@ -56,6 +56,8 @@ const NAMES = [
   'potions/large',
   // 농장 작물(art-source/farm/make-crops.cjs)
   'farm/crops',
+  // 시작마을 동굴 입구(디자인 세션 art-source/adventure, 2026-11-17). 기존 던전 입구다. -x는 문이 오른쪽 면이다.
+  'cave-x',
   // 대장간 건물과 안 소품(디자인 세션, 2026-11-15). 이름에 -x가 붙은 소품은 앞면이 오른쪽 면이다.
   'smithy',
   'smithy-forge',

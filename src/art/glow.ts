@@ -35,6 +35,8 @@ export const GLOW_LOOKS = {
   // 맵에 고정된 소품(작업장·농장 등 기둥, 벌목장 모닥불)
   lantern: { color: 0xffc070, pool: 72, halo: 24, head: 37, flicker: 0.08, fire: false },
   campfire: { color: 0xff8a3a, pool: 84, halo: 28, head: 16, flicker: 0.2, fire: true },
+  // 시작마을 동굴 횃불(2026-11-17): 색과 크기는 등 기둥과 같고, 빛무리를 불꽃 가운데(땅에서 21px)에 두고 불처럼 깜빡인다(에이전트가 정함).
+  torch: { color: 0xffc070, pool: 72, halo: 24, head: 21, flicker: 0.15, fire: true },
 } satisfies Record<string, GlowLook>;
 export type GlowLookId = keyof typeof GLOW_LOOKS;
 
@@ -59,10 +61,22 @@ export const LIGHT_BLOCKS: Readonly<Record<string, GlowLookId>> = {
   street_lamp: 'lantern',
 };
 
-/** 맵 소품 그림 → 빛 모양과 칸 안 빛 자리(gx, gy 비율). 높이는 모양의 head다. */
-export const FIXED_LIGHTS: Readonly<Record<string, { look: GlowLookId; gx: number; gy: number }>> = {
-  'work-lantern': { look: 'lantern', gx: 0.78, gy: 0.51 },
-  'work-campfire': { look: 'campfire', gx: 0.5, gy: 0.5 },
+export interface FixedLight {
+  look: GlowLookId;
+  /** 그림이 덮는 땅 안의 빛 자리(칸 좌표, 그림 왼쪽 위 칸에서) */
+  gx: number;
+  gy: number;
+}
+
+/** 맵 소품·건물 그림 → 빛 자리들. 높이는 모양의 head다. 그림 하나에 빛이 여럿일 수 있다(동굴 횃불 둘). */
+export const FIXED_LIGHTS: Readonly<Record<string, readonly FixedLight[]>> = {
+  'work-lantern': [{ look: 'lantern', gx: 0.78, gy: 0.51 }],
+  'work-campfire': [{ look: 'campfire', gx: 0.5, gy: 0.5 }],
+  // 시작마을 동굴 입구의 횃불 둘(2026-11-17 사용자 "빛나게 하기", 자리는 디자인 세션 adventure-cave.md 5장)
+  'cave-x': [
+    { look: 'torch', gx: 3.28, gy: 0.64 },
+    { look: 'torch', gx: 3.28, gy: 2.36 },
+  ],
 };
 
 export const GLOW_TEXTURE = 'glow-atlas';

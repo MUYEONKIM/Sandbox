@@ -1,3 +1,4 @@
+import { popLevel } from './levelUpAnim';
 import { element } from './dom';
 
 const BUBBLE_MS = 4000;
@@ -58,6 +59,21 @@ export class NameTags {
     wanted.hidden = karma === 0;
   }
 
+  /**
+   * 포탈 이름표를 두 줄로 쓴다(모험 입구 맵 지역 포탈, 2026-11-18 디자인 세션 시안). 이길 확률 색은 없앴다(2026-11-18 사용자).
+   * 글이 그대로면 DOM을 고치지 않는다.
+   */
+  setLines(id: string, first: string, second: string) {
+    const label = this.tags.get(id)?.label;
+    if (!label) return;
+    const key = `${first}|${second}`;
+    if (label.dataset.lines === key) return;
+    label.dataset.lines = key;
+    label.replaceChildren();
+    element('', label, 'span').textContent = first;
+    element('portal-line2', label, 'span').textContent = second;
+  }
+
   /** 플레이어 이름표의 닉네임을 바꾼다(닉네임 변경권, 2026-11-13). 같으면 그대로 둔다. */
   setName(id: string, nickname: string) {
     const name = this.tags.get(id)?.name;
@@ -65,14 +81,57 @@ export class NameTags {
     if (text && text.textContent !== nickname) text.textContent = nickname;
   }
 
+  /** 모험 전투 중인 사람의 이름표 위에 작은 도트 칼을 띄운다(2026-11-17, 시안 6×5 2배). 처음 켤 때 한 번 그린다. */
+  setFighting(id: string, on: boolean) {
+    const tag = this.tags.get(id);
+    if (!tag?.name) return;
+    let sword = tag.root.querySelector<HTMLCanvasElement>('.player-fight');
+    if (!sword && on) {
+      // 6×5 칼에 검은 테두리 1칸을 둘러 8×7로 그린다(풀밭 위에서도 보이게).
+      sword = document.createElement('canvas');
+      sword.className = 'player-fight';
+      sword.width = 8;
+      sword.height = 7;
+      const g = sword.getContext('2d')!;
+      const pixels: [number, number, string][] = [
+        [5, 0, '#e8eef4'],
+        [4, 1, '#e8eef4'],
+        [3, 2, '#e8eef4'],
+        [2, 3, '#f2cf6a'],
+        [1, 2, '#f2cf6a'],
+        [3, 4, '#f2cf6a'],
+        [1, 4, '#8a5a3c'],
+        [0, 4, '#5a3a24'],
+      ];
+      g.fillStyle = '#1b120d';
+      for (const [x, y] of pixels) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!dx !== !dy) g.fillRect(x + 1 + dx, y + 1 + dy, 1, 1);
+      for (const [x, y, c] of pixels) {
+        g.fillStyle = c;
+        g.fillRect(x + 1, y + 1, 1, 1);
+      }
+      tag.root.prepend(sword);
+    }
+    if (sword) sword.hidden = !on;
+  }
+
   /** 이름 줄 내용을 바꾼다. 거래소 시세판이 가격이 바뀔 때 쓴다. */
   setLabel(id: string, ...nodes: (Node | string)[]) {
     this.tags.get(id)?.label.replaceChildren(...nodes);
   }
 
-  setLevel(id: string, text: string) {
+  /** 이름표 레벨 글. run이면 모험 판 레벨(연보라 .adv-run, 2026-11-18). 글이 비면 레벨 칸을 숨긴다. */
+  setLevel(id: string, text: string, run = false) {
     const label = this.tags.get(id)?.level;
-    if (label) label.textContent = text;
+    if (!label) return;
+    if (label.textContent !== text) label.textContent = text;
+    label.classList.toggle('adv-run', run);
+    label.hidden = text === '';
+  }
+
+  /** 레벨 업 때 레벨 글을 튀어 오르게 한다(정보 칸 숫자와 같은 CSS .lv-pop, levelUpAnim.ts). */
+  popLevel(id: string) {
+    const label = this.tags.get(id)?.level;
+    if (label) popLevel(label);
   }
 
   setHp(id: string, hp: number, max: number) {
@@ -117,6 +176,13 @@ export class NameTags {
   }
 
   /** 전쟁터에서 빛 밖에 있는 사람의 이름표를 숨긴다. */
+  /** 전쟁터 손전등 빛 밖의 사람: 이름표를 흐리게 한다(2026-11-18, 에이전트가 정함). 바뀔 때만 DOM을 고친다. */
+  setDim(id: string, dim: boolean) {
+    const root = this.tags.get(id)?.root;
+    if (!root || root.classList.contains('dim') === dim) return;
+    root.classList.toggle('dim', dim);
+  }
+
   setHidden(id: string, hidden: boolean) {
     const tag = this.tags.get(id);
     if (tag) tag.root.style.visibility = hidden ? 'hidden' : '';

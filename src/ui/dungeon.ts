@@ -1,6 +1,7 @@
 import type { DungeonInfo, MonsterKind } from '../game/dungeon';
 import type { DungeonId } from '../game/maps';
 import { element } from './dom';
+import { byInput } from './touch';
 import { goldText, type Gold } from '../game/gold';
 
 interface DungeonActions {
@@ -48,7 +49,7 @@ export class DungeonWindow {
 
     const close = element('office-close', this.root, 'button') as HTMLButtonElement;
     close.type = 'button';
-    close.textContent = '나가기 (Esc)';
+    close.textContent = byInput('나가기 (Esc)', '나가기');
     close.addEventListener('click', () => this.close());
   }
 

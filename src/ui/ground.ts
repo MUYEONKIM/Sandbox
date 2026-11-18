@@ -3,6 +3,8 @@ import type { DropFail, HeldMemo } from '../net/session';
 import { element } from './dom';
 import { FarmPanel } from './farmPanel';
 import { Modal } from './modal';
+import { byInput, TOUCH } from './touch';
+import './tips.css';
 import { goldText, type Gold } from '../game/gold';
 
 /** 한 번에 버릴 수 있는 골드. 서버 drop_gold의 amount(integer)와 땅의 골드 칸이 integer라 약 21억이다(2026-11-15 에이전트가 정함). */
@@ -32,6 +34,11 @@ export class GroundUi {
   private readonly hintText: HTMLElement;
   private hintShown: string | null = null;
   private readonly tip: HTMLElement;
+  /** 땅의 메모 위에 서면 캐릭터 위에 뜨는 쓴 사람과 글(2026-11-18 사용자 요청). 지난번 넣은 메모 */
+  private readonly peek: HTMLElement;
+  private readonly peekAuthor: HTMLElement;
+  private readonly peekBody: HTMLElement;
+  private peekShown: { author: string; body: string } | null = null;
   /** 들고 있는 메모를 지금 선 자리에 놓는다. 실패하면 까닭 문구. GameScene이 정한다. */
   placeHeld: ((memo: HeldMemo) => Promise<string | null>) | null = null;
   /** 안내를 누르면 줍는다(휴대폰에는 F 키가 없다). GameScene이 정한다. */
@@ -49,6 +56,20 @@ export class GroundUi {
     this.tip = element('ground-tip', root);
     this.tip.hidden = true;
     this.farm = new FarmPanel(root);
+    this.peek = element('memo-peek', root);
+    this.peekAuthor = element('memo-peek-author', this.peek);
+    this.peekBody = element('memo-peek-body', this.peek);
+    this.peek.hidden = true;
+  }
+
+  /** 땅의 메모 위에 서 있으면 쓴 사람과 글을 띄우고(memo), 벗어나면 숨긴다(null). 지난번과 같은 메모면 아무것도 하지 않는다. */
+  setPeek(memo: { author: string; body: string } | null) {
+    if (memo === this.peekShown) return;
+    this.peekShown = memo;
+    this.peek.hidden = memo === null;
+    if (!memo) return;
+    this.peekAuthor.textContent = memo.author;
+    this.peekBody.textContent = memo.body;
   }
 
   get held(): readonly HeldMemo[] {
@@ -173,7 +194,7 @@ export class GroundUi {
     if (what === this.hintShown) return;
     this.hintShown = what;
     this.hint.hidden = what === null;
-    if (what !== null) this.hintText.textContent = `키로 줍기 · ${what}`;
+    if (what !== null) this.hintText.textContent = TOUCH ? `줍기 · ${what}` : `키로 줍기 · ${what}`;
   }
 
   /** 골드에 마우스를 올리면 커서 옆에 액수를 띄운다. (x, y)는 화면 좌표다. */
@@ -189,7 +210,7 @@ export class GroundUi {
   renderBag(pane: HTMLElement) {
     pane.replaceChildren();
     if (!this.memos.length) {
-      element('memo-empty', pane).textContent = '주운 메모가 없습니다. 땅에서 반짝이는 쪽지를 찾아 F로 주워 보세요.';
+      element('memo-empty', pane).textContent = byInput('주운 메모가 없습니다. 땅에서 반짝이는 쪽지를 찾아 F로 주워 보세요.', '주운 메모가 없습니다. 땅에서 반짝이는 쪽지를 찾아 주워 보세요.');
       return;
     }
     for (const memo of this.memos) {

@@ -1,0 +1,309 @@
+{
+ "credit": "Infernus by PVGames (Pioneer Valley Games)",
+ "note": "원본의 반 크기. 서 있는 조각은 infernus.png, 바닥 조각은 infernus-floor.png. ax, ay는 칸 가운데에 맞출 점, fp는 막는 칸(n×n, 앞 칸이 기준), 0이면 막지 않음.",
+ "props": {
+  "cliff_a": {
+   "x": 182,
+   "y": 0,
+   "w": 143,
+   "h": 176,
+   "ax": 62,
+   "ay": 158,
+   "fp": 3,
+   "source": "Infernus_Hellscape_Cliff1_1",
+   "use": "벼랑길·그늘 동굴·지옥 가장자리"
+  },
+  "cliff_b": {
+   "x": 326,
+   "y": 0,
+   "w": 165,
+   "h": 166,
+   "ax": 69,
+   "ay": 145,
+   "fp": 3,
+   "source": "Infernus_Hellscape_Cliff1_5",
+   "use": "벼랑길·그늘 동굴"
+  },
+  "crag_a": {
+   "x": 0,
+   "y": 198,
+   "w": 79,
+   "h": 93,
+   "ax": 32,
+   "ay": 76,
+   "fp": 2,
+   "source": "Infernus_Hellscape_Cliff2_1",
+   "use": "벼랑길·지옥·그늘 동굴"
+  },
+  "crag_b": {
+   "x": 330,
+   "y": 198,
+   "w": 80,
+   "h": 76,
+   "ax": 33,
+   "ay": 60,
+   "fp": 2,
+   "source": "Infernus_Hellscape_Cliff3_3",
+   "use": "벼랑길·지옥·그늘 동굴"
+  },
+  "spire": {
+   "x": 492,
+   "y": 0,
+   "w": 119,
+   "h": 159,
+   "ax": 51,
+   "ay": 143,
+   "fp": 2,
+   "source": "Infernus_Hellscape_StoneSpire_1",
+   "use": "벼랑길·지옥"
+  },
+  "pile_b": {
+   "x": 605,
+   "y": 198,
+   "w": 53,
+   "h": 60,
+   "ax": 27,
+   "ay": 50,
+   "fp": 1,
+   "source": "Infernus_Hellscape_Pile2_1",
+   "use": "벼랑길·지옥·그늘 동굴"
+  },
+  "rocks_a": {
+   "x": 721,
+   "y": 198,
+   "w": 34,
+   "h": 44,
+   "ax": 16,
+   "ay": 33,
+   "fp": 1,
+   "source": "Infernus_Hellscape_Rocks_1",
+   "use": "평원·얽힌 숲·구름 정원"
+  },
+  "rocks_b": {
+   "x": 793,
+   "y": 198,
+   "w": 34,
+   "h": 28,
+   "ax": 17,
+   "ay": 18,
+   "fp": 1,
+   "source": "Infernus_Hellscape_Rocks_3",
+   "use": "평원·얽힌 숲·벼랑길"
+  },
+  "head_horn": {
+   "x": 710,
+   "y": 0,
+   "w": 103,
+   "h": 114,
+   "ax": 37,
+   "ay": 101,
+   "fp": 2,
+   "source": "Infernus_Hellscape_BrokenHead_5",
+   "use": "지옥"
+  },
+  "head_stone": {
+   "x": 911,
+   "y": 0,
+   "w": 76,
+   "h": 95,
+   "ax": 28,
+   "ay": 82,
+   "fp": 2,
+   "source": "Infernus_Hellscape_BrokenHead2_1",
+   "use": "평원·얽힌 숲(옛 석상)"
+  },
+  "hand_gold": {
+   "x": 814,
+   "y": 0,
+   "w": 96,
+   "h": 104,
+   "ax": 41,
+   "ay": 94,
+   "fp": 2,
+   "source": "Infernus_Hellscape_BrokenHand1_3",
+   "use": "지옥"
+  },
+  "hand_stone": {
+   "x": 80,
+   "y": 198,
+   "w": 55,
+   "h": 86,
+   "ax": 24,
+   "ay": 72,
+   "fp": 1,
+   "source": "Infernus_Hellscape_BrokenHand2_3",
+   "use": "얽힌 숲·평원(옛 석상)"
+  },
+  "giant": {
+   "x": 0,
+   "y": 0,
+   "w": 181,
+   "h": 197,
+   "ax": 82,
+   "ay": 181,
+   "fp": 3,
+   "source": "Infernus_Hellscape_BrokenGiant_8",
+   "use": "지옥(큰 표지)"
+  },
+  "isle_a": {
+   "x": 232,
+   "y": 198,
+   "w": 97,
+   "h": 79,
+   "ax": 29,
+   "ay": 66,
+   "fp": 0,
+   "source": "Infernus_FloatingIsle_1",
+   "use": "구름 정원·별 하늘(허공에 뜸)"
+  },
+  "isle_b": {
+   "x": 136,
+   "y": 198,
+   "w": 95,
+   "h": 80,
+   "ax": 30,
+   "ay": 67,
+   "fp": 0,
+   "source": "Infernus_FloatingIsle_3",
+   "use": "구름 정원·별 하늘(허공에 뜸)"
+  },
+  "tomb": {
+   "x": 756,
+   "y": 198,
+   "w": 36,
+   "h": 36,
+   "ax": 13,
+   "ay": 25,
+   "fp": 1,
+   "source": "Infernus_Grave1_3",
+   "use": "지옥·그늘 동굴"
+  },
+  "gore": {
+   "x": 532,
+   "y": 198,
+   "w": 72,
+   "h": 69,
+   "ax": 37,
+   "ay": 49,
+   "fp": 2,
+   "source": "Infernus_GorePile_2",
+   "use": "지옥만(조금)"
+  },
+  "corpse": {
+   "x": 828,
+   "y": 198,
+   "w": 61,
+   "h": 20,
+   "ax": 30,
+   "ay": 10,
+   "fp": 1,
+   "source": "Infernus_Corpse1_6",
+   "use": "지옥만(조금)"
+  },
+  "throne": {
+   "x": 612,
+   "y": 0,
+   "w": 97,
+   "h": 124,
+   "ax": 39,
+   "ay": 114,
+   "fp": 2,
+   "source": "Infernus_Throne_1",
+   "use": "지옥·그늘 동굴 보스방"
+  },
+  "altar": {
+   "x": 411,
+   "y": 198,
+   "w": 75,
+   "h": 74,
+   "ax": 37,
+   "ay": 62,
+   "fp": 2,
+   "source": "Infernus_Altar_1",
+   "use": "중간 보스 방(평원 금화 방, 얽힌 숲 빈터)"
+  },
+  "burner": {
+   "x": 487,
+   "y": 198,
+   "w": 44,
+   "h": 70,
+   "ax": 12,
+   "ay": 60,
+   "fp": 1,
+   "source": "Infernus_BurnerColumn_2",
+   "use": "지옥·그늘 동굴 불기둥"
+  },
+  "candelabra": {
+   "x": 693,
+   "y": 198,
+   "w": 27,
+   "h": 45,
+   "ax": 5,
+   "ay": 35,
+   "fp": 1,
+   "source": "Infernus_Candelabra_1",
+   "use": "입구 맵·보스방"
+  },
+  "column": {
+   "x": 659,
+   "y": 198,
+   "w": 33,
+   "h": 46,
+   "ax": 10,
+   "ay": 35,
+   "fp": 1,
+   "source": "Infernus_Column",
+   "use": "입구 맵·일곱 빛 들판 기둥"
+  }
+ },
+ "floors": {
+  "bones": {
+   "x": 263,
+   "y": 342,
+   "w": 45,
+   "h": 36,
+   "source": "Infernus_Bones1_1",
+   "use": "지옥·그늘 동굴"
+  },
+  "skulls": {
+   "x": 309,
+   "y": 342,
+   "w": 9,
+   "h": 12,
+   "source": "Infernus_Skull2_1",
+   "use": "지옥·그늘 동굴"
+  },
+  "sigil": {
+   "x": 138,
+   "y": 342,
+   "w": 63,
+   "h": 61,
+   "source": "Infernus_FloorDecal",
+   "use": "얽힌 숲 되돌림 칸, 입구 맵 가운데"
+  },
+  "pentagram": {
+   "x": 202,
+   "y": 342,
+   "w": 60,
+   "h": 58,
+   "source": "Infernus_PentagramFloor",
+   "use": "지옥 보스방"
+  },
+  "rubble": {
+   "x": 0,
+   "y": 342,
+   "w": 137,
+   "h": 90,
+   "source": "Infernus_Hellscape_Rubble2_3",
+   "use": "벼랑길·지옥"
+  },
+  "dragon": {
+   "x": 0,
+   "y": 0,
+   "w": 397,
+   "h": 341,
+   "source": "Infernus_DragonBones1_4",
+   "use": "그늘 동굴 보스방"
+  }
+ }
+}

@@ -147,22 +147,6 @@ canvas {
   overflow-wrap: anywhere;
 }
 
-.status-level.gained {
-  animation: level-gained 0.35s ease-out;
-}
-
-@keyframes level-gained {
-  from {
-    color: #fff;
-    transform: scale(1.12);
-  }
-
-  to {
-    color: var(--gold);
-    transform: scale(1);
-  }
-}
-
 .exp {
   position: relative;
   width: 100%;
@@ -171,10 +155,14 @@ canvas {
   border: 2px solid var(--panel-edge);
 }
 
+/* 막대 몫은 width 대신 transform: scaleX(0~1)로 둔다(다시 배치 없음). 경험치만 늘면 0.15s로 늘어난다. */
 .exp-fill {
+  width: 100%;
   height: 100%;
   background: #3f8fd6;
-  transition: width 0.15s;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.15s ease-out;
 }
 
 .exp-text {
@@ -189,6 +177,46 @@ canvas {
     0 1px #000,
     -1px 0 #000,
     0 -1px #000;
+  transition: opacity 0.12s;
+}
+
+/* 레벨 업 막대 애니메이션(2026-11-18 사용자 "경험치칸 다 차고 레벨 1오르고 하는 애니메이션", 디자인 adventure-ui.md 15절, levelUpAnim.ts).
+   도는 동안 막대는 rAF가 transform을 고치고(transition 없음), EXP 글은 숨겼다가 끝에 0.12s 동안 다시 보인다.
+   끝에 닿으면 흰 번쩍임(.lv-flash, opacity 1 → 0, 130ms)과 숫자 튀어 오름(260ms, levelUpAnim.ts popLevel이 Web Animations로 건다). */
+.exp.lv-anim .exp-fill {
+  transition: none;
+  will-change: transform;
+}
+
+.exp.lv-anim .exp-text {
+  opacity: 0;
+  transition: none;
+}
+
+.exp .lv-flash {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lv-num,
+.player-level {
+  display: inline-block;
+}
+
+/* 숫자 오르기(2026-11-18 사용자 "애니메이션으로 올라가는 숫자가 보인다", 디자인 adventure-ui.md 16절, countUp.ts).
+   숫자 칸은 tabular-nums(오르는 동안 폭이 흔들리지 않게). 튀어 오름(1.08배 + 금빛 테 빛, 180ms)은 countUp.ts가 Web Animations로 건다. */
+.adv-chip,
+.account-gold,
+.adv-end-take,
+.exp-text {
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-end-take {
+  width: fit-content;
 }
 
 .picked {
@@ -1244,6 +1272,11 @@ canvas {
 
 .chat-input::placeholder {
   color: var(--text-dim);
+}
+
+/* 전쟁터 손전등 빛 밖의 사람 이름표(2026-11-18, 에이전트가 정함): 캐릭터처럼 어둡게 */
+.player-tag.dim {
+  opacity: 0.45;
 }
 
 .player-tag {
@@ -3627,4 +3660,2012 @@ canvas {
     padding: 6px 2px;
     font-size: 13px;
   }
+}
+
+/* ───────── 모험(2026-11-17): 디자인 세션 시안 art-source/adventure/ui/adventure.css를 옮김(공유 노트 adventure-ui.md) ─────────
+   게임 style.css(크림색 판 스킨) 위에 더한다.
+   색: 판 금화는 마을 골드(진한 갈색 글자)와 다른 청록, BP는 주황, 칸 색은 초록·노랑·빨강.
+   창(크림 바탕) 안은 진한 색, 필드 HUD(어두운 반투명 바탕)는 밝은 색을 쓴다. 버튼은 게임의 #hud button 스킨을 그대로 쓴다. */
+:root {
+  --adv-coin: #13766a;
+  --adv-bp: #d0602a;
+  --adv-easy: #2e8a2a;
+  --adv-even: #9a6c00;
+  --adv-hard: #c0392b;
+  --adv-hero: #5fc85a;
+  --adv-foe: #e8503c;
+  --adv-input: #f6ecc8;
+}
+
+.adv-hud-row,
+.adv-hud .adv-badge {
+  --adv-coin: #7fe8d8;
+  --adv-bp: #ff9a5a;
+  --adv-easy: #7fe07a;
+  --adv-even: #ffd85a;
+  --adv-hard: #ff6b5a;
+  --gold: #f2cf6a;
+  --text: #f7ecd6;
+  --text-dim: #d8c6a8;
+  --panel-edge: #1f1510;
+  --slot-sunken: #2c1e16;
+  color: var(--text);
+}
+
+/* 주 버튼(들어가기, 나누기, 사기): 밝은 버튼 스킨 */
+#hud .adv-go,
+#hud .adv-btn.gold {
+  border-image-source: url('./ui/skin/button-light.png');
+}
+
+/* ───────── 공통: BP 점, 판 금화, 작은 칩 ───────── */
+.adv-bp {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.adv-bp-dot {
+  width: 9px;
+  height: 9px;
+  background: var(--adv-bp);
+  border: 1px solid var(--panel-edge);
+  box-shadow: inset -1px -1px 0 rgb(0 0 0 / 30%);
+}
+
+.adv-bp-dot.spent {
+  background: var(--slot-sunken);
+  box-shadow: none;
+}
+
+.adv-bp-text {
+  margin-left: 4px;
+  color: var(--adv-bp);
+  font-weight: 700;
+}
+
+.adv-coin {
+  color: var(--adv-coin);
+  font-weight: 700;
+}
+
+.adv-gold {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.adv-chip {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--panel-edge);
+  background: var(--slot-sunken);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.adv-easy { color: var(--adv-easy); }
+.adv-even { color: var(--adv-even); }
+.adv-hard { color: var(--adv-hard); }
+
+/* ───────── 전투 화면 ───────── */
+.adv-battle {
+  width: min(640px, calc(100% - 24px));
+  padding: 10px 12px 12px;
+}
+
+.adv-battle.boss {
+  box-shadow: inset 0 0 0 2px #8a3a2a, 0 0 0 2px #f2cf6a;
+}
+
+.adv-battle-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.adv-battle-place {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adv-battle.boss .adv-battle-place {
+  color: var(--gold);
+}
+
+.adv-fighters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.adv-fighter-name {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.adv-fighter-name b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adv-fighter-level {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.adv-fighter.foe .adv-fighter-name {
+  flex-direction: row-reverse;
+}
+
+.adv-hp {
+  position: relative;
+  height: 12px;
+  margin-top: 3px;
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+}
+
+.adv-hp-lag,
+.adv-hp-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+}
+
+.adv-hp-lag {
+  background: #fff3c4;
+  transition: width 0.35s ease-out 0.15s;
+}
+
+.adv-hp-fill {
+  background: var(--adv-hero);
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 22%), inset 0 2px 0 rgb(255 255 255 / 25%);
+}
+
+.adv-fighter.foe .adv-hp-lag,
+.adv-fighter.foe .adv-hp-fill {
+  inset: 0 0 0 auto;
+}
+
+.adv-fighter.foe .adv-hp-fill {
+  background: var(--adv-foe);
+}
+
+.adv-hp-text {
+  margin-top: 1px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.adv-fighter.foe .adv-hp-text {
+  text-align: right;
+}
+
+.adv-stage {
+  position: relative;
+  border: 2px solid var(--panel-edge);
+  cursor: pointer;
+}
+
+.adv-stage canvas {
+  width: 100%;
+  aspect-ratio: 240 / 135;
+}
+
+.adv-floats {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 머리 위 숫자: 필드의 float-text와 같은 글꼴·외곽선. 자리는 % (무대 기준) */
+.adv-float {
+  position: absolute;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 2px 0 #000, 0 2px #000, -2px 0 #000, 0 -2px #000, 1px 1px #000, -1px -1px #000;
+  white-space: nowrap;
+  transform: translate(-50%, 0);
+  animation: adv-float 0.75s ease-out forwards;
+}
+
+.adv-float.to-foe { color: #ffffff; }
+.adv-float.to-hero { color: #ff8a7a; }
+.adv-float.crit { color: #ffe14d; font-size: 24px; }
+.adv-float.heal { color: #8ff0a0; font-size: 15px; }
+.adv-float.note { color: #fff3c4; font-size: 14px; }
+
+.adv-float .combo {
+  margin-left: 2px;
+  font-size: 13px;
+  color: #ffd27a;
+}
+
+@keyframes adv-float {
+  0% { opacity: 1; transform: translate(-50%, 6px) scale(1.25); }
+  20% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -26px) scale(1); }
+}
+
+.adv-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-height: 52px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+  font-size: 14px;
+}
+
+.adv-result[hidden] {
+  display: none;
+}
+
+/* ───────── 2026-11-18 전투 기록 줄(디자인 세션 adventure-battle-fx.md 2장) ─────────
+   무대 바로 아래 세 줄 상자. 높이는 늘 세 줄로 잡아 두어 줄이 생겨도 창이 들썩이지 않는다.
+   새 줄은 아래에 붙고(100ms 동안 4px 올라오며 나타남), 위 줄일수록 흐리다. 넘치면 맨 위 줄을 바로 지운다.
+   창은 크림색이지만 기록 상자는 무대처럼 어두운 갈색이다: 머리 위 숫자와 같은 밝은 색을 그대로 쓰려고. */
+.adv-log {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: calc(3 * 18px + 8px);
+  margin: 6px 0 0;
+  padding: 3px 8px;
+  overflow: hidden;
+  background: #241812;
+  border: 2px solid var(--panel-edge);
+  font-size: 13px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.adv-log-line {
+  margin: 0;
+  overflow: hidden;
+  color: #f7ecd6;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  animation: adv-log-in 0.1s ease-out;
+}
+
+/* 아래(새 줄)부터 1, 0.72, 0.45 */
+.adv-log-line:nth-last-child(2) { opacity: 0.72; }
+.adv-log-line:nth-last-child(3) { opacity: 0.45; }
+
+.adv-log-line b { color: #ffffff; font-weight: 700; }
+.adv-log-line .combo { color: #ffd27a; }
+.adv-log-line .heal { color: #8ff0a0; }
+.adv-log-line.crit,
+.adv-log-line.crit b { color: #ffe14d; }
+.adv-log-line.crit .tag { font-weight: 700; }
+.adv-log-line.take,
+.adv-log-line.take b { color: #ff8a7a; }
+.adv-log-line.note { color: #fff3c4; }
+.adv-log-line.win { color: #f2cf6a; font-weight: 700; }
+.adv-log-line.lose { color: #ff6b5a; font-weight: 700; }
+
+@keyframes adv-log-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+@media (max-width: 520px) {
+  .adv-log {
+    height: calc(3 * 17px + 8px);
+    padding: 3px 6px;
+    font-size: 12px;
+    line-height: 17px;
+  }
+}
+
+.adv-result-word {
+  margin-right: 4px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.adv-result.win .adv-result-word { color: var(--gold); }
+.adv-result.lose .adv-result-word { color: var(--adv-foe); }
+
+.adv-result-next {
+  flex-basis: 100%;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+
+.adv-new {
+  margin-left: 3px;
+  padding: 0 3px;
+  color: #fff;
+  background: #c0392b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* ───────── 판 결과 화면 ───────── */
+.adv-end-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: rgb(12 6 8 / 78%);
+  pointer-events: auto;
+}
+
+.adv-end {
+  width: min(460px, calc(100% - 32px));
+  text-align: center;
+  box-shadow: inset 0 0 0 2px #6d4f39, 0 0 0 2px #5a1c18;
+}
+
+.adv-end canvas {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  margin: 0 auto 4px;
+  aspect-ratio: 160 / 60;
+}
+
+.adv-end-title {
+  color: #a8281a;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.adv-end-sub {
+  margin-bottom: 10px;
+  color: var(--text-dim);
+}
+
+.adv-end-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  padding: 8px 12px;
+  text-align: left;
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+}
+
+.adv-end-key {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.adv-end-take {
+  display: block;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.adv-end-from {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.adv-weapons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.adv-weapon {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.adv-weapon canvas,
+.adv-weapon img {
+  display: block;
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+.adv-weapon-star {
+  position: absolute;
+  left: 1px;
+  bottom: 0;
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 1px 1px #000;
+}
+
+.adv-weapon-plus {
+  position: absolute;
+  right: 1px;
+  top: 0;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 1px 1px #000;
+}
+
+.adv-weapon.new {
+  border-color: var(--gold);
+}
+
+.adv-weapon.unknown canvas {
+  filter: brightness(0) opacity(0.45);
+}
+
+.adv-weapon.chosen {
+  border-color: #7fe8d8;
+  box-shadow: 0 0 0 1px #7fe8d8;
+}
+
+/* ───────── 모험 창 ───────── */
+.adv-window {
+  width: min(620px, calc(100% - 24px));
+}
+
+.adv-status {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  background: var(--slot);
+  border: 2px solid var(--panel-edge);
+  font-size: 14px;
+}
+
+.adv-status-right {
+  text-align: right;
+}
+
+.adv-status-dim {
+  color: var(--text-dim);
+}
+
+.adv-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.adv-tab {
+  position: relative;
+  flex: 1;
+  padding: 6px 2px;
+  color: var(--text-dim);
+  background: var(--slot-sunken);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.adv-tab.chosen {
+  color: #2a1d16;
+  background: var(--gold);
+  border-color: var(--panel-edge);
+}
+
+.adv-badge {
+  position: absolute;
+  top: -7px;
+  right: -4px;
+  min-width: 18px;
+  padding: 0 4px;
+  color: #fff;
+  background: #d8432f;
+  border: 1px solid var(--panel-edge);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+/* 들어가기: 지역 카드 */
+.adv-zones {
+  display: grid;
+  gap: 8px;
+}
+
+.adv-zone {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  padding: 6px;
+  color: var(--text);
+  text-align: left;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  cursor: pointer;
+}
+
+.adv-zone.chosen {
+  border-color: var(--gold);
+}
+
+.adv-zone.locked {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.adv-zone canvas {
+  width: 120px;
+  aspect-ratio: 120 / 54;
+  border: 1px solid var(--panel-edge);
+}
+
+.adv-zone-name {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.adv-zone-line {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.adv-zone-boss {
+  font-size: 13px;
+}
+
+.adv-go {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  color: #2a1d16;
+  background: var(--gold);
+  border: 2px solid var(--panel-edge);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.adv-go:disabled {
+  color: var(--text-dim);
+  background: var(--slot-sunken);
+  cursor: default;
+}
+
+.adv-note {
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* 스텟 */
+.adv-points {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.adv-points-left {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.adv-points-left b {
+  color: var(--gold);
+}
+
+.adv-stats {
+  display: grid;
+  gap: 4px;
+}
+
+.adv-stat {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.adv-stat-key {
+  font-weight: 800;
+}
+
+.adv-stat-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.adv-stat-desc {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.adv-stat-add {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.adv-step {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text);
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.adv-step.wide {
+  width: auto;
+  padding: 0 6px;
+  font-size: 13px;
+}
+
+.adv-add-input {
+  width: 64px;
+  height: 28px;
+  padding: 0 4px;
+  color: var(--text);
+  text-align: right;
+  background: var(--adv-input);
+  border: 2px solid var(--panel-edge);
+  font: inherit;
+  font-weight: 700;
+}
+
+.adv-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.adv-btn {
+  padding: 6px 10px;
+  color: var(--text);
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.adv-btn.gold {
+  color: #2a1d16;
+  background: var(--gold);
+  border-color: var(--panel-edge);
+}
+
+.adv-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.adv-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.adv-toggle-box {
+  width: 18px;
+  height: 18px;
+  background: var(--adv-input);
+  border: 2px solid var(--panel-edge);
+}
+
+.adv-toggle.on .adv-toggle-box {
+  background: var(--text);
+  box-shadow: inset 0 0 0 3px var(--adv-input);
+}
+
+.adv-bonus {
+  margin-top: 8px;
+  padding: 6px 8px;
+  color: var(--text-dim);
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+  font-size: 13px;
+}
+
+/* 상점, 장신구 */
+.adv-slots-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.adv-section {
+  margin: 10px 0 4px;
+  font-weight: 800;
+}
+
+.adv-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: 6px;
+}
+
+.adv-item {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 2px 8px;
+  padding: 6px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.adv-item.locked {
+  opacity: 0.55;
+}
+
+.adv-item.owned {
+  border-color: #8a6a3a;
+}
+
+.adv-item-icon {
+  grid-row: span 3;
+  width: 36px;
+  height: 36px;
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+}
+
+.adv-item-icon img,
+.adv-item-icon canvas {
+  display: block;
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+.adv-item-name {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.adv-item-effect {
+  color: #2e7a2a;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.adv-item-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.adv-item-foot .adv-btn {
+  padding: 1px 8px;
+  font-size: 13px;
+}
+
+.adv-gear {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.adv-gear-slot {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.adv-gear-slot img,
+.adv-gear-slot canvas {
+  display: block;
+  width: 32px;
+  height: 32px;
+  margin: 8px;
+  image-rendering: pixelated;
+}
+
+.adv-gear-slot.empty::after {
+  content: '빈 칸';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.adv-gear-slot.locked {
+  background: repeating-linear-gradient(45deg, var(--slot-sunken) 0 4px, #a8845e 4px 8px);
+}
+
+.adv-gear-slot.locked::after {
+  content: '잠김';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* 컬렉션 */
+.adv-progress {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.adv-bar {
+  height: 10px;
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+}
+
+.adv-bar span {
+  display: block;
+  height: 100%;
+  background: var(--adv-coin);
+}
+
+.adv-collection {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 36px);
+  gap: 4px;
+  max-height: 180px;
+  margin-top: 6px;
+  overflow-y: auto;
+}
+
+/* ───────── 모험 필드 HUD ───────── */
+.adv-hud {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.adv-hud-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: rgb(31 21 16 / 82%);
+  border: 2px solid var(--panel-edge);
+  white-space: nowrap;
+}
+
+.adv-gauge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.adv-gauge-bar {
+  position: relative;
+  width: 150px;
+  height: 12px;
+  background: var(--slot-sunken);
+  border: 2px solid var(--panel-edge);
+}
+
+.adv-gauge-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(#ffb36a, #e8743a);
+}
+
+.adv-gauge.full .adv-gauge-bar {
+  border-color: #ffd27a;
+  box-shadow: 0 0 0 1px #ffd27a;
+}
+
+.adv-hud-button {
+  position: relative;
+  padding: 2px 8px;
+  color: var(--text);
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.adv-stat-panel {
+  position: absolute;
+  top: 96px;
+  right: 16px;
+  width: min(380px, calc(100% - 32px));
+  padding: 6px 10px 10px;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 10px;
+  border-image: url('./ui/skin/panel.png') 5 fill / 10px / 0 stretch;
+  color: var(--text);
+  image-rendering: pixelated;
+  pointer-events: auto;
+}
+
+.adv-stat-panel .adv-stat {
+  grid-template-columns: 40px 1fr auto;
+  padding: 2px 6px;
+}
+
+.adv-stat-panel .adv-stat-desc {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  .adv-fighters { gap: 8px; }
+  .adv-float { font-size: 15px; }
+  .adv-float.crit { font-size: 19px; }
+  .adv-zone { grid-template-columns: 88px 1fr; }
+  .adv-zone canvas { width: 88px; }
+  .adv-tab { font-size: 14px; }
+  .adv-stat { grid-template-columns: 40px 1fr; }
+  .adv-stat-add { grid-column: span 2; justify-content: flex-end; }
+  .adv-gauge-bar { width: 96px; }
+  .adv-hud-row { gap: 6px; padding: 3px 6px; font-size: 13px; }
+  .adv-stat-panel { top: auto; bottom: 90px; right: 50%; transform: translateX(50%); }
+}
+
+/* 지역 카드는 게임의 버튼 스킨(갈색) 위라 글자를 밝게: 던전 입장 창의 장소 버튼과 같은 모양 */
+#hud .adv-zone {
+  --text: var(--button-text);
+  --text-dim: #ead9b6;
+  --adv-easy: #a8f08a;
+  color: var(--text);
+  background: none;
+}
+
+#hud .adv-zone.chosen .adv-zone-name::after {
+  content: ' ✓ 고름';
+  font-size: 13px;
+}
+
+/* 보석: 단계마다 다섯 칸 한 줄 */
+.adv-gems {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.adv-gem {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 4px 2px;
+  text-align: center;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.adv-gem.locked { opacity: 0.5; }
+.adv-gem.owned { border-color: var(--panel-edge); }
+
+.adv-gem img {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+.adv-gem-stat {
+  color: #2e7a2a;
+  font-weight: 700;
+}
+
+.adv-gem-own {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+#hud .adv-gem button {
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+@media (max-width: 520px) {
+  .adv-gems { grid-template-columns: repeat(5, 1fr); gap: 2px; }
+  .adv-gem { font-size: 11px; }
+}
+
+/* 휴대폰: 상태 칸은 한 줄씩, 필드 스텟 창은 HUD 아래에 폭 가득 */
+@media (max-width: 520px) {
+  .adv-status { grid-template-columns: 1fr; }
+  .adv-status-right { text-align: left; }
+  /* 아래 끝은 모험 HUD(아래 166px + 줄 높이) 위에서 멈추고 안을 스크롤한다: HUD의 [스텟] 버튼을 다시 눌러 닫을 수 있게(에이전트가 정함) */
+  .adv-stat-panel {
+    top: 92px;
+    bottom: 214px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    overflow-y: auto;
+    transform: none;
+  }
+  .adv-stat-panel .adv-stat { grid-template-columns: 36px 1fr auto; }
+  .adv-stat-panel .adv-stat-add { grid-column: auto; }
+  .adv-stat-panel .adv-add-input { width: 48px; }
+}
+
+/* 작은 버튼 글자가 두 줄로 꺾이지 않게 */
+#hud .adv-item-foot button,
+#hud .adv-gem button,
+#hud .adv-btn {
+  white-space: nowrap;
+}
+
+.adv-item-foot {
+  flex-wrap: wrap;
+}
+
+/* 게임에 넣으며 더한 것(코드 세션) */
+/* 전투 창 뒤 장막: 들어가기 소용돌이의 끝 색(battleIntro.ts SWIRL end)으로 120ms 동안 나타나고, 창이 닫히면 150ms 동안 걷힌다. */
+.adv-battle-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: #120c0a;
+  pointer-events: auto;
+  animation: adv-veil-in 0.12s ease-out backwards;
+}
+
+.adv-battle-veil.boss {
+  background: #2a0806;
+}
+
+.adv-battle-veil.leave {
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+  pointer-events: none;
+}
+
+/* 창은 120ms 동안 투명 → 불투명, 0.96배 → 1배(가운데 맞추는 transform과 겹치지 않게 scale 속성으로) */
+.adv-battle-veil > .adv-battle {
+  animation: adv-battle-in 0.12s ease-out backwards;
+}
+
+@keyframes adv-veil-in {
+  from { opacity: 0; }
+}
+
+@keyframes adv-battle-in {
+  from { opacity: 0; scale: 0.96; }
+}
+
+/* 들어가기 소용돌이 덮개: #hud 안 전투 장막(8) 바로 아래에 화면 가득. HUD까지 덮어 화면 전체가 비틀리고 누름도 막는다.
+   작은 캔버스(화면 ÷ 4)를 화면 크기로 늘려 도트로 보인다. */
+.adv-cover {
+  position: absolute;
+  z-index: 7;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  pointer-events: auto;
+}
+
+.adv-cover.closing {
+  opacity: 0;
+  transition: opacity 0.15s ease-in;
+  pointer-events: none;
+}
+
+/* ───────── 2026-11-18 전투 창 뒤 배경(디자인 세션 시안 battle-backdrop-board.png, 사용자 "기존 캐릭터 있던 맵에 살짝 노이즈 껴서 보인다") ─────────
+   층(아래부터): 찍은 맵(화면 ÷ 2 캔버스를 화면 크기로, CSS filter) → 가장자리 어둠 → (보스) 붉은 기 → 멈춘 노이즈 → 움직이는 노이즈 → 전투 창.
+   값은 battleIntro.ts BACKDROP·GRAIN이 인라인 스타일로 넣는다. 전투 장막(adv-battle-veil.on-backdrop)은 따로 어둡게 하지 않는다. */
+.adv-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.adv-backdrop > * {
+  position: absolute;
+  inset: 0;
+}
+
+.adv-backdrop .grain {
+  animation: adv-grain 0.4s steps(1) infinite;
+}
+
+/* 움직임 줄이기·느린 기기: 소용돌이 없이 150ms 동안 배경으로 바뀌기만 */
+.adv-backdrop.fade {
+  animation: adv-veil-in 0.15s linear backwards;
+}
+
+/* 소용돌이 끝 그림이 이 배경과 같아 나타날 때는 바로 바꾼다. 전투 창이 닫히면 150ms 동안 걷는다. */
+.adv-backdrop.closing {
+  opacity: 0;
+  transition: opacity 0.15s ease-in;
+  pointer-events: none;
+}
+
+@keyframes adv-grain {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-74px, 42px); }
+  50% { transform: translate(36px, -88px); }
+  75% { transform: translate(-104px, -18px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adv-backdrop .grain { animation: none; }
+}
+
+.adv-battle-veil.on-backdrop {
+  background: none;
+}
+
+/* ───────── 2026-11-18 모험 맵에서는 판 레벨(디자인 세션 시안 run-level-board.png, 사용자 "게임에 들어가면 인게임 레벨이 나오도록") ─────────
+   마을 레벨(금빛, 파란 EXP)과 헷갈리지 않게: 앞에 "모험" 작은 보라 표, 레벨 글씨는 연보라, EXP 막대는 보라.
+   모험 맵(입구와 지역 맵)에 있는 동안만 .status에 .adv-run, 이름표 레벨에 .adv-run을 붙인다(Hud.setRun, GameScene.showLevel). */
+.adv-run-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  vertical-align: 3px;
+  background: #6a4bb5;
+  border: 1px solid #2a1a4a;
+}
+
+.status.adv-run .status-level {
+  color: #c9b3ff;
+}
+
+.status.adv-run .status-level.empty {
+  color: var(--text-dim);
+  font-size: 16px;
+}
+
+.status.adv-run .exp-fill {
+  background: #8a63e0;
+}
+
+.player-level.adv-run {
+  color: #c9b3ff;
+}
+
+/* 들어가기 탭: 최고 레벨 순위(10명 + 내 순위, 디자인 세션 시안 rank-board.png). 창은 크림색이라 진한 글자. */
+.adv-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.adv-rank-row {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 2px 10px;
+  font-size: 14px;
+  background: rgb(184 146 106 / 35%);
+}
+
+.adv-rank-row:nth-child(even) {
+  background: rgb(184 146 106 / 20%);
+}
+
+.adv-rank-n {
+  color: var(--text-dim);
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-rank-n.top1 { color: #a86f00; }
+.adv-rank-n.top2 { color: #5f6b78; }
+.adv-rank-n.top3 { color: #9a5426; }
+
+.adv-rank-name {
+  overflow: hidden;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.adv-rank-lv {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 내 줄: 금빛 바탕과 테 */
+.adv-rank-row.me,
+.adv-rank-row.me:nth-child(even) {
+  background: rgb(242 207 106 / 55%);
+  box-shadow: inset 0 0 0 2px #a86f00;
+}
+
+.adv-rank-row.me.none .adv-rank-lv,
+.adv-rank-row.me.none .adv-rank-n {
+  color: var(--text-dim);
+}
+
+.adv-rank-gap {
+  color: var(--text-dim);
+  line-height: 12px;
+  text-align: center;
+}
+
+/* 모험 필드에는 맞는 일이 없어 이름표 아래 필드 HP 막대를 뺀다. */
+#hud.in-adventure .player-hp {
+  display: none;
+}
+
+.adv-message {
+  min-height: 1.2em;
+  margin-bottom: 4px;
+  color: #a8281a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.adv-message:empty {
+  min-height: 0;
+  margin: 0;
+}
+
+.adv-hud {
+  z-index: 3;
+}
+
+.adv-stat-panel {
+  z-index: 4;
+}
+
+/* ───────── 2026-11-18 레벨 업 스텟 창(디자인 세션 시안 levelup-board.png, 기획 19장 4번) ─────────
+   P 스텟 판과 같은 판. 위에 금빛 머리 줄, 아래 큰 버튼 둘(추천대로가 넓고 밝다). 전투 창 장막(8) 위(9). */
+.adv-stat-panel.levelup {
+  z-index: 9;
+}
+
+.adv-levelup-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px 8px;
+  margin: 0 -2px 6px;
+  padding: 4px 6px;
+  color: var(--text);
+  font-size: 14px;
+  text-align: center;
+  background: rgb(242 207 106 / 16%);
+  border-bottom: 1px solid rgb(242 207 106 / 45%);
+}
+
+.adv-levelup-head b {
+  color: var(--gold);
+  font-size: 18px;
+}
+
+.adv-levelup-head em {
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.adv-levelup-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+#hud .adv-levelup-buttons .adv-btn {
+  flex: 1;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: normal;
+}
+
+#hud .adv-levelup-buttons .adv-btn.primary {
+  flex: 2;
+  border-image-source: url('./ui/skin/button-light.png');
+}
+
+@media (max-width: 520px) {
+  #hud .adv-levelup-buttons .adv-btn {
+    min-height: 48px;
+    font-size: 14px;
+  }
+
+  /* 휴대폰: 스텟 줄이 두 줄씩이라 창이 화면보다 길다. 창 안을 스크롤하고 버튼 둘은 늘 아래에 붙어 보인다. */
+  .adv-stat-panel.levelup {
+    max-height: calc(100% - 100px);
+    overflow-y: auto;
+  }
+
+  .adv-stat-panel.levelup .adv-levelup-buttons {
+    position: sticky;
+    bottom: -10px;
+    margin: 8px -10px -10px;
+    padding: 8px 10px 10px;
+    background: inherit;
+    background-color: #e5d6a1;
+    box-shadow: 0 -2px 0 rgb(96 57 40 / 40%);
+  }
+}
+
+.adv-hud-row .adv-hud-button .adv-badge {
+  top: -9px;
+}
+
+/* 전투 창이 낮은 화면에서도 스크롤 없이 들어가게 폭을 화면 높이로도 묶는다(무대 높이 = 폭 × 135/240, 나머지 줄 약 220px).
+   전투 기록 줄(66px)이 생겨 390px → 456px(2026-11-18 디자인). */
+.adv-battle {
+  width: min(640px, calc(100% - 24px), calc((100vh - 456px) * 1.77));
+  min-width: min(320px, calc(100% - 24px));
+}
+
+/* 판 결과 화면의 [마을로]는 창 폭 가득(시안) */
+.adv-end .modal-buttons {
+  display: flex;
+}
+
+.adv-end .modal-button {
+  flex: 1;
+}
+
+/* 휴대폰: 위쪽은 계정 줄과 미니맵이 차지해서, 모험 HUD는 아래 단축키 막대 바로 위에 둔다(에이전트가 정함). */
+@media (max-width: 520px) {
+  .adv-hud {
+    top: auto;
+    bottom: 166px;
+  }
+}
+
+/* 긴 버튼(추천대로 나누기)은 휴대폰에서 두 줄로 꺾여도 된다. */
+#hud .adv-btn.wrap {
+  white-space: normal;
+}
+
+/* 모험 전투 중인 친구 이름표 위의 작은 칼(6×5 도트에 테두리를 둘러 8×7, 2배) */
+.player-fight {
+  display: block;
+  width: 16px;
+  height: 14px;
+  margin: 0 auto 2px;
+  image-rendering: pixelated;
+}
+
+.player-fight[hidden] {
+  display: none;
+}
+
+/* ───────── 2026-11-18 모험 손보기: BP 20칸, 스텟 버튼, 귀환, 들어가기 탭, 일곱 빛 ───────── */
+/* BP 점: 2줄 × 10. 20을 넘은 점(보스 BP)은 금빛으로 오른쪽에 붙는다. */
+.adv-bp-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, 6px);
+  gap: 2px;
+}
+.adv-bp-grid .adv-bp-dot {
+  width: 6px;
+  height: 6px;
+  border-width: 1px;
+}
+.adv-bp-dot.extra {
+  background: #f2c94c;
+}
+.adv-bp-dot.extra.spent {
+  background: var(--slot-sunken);
+}
+
+/* 스텟 버튼: 스텟마다 [+1] [+10] [+100] [절반] [전부], 위에 [추천대로] [고르게] */
+.adv-quick {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.adv-quick .adv-btn {
+  flex: 1;
+}
+.adv-stat-add .adv-step.wide {
+  min-width: 40px;
+  height: 30px;
+  padding: 0 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.adv-step:disabled {
+  color: var(--text-dim);
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 들어가기 탭: 지역 목록(보기만) */
+.adv-zone-list {
+  display: grid;
+  gap: 3px;
+  margin-top: 10px;
+}
+.adv-zone-row {
+  display: grid;
+  grid-template-columns: 110px 120px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+.adv-zone-row.locked {
+  opacity: 0.55;
+}
+.adv-zone-row .adv-zone-name {
+  font-weight: 800;
+}
+
+/* 필드 HUD 귀환 버튼과 확인 창 */
+.adv-hud-button.adv-return {
+  margin-left: 4px;
+}
+.adv-confirm {
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  text-align: center;
+}
+.adv-confirm-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+.adv-confirm-text {
+  margin: 8px 0 12px;
+  font-size: 14px;
+}
+.adv-confirm .adv-row {
+  justify-content: center;
+}
+
+/* 일곱 빛 들판: 선 구역의 빛(2026-11-18 사용자: 짧은 글 "exp x 3", 앞말 없음). HUD 줄 아래 가운데에 어두운 띠로 작게(디자인 세션 light-hud-board.png). */
+.adv-light {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 2px 10px;
+  color: #fbf3dc;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  background: rgb(31 21 16 / 82%);
+  border: 2px solid var(--panel-edge);
+}
+.adv-light-dot {
+  width: 10px;
+  height: 10px;
+  border: 1px solid #fbf3dc;
+}
+
+@media (max-width: 520px) {
+  /* 휴대폰: 스텟 버튼은 값 아래 한 줄을 다섯 칸으로 나눠 누르기 쉽게(높이 34px) */
+  .adv-stat-add {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+  }
+  .adv-stat-add .adv-step.wide {
+    width: 100%;
+    height: 34px;
+  }
+  .adv-stat-panel .adv-stat-add {
+    grid-column: 1 / -1;
+  }
+  .adv-zone-row {
+    grid-template-columns: 1fr auto;
+  }
+  .adv-zone-row .adv-zone-boss {
+    grid-column: 1 / -1;
+  }
+}
+.adv-quick .adv-btn {
+  min-width: 0;
+}
+
+/* 게임에서 더한 것(코드 세션, 2026-11-18) */
+/* 입구 맵 지역 포탈 이름표 둘째 줄(레벨 범위, 흐린 크림 #d8c6a8 디자인). 이길 확률 색은 없앴다(2026-11-18 사용자). */
+.portal-line2 {
+  display: block;
+  color: #d8c6a8;
+  font-size: 11px;
+  text-align: center;
+}
+/* 귀환 확인 창(Modal) */
+.modal.adv-confirm {
+  text-align: center;
+}
+.modal.adv-confirm .modal-buttons {
+  justify-content: center;
+}
+/* 일곱 빛 들판·경험치 방 줄: HUD 아래 가운데 */
+#hud .adv-hud .adv-light {
+  justify-content: center;
+}
+#hud .adv-hud .adv-light[hidden] {
+  display: none;
+}
+/* 모험 창 맨 아래 그림 출처 */
+.adv-credit {
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: right;
+}
+/* 입구 맵에서는 조우 게이지를 숨긴다(조우 없음). */
+.adv-gauge[hidden] {
+  display: none;
+}
+
+/* ───────── 컬렉션 무기 장착(2026-11-18, 디자인 세션 adventure-ui.md 17절 그대로, 기획 19장 '컬렉션 무기 장착') ─────────
+   무기 카드는 대장간 상점 무기 카드(.shop-weapon)와 같은 바탕·테두리. 효과는 숫자만. */
+.adv-wcard {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 8px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.adv-wcard.on {
+  border-color: #a86f00;
+  box-shadow: inset 0 0 0 1px rgb(242 207 106 / 70%);
+}
+
+.adv-wcard-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  background: var(--slot-sunken);
+}
+
+.adv-wcard-icon canvas {
+  image-rendering: pixelated;
+}
+
+.adv-wcard-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.adv-wcard-name {
+  font-size: 16px;
+}
+
+.adv-wcard-tag {
+  padding: 0 5px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  background: #a86f00;
+}
+
+.adv-wcard-meta {
+  font-size: 13px;
+}
+
+.adv-wcard-star {
+  color: #a86f00;
+  letter-spacing: -1px;
+}
+
+.adv-wcard-plus {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.adv-wcard-kind {
+  color: #9a3a2a;
+  font-weight: 700;
+}
+
+.adv-wcard-fx {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-wcard-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#hud .adv-wcard-btns .adv-btn {
+  min-width: 64px;
+  min-height: 34px;
+}
+
+/* 마우스를 올렸을 때 떠 있는 카드(버튼 없음, 누르기를 막지 않음) */
+.adv-wcard.tip.float {
+  position: absolute;
+  z-index: 3;
+  width: 270px;
+  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  pointer-events: none;
+}
+
+/* 낀 무기 칸: 금빛 테와 작은 E */
+.adv-weapon.equipped {
+  border-color: #a86f00;
+  box-shadow: 0 0 0 1px rgb(242 207 106 / 90%);
+}
+
+.adv-weapon-on {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 13px;
+  height: 13px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 13px;
+  text-align: center;
+  background: #a86f00;
+  border: 1px solid #3e1f1d;
+}
+
+/* 스텟 판 맨 위 장착 칸 */
+/* position: relative는 떠 있는 카드를 이 칸 안 한 층에 두려고(목록 격자가 스크롤되어도 잘리지 않게) */
+.adv-equip {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.adv-equip-slot {
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.adv-equip-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  background: var(--slot-sunken);
+  border: 2px solid #a86f00;
+}
+
+.adv-equip-head {
+  overflow: hidden;
+  font-size: 15px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.adv-coll-wrap {
+  position: relative;
+}
+
+.adv-equip-fx {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-equip-fx.dim {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* [바꾸기]를 누르면 판 안에 열리는 가진 무기 목록(열 때만 그림) */
+.adv-equip-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px;
+  background: rgb(184 146 106 / 35%);
+  border: 2px solid var(--slot-sunken);
+}
+
+.adv-equip-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.adv-equip-filter .adv-chip {
+  cursor: pointer;
+}
+
+.adv-equip-filter .adv-chip.on {
+  color: #fff;
+  background: #a86f00;
+  border-color: #6b4400;
+}
+
+.adv-equip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 36px);
+  gap: 4px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+/* 낀 무기 칸의 E(오른쪽 아래 −4px)와 고른 칸 테가 스크롤 격자 밖으로 나가 스크롤 막대가 생기지 않게 여백을 둔다(에이전트가 정함). */
+.adv-equip-grid,
+.adv-collection {
+  padding: 2px 6px 6px 2px;
+}
+
+/* 컬렉션 탭 아래 고정 칸(고른 무기 카드) */
+.adv-coll-foot {
+  position: sticky;
+  bottom: -20px;
+  margin-top: 8px;
+  padding-top: 6px;
+  background: var(--panel);
+}
+
+@media (max-width: 520px) {
+  .adv-wcard {
+    grid-template-columns: 44px 1fr;
+  }
+
+  .adv-wcard-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .adv-wcard-icon canvas {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .adv-wcard-btns {
+    grid-column: 1 / -1;
+    flex-direction: row;
+  }
+
+  #hud .adv-wcard-btns .adv-btn {
+    flex: 1;
+    min-height: 44px;
+  }
+
+  .adv-equip-grid {
+    max-height: 130px;
+  }
+
+  .adv-wcard.tip.float {
+    display: none;
+  }
+}
+
+/* 모험 중 금화(2026-11-18 사용자 "보이게 하기", 위 HUD 줄 BP 점 옆, 디자인 adventure.css .adv-hud-gold). 숫자는 청록(.adv-coin). */
+.adv-hud-gold {
+  font-size: 14px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-hud-gold .adv-coin {
+  display: inline-block;
+}
+
+/* 휴대폰: HUD 줄 다른 글(13px)과 같게. 큰 금화(999.9만)에도 375px 안에 들게(에이전트가 정함). */
+@media (max-width: 520px) {
+  .adv-hud-gold {
+    font-size: 13px;
+  }
+}
+
+/* ───────── 전투 결과 칸 2판(2026-11-18 사용자가 자세히 정함, 디자인 adventure-ui.md 18절 그대로, src/ui/resultAnim.ts) ─────────
+   칩 없음. [Lv 312] … [+498만] / 보라 막대 / EXP 지금 / 필요 / 얻은 무기 그림 + 별. 레벨이 오를 때마다 "Level up"이 떠오른다. */
+.adv-result.res2 {
+  display: block;
+  overflow: visible;
+  /* 눌러서 끝 모습으로 멈추고 다시 눌러 닫는다(adventureBattle.ts). 글 대신 커서만. */
+  cursor: pointer;
+}
+
+.adv-result.res2.lose {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.adv-res-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.adv-res-lvwrap {
+  position: relative;
+  color: #5b3aa8;
+  font-size: 20px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.adv-res-lv {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 레벨 숫자 튀어 오름은 levelUpAnim.ts popLevel(Web Animations, 정보 칸 숫자와 같은 키프레임)이 건다. */
+
+/* 들어온 경험치: 막대가 차는 만큼 줄어 0이 된다(0이면 글을 비움) */
+.adv-res-gain {
+  color: #5b3aa8;
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-res-bar {
+  height: 14px;
+  margin: 4px 0 2px;
+}
+
+.adv-res-bar .exp-fill {
+  background: #8a63e0;
+}
+
+.adv-res-exp {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Level up: 레벨 숫자 위로 떠올랐다 사라진다(0.5초, transform·opacity만). 몰아치기에서는 조금씩 옆으로(--dx). */
+.lvup-layer {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  width: 100%;
+  height: 0;
+  pointer-events: none;
+}
+
+.lvup-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  padding: 0 6px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 18px;
+  white-space: nowrap;
+  background: #6a4bb5;
+  border: 1px solid #2a1a4a;
+  transform: translate(calc(-50% + var(--dx, 0px)), var(--dy, 0px));
+  animation: lvup-rise 0.5s ease-out forwards;
+}
+
+.lvup-tag.quick {
+  animation-duration: 0.35s;
+}
+
+.lvup-tag.still {
+  animation: none;
+}
+
+@keyframes lvup-rise {
+  0% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), 6px) scale(0.9); }
+  20% { opacity: 1; transform: translate(calc(-50% + var(--dx, 0px)), 0) scale(1.06); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), -16px) scale(1); }
+}
+
+/* 얻은 무기: 그림 40px + 별. 끝에 하나씩 튀어 나온다(160ms, 60ms씩 엇갈림). */
+.adv-res-drops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.adv-res-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px 4px 1px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+  opacity: 0;
+}
+
+.adv-res-drop canvas {
+  image-rendering: pixelated;
+}
+
+.adv-res-drop.show {
+  animation: drop-pop 0.16s ease-out forwards;
+}
+
+.adv-res-drop.shown {
+  opacity: 1;
+}
+
+.adv-res-star {
+  color: #a86f00;
+  font-size: 11px;
+  letter-spacing: -1px;
+  line-height: 13px;
+}
+
+@keyframes drop-pop {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lvup-tag { animation-duration: 0.01s; }
+  .adv-res-drop.show { animation: none; opacity: 1; }
 }

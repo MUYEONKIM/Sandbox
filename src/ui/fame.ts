@@ -1,6 +1,7 @@
 import { formatLevel } from '../game/level';
 import type { RankEntry } from '../net/session';
 import { element } from './dom';
+import { byInput } from './touch';
 import { FoldBox } from './fold';
 
 type LoadRanking = () => Promise<RankEntry[] | null>;
@@ -38,7 +39,7 @@ export class FameWindow {
 
     const close = element('office-close', this.root, 'button') as HTMLButtonElement;
     close.type = 'button';
-    close.textContent = '나가기 (Esc)';
+    close.textContent = byInput('나가기 (Esc)', '나가기');
     close.addEventListener('click', () => this.close());
   }
 

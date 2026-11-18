@@ -1,9 +1,10 @@
 import { Rng } from '../art/pixels';
-import type { BlockId } from '../blocks';
+import { BLOCKS, type BlockId } from '../blocks';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
-import { CASTLE, isDungeon, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
+import { CASTLE, isAdventure, isDungeon, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
 import { layoutDungeon } from './dungeon';
+import { advMap, infernus } from './adventureMaps';
 import { FARM_ROAD_TILES, isPlot } from './farm';
 import {
   ANNEX,
@@ -78,6 +79,8 @@ export interface GameMap extends Scenery {
   battleProps: BattleProp[];
   /** 칸 사이 변을 막는 울타리(농장만, farmLayout.ts). 걸음(World.canStep)과 점프가 넘지 못한다. */
   fences: FenceEdge[];
+  /** 모험 맵의 Infernus 조각(infernus.png). (x, y)가 맨 앞 칸이고 막는 칸은 이미 solid에 넣었다. */
+  pieces: { id: string; x: number; y: number }[];
 }
 
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
@@ -179,6 +182,7 @@ export function generateMap(id: MapId): GameMap {
   let scenery: Scenery = { floorTiles: new Map(), decals: new Map(), props: [], trees: [] };
   let battleProps: BattleProp[] = [];
   let battleWalls: FixedWall[] = [];
+  const pieces: GameMap['pieces'] = [];
 
   if (id === 'plains') {
     for (const { sprite, x, y, w, d } of [OFFICE, CASTLE, SHOP]) buildings.push({ sprite, x, y, w, d });
@@ -237,6 +241,8 @@ export function generateMap(id: MapId): GameMap {
     }
     // 농장 꾸밈 소품(2026-11-16, farmLayout.ts): 작업장 소품처럼 건물로 놓고 아래 반복문이 칸을 막는다.
     buildings.push(...FARM_PROPS);
+  } else if (isAdventure(id)) {
+    battleWalls = layoutAdventure(id, size, terrain, solid, scenery, pieces);
   } else if (isDungeon(id)) {
     const dungeon = layoutDungeon(id);
     scenery.trees.push(...dungeon.trees);
@@ -280,11 +286,11 @@ export function generateMap(id: MapId): GameMap {
   const bounds: Area = isTower(id) ? FLOORS[id].area : [0, 0, size - 1, size - 1];
   // 블록은 어느 맵이든 바닥 전체에 놓는다. 벽, 물, 포탈 둘레처럼 놓을 수 없는 칸은 World.canPlace가 거른다.
   // 4층 숨은 방 안에도 놓는다. 방이 닫혀 있으면 허공이라 World.canPlace가 거른다. 입구와 통로는 막히지 않게 비운다.
-  // 던전에는 놓지 않는다(몬스터 길을 막지 않게, 에이전트가 정함).
-  const buildZones = isDungeon(id) ? [] : id === HIDEOUT.map ? [bounds, HIDEOUT.area] : [bounds];
+  // 던전에는 놓지 않는다(몬스터 길을 막지 않게, 에이전트가 정함). 모험 필드도 블록이 없다(기획 3장).
+  const buildZones = isDungeon(id) || isAdventure(id) ? [] : id === HIDEOUT.map ? [bounds, HIDEOUT.area] : [bounds];
   const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger, HIDEOUT.passage] : [];
   const fences = id === 'farm' ? farmFences() : [];
-  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved, battleProps, fences };
+  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved, battleProps, fences, pieces };
 }
 
 /** 장식 벽을 놓을 수 있는 칸에만 세우고 그 칸을 막는다. */
@@ -303,6 +309,51 @@ function workWalls(id: WorkId, terrain: Uint8Array, solid: Uint8Array): FixedWal
         if (terrain[i] !== Terrain.Ground || solid[i] || nearPortal(x, y)) continue;
         walls.push({ x, y, id: block });
         solid[i] = 1;
+      }
+    }
+  }
+  return walls;
+}
+
+/**
+ * 모험 맵(2026-11-18, 디자인 세션 자료 adv-maps.json, 공유 노트 adventure-maps.md 3절): 땅·물·빈 땅, 칸마다 바닥 타일, 블록 벽, 나무, 꽃 타일,
+ * Infernus 조각(막는 칸 fp × fp)을 자료 그대로 놓는다. 자료를 아직 읽지 않았으면 빈 땅이다(맵을 올리기 전에 loadAdventureMaps를 기다린다).
+ * 바닥 조각, 일곱 빛 색, 별, 띠 경계 점선은 바닥 그림을 그릴 때 더한다(art/adventureGround.ts).
+ */
+function layoutAdventure(id: string, size: number, terrain: Uint8Array, solid: Uint8Array, scenery: Scenery, pieces: GameMap['pieces']): FixedWall[] {
+  const data = advMap(id);
+  const meta = infernus()?.meta;
+  if (!data || !meta) {
+    terrain.fill(Terrain.Void);
+    return [];
+  }
+  for (let y = 0; y < size; y++) {
+    const row = data.rows[y] ?? '';
+    const floor = data.floor[y] ?? '';
+    for (let x = 0; x < size; x++) {
+      const c = row[x];
+      terrain[x + y * size] = c === '.' ? Terrain.Ground : c === '~' ? Terrain.Water : Terrain.Void;
+      const f = floor.slice(2 * x, 2 * x + 2);
+      if (f && f !== '--') scenery.floorTiles.set(x + y * size, parseInt(f, 36));
+    }
+  }
+  const walls: FixedWall[] = [];
+  for (const w of data.walls) {
+    if (!(w.id in BLOCKS)) continue;
+    walls.push({ x: w.x, y: w.y, id: w.id as BlockId });
+    solid[w.x + w.y * size] = 1;
+  }
+  for (const t of data.trees) scenery.trees.push({ sprite: t.sprite as SpriteName, x: t.x, y: t.y });
+  for (const t of data.tileProps) scenery.props.push({ tile: t.tile, x: t.x, y: t.y });
+  for (const p of data.props) {
+    const piece = meta.props[p.id];
+    if (!piece) continue;
+    pieces.push({ id: p.id, x: p.x, y: p.y });
+    for (let j = 0; j < piece.fp; j++) {
+      for (let i = 0; i < piece.fp; i++) {
+        const x = p.x - i;
+        const y = p.y - j;
+        if (x >= 0 && y >= 0 && x < size && y < size) solid[x + y * size] = 1;
       }
     }
   }

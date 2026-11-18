@@ -67,7 +67,7 @@ function lightSpot(id: string, look: GlowLook, x: number, y: number, z: number) 
   const c = tileCenter(x, y);
   const lift = z * BLOCK_HEIGHT;
   const art = (BLOCKS as Record<string, { art: { kind: string; sprite?: string } }>)[id]?.art;
-  const fixed = art?.kind === 'sprite' && art.sprite ? FIXED_LIGHTS[art.sprite] : undefined;
+  const fixed = art?.kind === 'sprite' && art.sprite ? FIXED_LIGHTS[art.sprite]?.[0] : undefined;
   if (!fixed || !art?.sprite) return { px: c.x, py: c.y, hx: c.x, hy: c.y - lift - look.head };
   const name = art.sprite as Parameters<typeof sprite>[0];
   const image = sprite(name);
@@ -122,14 +122,16 @@ export class Lights {
     this.enabled = enabled;
     if (!enabled) return;
     for (const { sprite, x, y } of props) {
-      const spot = FIXED_LIGHTS[sprite];
-      if (!spot) continue;
+      const spots = FIXED_LIGHTS[sprite];
+      if (!spots) continue;
       ensureGlowTexture(this.scene);
-      const look = GLOW_LOOKS[spot.look];
-      const ground = gridToWorld(x + spot.gx, y + spot.gy);
-      const pool = this.image(`pool:${spot.look}`, ground.x, ground.y, DEPTH_POOL);
-      const halo = this.image(`halo:${spot.look}`, ground.x, ground.y - look.head, this.haloDepth);
-      this.fixed.push({ look, phase: phaseOf(x, y, 0), pool, halo, poolAlpha: 1, level: -1 });
+      spots.forEach((spot, i) => {
+        const look = GLOW_LOOKS[spot.look];
+        const ground = gridToWorld(x + spot.gx, y + spot.gy);
+        const pool = this.image(`pool:${spot.look}`, ground.x, ground.y, DEPTH_POOL);
+        const halo = this.image(`halo:${spot.look}`, ground.x, ground.y - look.head, this.haloDepth);
+        this.fixed.push({ look, phase: phaseOf(x, y, i), pool, halo, poolAlpha: 1, level: -1 });
+      });
     }
     this.queueChoose();
     this.refresh();

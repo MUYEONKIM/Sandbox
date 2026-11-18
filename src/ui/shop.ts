@@ -2,6 +2,7 @@ import { spriteUrl } from '../art/sprites';
 import { RENAME_PRICE, type Economy, type PotionInfo, type ShopTool } from '../game/economy';
 import { paintItem, type PotionId } from '../items';
 import { element } from './dom';
+import { byInput } from './touch';
 import { PLACE_ICONS } from './office';
 import { PurchaseWindow } from './purchase';
 import { goldText } from '../game/gold';
@@ -104,7 +105,7 @@ export class ShopWindow extends PurchaseWindow {
 
     const text = element('shop-stat-text', row);
     element('shop-stat-name', text).textContent = '닉네임 변경권';
-    element('shop-stat-blurb', text).textContent = '닉네임을 한 번 바꿉니다. I 창 정보창에서 씁니다.';
+    element('shop-stat-blurb', text).textContent = byInput('닉네임을 한 번 바꿉니다. I 창 정보창에서 씁니다.', '닉네임을 한 번 바꿉니다. 인벤토리의 정보창에서 씁니다.');
 
     const buy = this.buyButton(row, () => this.actions.onBuyRenameTicket());
     this.refreshers.push(() => {

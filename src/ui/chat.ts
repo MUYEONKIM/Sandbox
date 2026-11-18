@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../net/session';
 import { element } from './dom';
 import { foldButton, isFolded, saveFolded, showFoldButton } from './fold';
+import { TOUCH } from './touch';
 
 const MAX_MESSAGES = 50;
 /** 입력창에서 Tab으로 바꾸는 채팅 모드. 일반은 같은 맵, 전체는 모든 맵이다(2026-11-12 사용자 요청). */
@@ -8,6 +9,7 @@ const MODES = {
   map: { label: '일반', placeholder: '같은 맵에만 보입니다 (Tab: 전체)', everyone: false },
   all: { label: '전체', placeholder: '모든 맵에 보입니다 (Tab: 일반)', everyone: true },
 } as const;
+// 휴대폰은 키보드가 없어 채팅을 여는 버튼과 보내기 버튼을 따로 둔다(에이전트가 정함, touch.css).
 type Mode = keyof typeof MODES;
 
 /** 새로고침해도 남기는 채팅 기록 한 줄(2026-11-12 사용자 요청). 브라우저에 계정별로 저장한다. */
@@ -24,6 +26,8 @@ export class ChatBox {
   private readonly input: HTMLInputElement;
   private readonly entry: HTMLElement;
   private readonly modeBadge: HTMLElement;
+  /** 휴대폰: 입력창이 닫혀 있을 때 보이는 '채팅' 버튼 */
+  private readonly opener: HTMLButtonElement;
   /** 마지막에 쓴 모드를 기억해 다음에 열 때도 그대로 쓴다. */
   private mode: Mode = 'map';
   private stuckToBottom = true;
@@ -66,11 +70,27 @@ export class ChatBox {
     this.input = element('chat-input', this.entry, 'input') as HTMLInputElement;
     this.input.maxLength = MAX_LENGTH;
     this.input.hidden = true;
+    this.input.enterKeyHint = 'send';
+    // 휴대폰 화면 키보드의 Enter가 keydown으로 안 올 때도 있어 보내기 버튼을 둔다. 마우스 화면에서는 숨긴다(style.css).
+    const sendButton = element('chat-send', this.entry, 'button') as HTMLButtonElement;
+    sendButton.type = 'button';
+    sendButton.textContent = '보내기';
+    sendButton.addEventListener('pointerdown', (e) => e.preventDefault());
+    sendButton.addEventListener('click', () => this.submit());
+    this.opener = element('chat-open', box, 'button') as HTMLButtonElement;
+    this.opener.type = 'button';
+    this.opener.textContent = '채팅';
+    this.opener.addEventListener('click', () => this.open());
+    // 휴대폰에서는 채팅 기록을 눌러도 입력창이 열린다(기록을 밀어 올려 읽을 때는 열리지 않는다).
+    if (TOUCH) this.log.addEventListener('click', () => this.open());
     this.renderMode();
 
     this.input.addEventListener('keydown', (e) => this.onKey(e));
     window.addEventListener('pointerdown', (e) => {
-      if (e.target !== this.input && e.target !== this.modeBadge) this.close();
+      const target = e.target instanceof Node ? e.target : null;
+      // 입력줄(입력창, 모드 표시, 보내기)과 여는 버튼, 휴대폰의 채팅 기록을 누를 때는 닫지 않는다.
+      const keep = target && (this.entry.contains(target) || target === this.opener || (TOUCH && this.log.contains(target)));
+      if (!keep) this.close();
     });
     this.restore();
   }
@@ -82,6 +102,7 @@ export class ChatBox {
   open() {
     this.entry.hidden = false;
     this.input.hidden = false;
+    this.opener.hidden = true;
     this.input.focus();
   }
 
@@ -89,7 +110,15 @@ export class ChatBox {
     this.input.value = '';
     this.entry.hidden = true;
     this.input.hidden = true;
+    this.opener.hidden = false;
     this.input.blur();
+  }
+
+  /** 쓴 글을 보내고 입력창을 닫는다(Enter, 휴대폰은 보내기 버튼). */
+  private submit() {
+    const text = this.input.value.trim();
+    if (text) this.send(text, MODES[this.mode].everyone);
+    this.close();
   }
 
   private toggleMode() {
@@ -101,7 +130,8 @@ export class ChatBox {
     const mode = MODES[this.mode];
     this.modeBadge.textContent = mode.label;
     this.modeBadge.className = `chat-mode ${this.mode}`;
-    this.input.placeholder = mode.placeholder;
+    // 휴대폰에는 Tab 키가 없어 모드 안내를 빼고 쓴다(모드는 왼쪽 표시를 눌러 바꾼다).
+    this.input.placeholder = TOUCH ? mode.placeholder.replace(/ \(Tab: .+\)$/, '') : mode.placeholder;
     this.entry.classList.toggle('all', this.mode === 'all');
   }
 
@@ -114,10 +144,9 @@ export class ChatBox {
       // 브라우저가 다른 칸으로 초점을 옮기지 않게 막고 모드만 바꾼다.
       e.preventDefault();
       this.toggleMode();
-    } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-      const text = this.input.value.trim();
-      if (text) this.send(text, MODES[this.mode].everyone);
-      this.close();
+    } else if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.key === 'Enter') {
+      // 휴대폰 화면 키보드는 code를 비워 보낼 때가 있어 key도 본다.
+      this.submit();
     }
   }
 

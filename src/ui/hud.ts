@@ -7,6 +7,9 @@ import { isPotion, isSeed, paintItem, POTION_IDS, SEED_IDS, WEAPON_IDS, type Gea
 import { element } from './dom';
 import { foldButton } from './fold';
 import type { MyStatus } from './info';
+import { COUNT, countUp, type Counting } from './countUp';
+import { LevelBar, type LevelPlayOptions } from './levelUpAnim';
+import './touch.css';
 
 /** 이미지를 읽은 뒤에 그릴 수 있어서 Hud를 만들 때 준비한다. */
 function paintIcons() {
@@ -48,6 +51,16 @@ const VIEWS = { info: '정보창', bag: '인벤토리' } as const;
 type View = keyof typeof VIEWS;
 
 /** 화면 위 UI: 단축키 칸, 인벤토리 창, 조작 안내 */
+/** 정보 칸에 보일 판 값(글은 부르는 쪽이 bigText로 만든다) */
+export interface RunStatus {
+  level: string;
+  exp: string;
+  need: string;
+  /** 다음 판 레벨까지 찬 몫(0~1) */
+  ratio: number;
+  hp: string;
+}
+
 export class Hud {
   private readonly panel: HTMLElement;
   /** 화면 왼쪽 위에 세로로 쌓는 칸(조작 안내, 현상범 명단) */
@@ -64,9 +77,25 @@ export class Hud {
   readonly status: MyStatus = { level: 1n, exp: 0, hp: 0, maxHp: 0 };
   private readonly pickedName: HTMLElement;
   private readonly pickedIcon: HTMLImageElement;
+  /** 휴대폰에서 인벤토리를 여닫는 버튼 */
+  private readonly bagButton: HTMLButtonElement;
   /** 든 총의 남은 탄("12 / 12", 재장전 중). 든 것 이름 옆에 쓴다. */
   private ammo: string | null = null;
   private readonly levelText: HTMLElement;
+  /** 레벨 글 안의 숫자(.lv-num). 레벨 업 때 숫자만 튀어 오른다. 글 모양(마을, 모험, 쉬는 중)이 바뀔 때 새로 만든다. */
+  private levelNum!: HTMLElement;
+  private labelMode: 'town' | 'run' | 'none' | '' = '';
+  /** 정보 칸 막대에 지금 보이는(애니메이션이 끝나면 보일) 레벨과 몫. 레벨 업 애니메이션이 여기서 시작한다. 글 모양이 바뀌면 비운다. */
+  private shownBar: { level: bigint; ratio: number } | null = null;
+  /** 정보 칸 EXP 막대와 레벨 업 애니메이션(levelUpAnim.ts). onLevel은 GameScene이 내 이름표에 잇는다. */
+  readonly bar: LevelBar;
+  private readonly statusBox: HTMLElement;
+  /**
+   * 모험 맵에 있는 동안 정보 칸에 보일 판 값(2026-11-18 사용자 "게임에 들어가면 인게임 레벨이 나오도록", 디자인 adventure-ui.md 14절).
+   * null이면 마을 값, 'none'이면 모험 맵이지만 판이 없음. 마을 값은 그동안에도 status에 모아 두었다가 돌아오면 다시 그린다.
+   */
+  private run: RunStatus | 'none' | null = null;
+  private shownRun = '';
   private readonly expFill: HTMLElement;
   private readonly expText: HTMLElement;
   private readonly dragIcon: HTMLImageElement;
@@ -98,6 +127,13 @@ export class Hud {
   private readonly hpText: HTMLElement;
   private readonly downNotice: HTMLElement;
   private readonly gold: HTMLElement;
+  /** 계정 줄 골드: 보이는(오르기가 끝나면 보일) 값, 받은 값, 오르는 중, 붙잡음(모험 결과 화면 동안, 마을에 서면 오름) */
+  private goldShown: Gold | null = null;
+  private goldTarget: Gold | null = null;
+  private goldCount: Counting | null = null;
+  private goldHeld = false;
+  /** 정보 칸 EXP 글이 오르는 중(마을 경험치가 같은 레벨에서 늘 때) */
+  private expCount: Counting | null = null;
   private readonly toastBox: HTMLElement;
   private readonly announceBox: HTMLElement;
   private readonly accountName: HTMLElement;
@@ -202,11 +238,14 @@ export class Hud {
 
     const bottom = element('bottom', root);
 
-    const status = element('status', bottom);
+    const status = (this.statusBox = element('status', bottom));
     this.levelText = element('status-level', status);
     const exp = element('exp', status);
     this.expFill = element('exp-fill', exp);
+    const flash = element('lv-flash', exp);
     this.expText = element('exp-text', exp);
+    this.bar = new LevelBar(exp, this.expFill, flash);
+    this.labelFor('town');
     const hp = element('hp', status);
     this.hpFill = element('hp-fill', hp);
     this.hpText = element('hp-text', hp);
@@ -215,6 +254,12 @@ export class Hud {
     this.pickedIcon = element('picked-icon', picked, 'img') as HTMLImageElement;
     this.pickedIcon.alt = '';
     this.pickedName = element('picked-name', picked);
+
+    // 휴대폰에는 I 키가 없어 아래 막대에 인벤토리를 여닫는 버튼을 둔다(에이전트가 정함). 마우스 화면에서는 숨긴다(style.css).
+    this.bagButton = element('bag-button', bottom, 'button') as HTMLButtonElement;
+    this.bagButton.type = 'button';
+    this.bagButton.textContent = '인벤토리';
+    this.bagButton.addEventListener('click', () => this.toggle());
 
     const hotbar = element('slots hotbar', bottom);
 
@@ -252,23 +297,128 @@ export class Hud {
     this.status.hp = hp;
     this.status.maxHp = max;
     this.refreshInfo();
+    if (this.run) return;
     this.hpFill.style.width = `${Math.min(hp / max, 1) * 100}%`;
     this.hpText.textContent = `HP ${hp} / ${max}`;
   }
 
-  setLevel(level: bigint, exp: number, leveled = false) {
+  /**
+   * 마을 레벨과 경험치. leveled면 막대가 차고 번쩍이며 숫자가 오르는 애니메이션을 돌리고 true를 준다
+   * (그때 내 이름표 숫자는 bar.onLevel이 같은 때에 바꾼다). 모험 맵에 있으면 값만 모아 둔다.
+   */
+  setLevel(level: bigint, exp: number, leveled = false, options?: LevelPlayOptions) {
+    const before = this.status;
+    const grew = !leveled && this.labelMode === 'town' && level === before.level && exp > before.exp;
+    const fromExp = before.exp;
     this.status.level = level;
     this.status.exp = exp;
     this.refreshInfo();
-    this.levelText.textContent = `Lv. ${formatLevel(level)}`;
+    if (this.run) return false;
     const need = levelNeed(level);
-    this.expFill.style.width = `${Math.min(exp / need, 1) * 100}%`;
-    this.expText.textContent = `EXP ${exp.toLocaleString()} / ${need.toLocaleString()}`;
-    if (!leveled) return;
-    // 클래스를 뗀 상태를 브라우저가 한 번 계산하게 해야 다시 붙일 때 애니메이션이 처음부터 돈다.
-    this.levelText.classList.remove('gained');
-    void this.levelText.offsetWidth;
-    this.levelText.classList.add('gained');
+    const expText = (n: bigint) => `EXP ${n.toLocaleString()} / ${need.toLocaleString()}`;
+    this.expCount?.finish();
+    this.expCount = null;
+    // 같은 레벨에서 경험치가 늘면(일·노동) EXP 글도 450ms 동안 오른다(PM 2026-11-18 "마을 일·노동으로 얻는 골드·경험치에도 같은 오르기").
+    if (grew) this.expCount = countUp([{ el: this.expText, from: BigInt(fromExp), to: BigInt(exp), fmt: expText }], COUNT.gold);
+    else this.expText.textContent = expText(BigInt(exp));
+    return this.showBar('town', level, Math.min(exp / need, 1), leveled, options);
+  }
+
+  /**
+   * 모험 맵에서는 정보 칸을 모험 값으로 바꾼다: "모험" 보라 표 + 연보라 "Lv 1,234", 보라 EXP 막대(다음 모험 레벨까지), 늘 가득인 모험 HP.
+   * 'none'(모험 중이 아님)이면 "쉬는 중"과 빈 막대, null이면 마을 값으로 돌아간다. 글이 바뀔 때만 DOM을 고친다.
+   * leveled면 레벨 업 애니메이션을 돌리고 true를 준다(setLevel과 같음).
+   */
+  setRun(run: RunStatus | 'none' | null, leveled = false, options?: LevelPlayOptions) {
+    const key = run === null || run === 'none' ? String(run) : `${run.level}|${run.exp}|${run.hp}`;
+    if (key === this.shownRun && !leveled) return false;
+    const wasRun = this.run !== null;
+    this.shownRun = key;
+    this.run = run;
+    this.statusBox.classList.toggle('adv-run', run !== null);
+    if (run === null) {
+      if (wasRun) {
+        // 마을 값으로 다시 그린다.
+        const { level, exp, hp, maxHp } = this.status;
+        this.setLevel(level, exp);
+        if (maxHp) this.setHp(hp, maxHp);
+      }
+      return false;
+    }
+    this.expCount?.finish();
+    this.expCount = null;
+    if (run === 'none') {
+      this.bar.finish();
+      this.shownBar = null;
+      this.labelFor('none');
+      this.bar.set(0);
+      this.expText.textContent = '';
+      this.hpFill.style.width = '0%';
+      this.hpText.textContent = '';
+      return false;
+    }
+    this.expText.textContent = `EXP ${run.exp} / ${run.need}`;
+    this.hpFill.style.width = '100%';
+    this.hpText.textContent = `HP ${run.hp}`;
+    let level = 1n;
+    try {
+      level = BigInt(run.level);
+    } catch {
+      // 글자가 이상하면 1로 둔다.
+    }
+    return this.showBar('run', level, run.ratio, leveled, options);
+  }
+
+  /** 정보 칸 레벨 글의 지금 모양(마을, 모험, 쉬는 중) */
+  get barMode() {
+    return this.labelMode;
+  }
+
+  /** 레벨 업 애니메이션이 끝날 때(건너뛰어도) 풀린다. 돌고 있지 않으면 바로. */
+  levelShown() {
+    return this.bar.done();
+  }
+
+  /** 레벨 업 애니메이션을 곧바로 끝 모습으로(다음 전투를 시작할 때) */
+  finishLevel() {
+    this.bar.finish();
+  }
+
+  /** 정보 칸의 레벨 숫자와 막대. 같은 글 모양에서 레벨이 올랐으면 애니메이션, 아니면 바로(막대는 CSS transition 0.15s). */
+  private showBar(mode: 'town' | 'run', level: bigint, ratio: number, leveled: boolean, options?: LevelPlayOptions) {
+    const before = this.labelMode === mode ? this.shownBar : null;
+    this.shownBar = { level, ratio };
+    this.bar.finish();
+    this.labelFor(mode);
+    if (leveled && before && level > before.level) {
+      this.bar.play(before.level, level, before.ratio, ratio, { label: this.levelNum, fmt: (l) => formatLevel(l) }, options);
+      return true;
+    }
+    this.levelNum.textContent = formatLevel(level);
+    this.bar.set(ratio);
+    return false;
+  }
+
+  /** 레벨 글의 모양: 마을 "Lv. 숫자", 모험 [모험] "Lv 숫자", 모험 중이 아님 [모험] "쉬는 중". 모양이 바뀔 때만 다시 만든다. */
+  private labelFor(mode: 'town' | 'run' | 'none') {
+    if (this.labelMode === mode) return;
+    this.labelMode = mode;
+    this.levelText.replaceChildren();
+    this.levelText.classList.toggle('empty', mode === 'none');
+    if (mode !== 'town') {
+      const badge = document.createElement('span');
+      badge.className = 'adv-run-badge';
+      badge.textContent = '모험';
+      this.levelText.append(badge);
+    }
+    if (mode === 'none') {
+      this.levelText.append('쉬는 중');
+      return;
+    }
+    this.levelText.append(mode === 'run' ? 'Lv ' : 'Lv. ');
+    this.levelNum = document.createElement('span');
+    this.levelNum.className = 'lv-num';
+    this.levelText.append(this.levelNum);
   }
 
   /** 숨은 장소를 찾았을 때 화면 위쪽 가운데에 이름을 크게 띄웠다가 지운다. */
@@ -306,9 +456,41 @@ export class Hud {
     this.accountName.textContent = nickname;
   }
 
+  /**
+   * 계정 줄 골드. 늘면 앞 값에서 새 값으로 450ms 동안 오르고 튄다(디자인 adventure-ui.md 16절, 사용자 "숫자 오르는 애니메이션은 골드도 마찬가지").
+   * 줄면(사고 버림) 바로 바뀐다(에이전트가 정함). 붙잡혀 있으면(holdGold) 값만 받아 두었다가 releaseGold에서 오른다. 인벤토리 골드 줄은 늘 바로.
+   */
   setGold(gold: Gold) {
-    this.gold.textContent = goldText(gold);
     this.bagGold.textContent = goldText(gold);
+    if (gold === this.goldTarget) return;
+    this.goldTarget = gold;
+    if (!this.goldHeld) this.showGold(COUNT.gold);
+  }
+
+  /** 모험 결과 화면 동안 계정 줄 골드를 앞 값에 붙잡아 둔다(가져온 골드는 마을에 선 뒤 오른다). */
+  holdGold() {
+    this.goldHeld = true;
+  }
+
+  /** 붙잡은 골드를 풀어 앞 값에서 새 값으로 ms 동안 올린다(마을에 서면 600ms). 붙잡지 않았으면 아무것도 안 한다. */
+  releaseGold(ms = COUNT.village) {
+    if (!this.goldHeld) return;
+    this.goldHeld = false;
+    this.showGold(ms);
+  }
+
+  private showGold(ms: number) {
+    const to = this.goldTarget;
+    if (to === null) return;
+    this.goldCount?.finish();
+    this.goldCount = null;
+    const from = this.goldShown;
+    this.goldShown = to;
+    if (from === null || to <= from) {
+      this.gold.textContent = goldText(to);
+      return;
+    }
+    this.goldCount = countUp([{ el: this.gold, from, to, fmt: (n) => goldText(n) }], ms, { lockWidth: true, pop: true });
   }
 
   /** 인벤토리 '메모' 탭을 그리는 함수를 받는다. */
@@ -356,6 +538,7 @@ export class Hud {
   close() {
     this.panel.hidden = true;
     this.cancelDrag();
+    this.bagButton.classList.remove('chosen');
   }
 
   /** H: 왼쪽 위 조작 안내를 열고 닫는다. 닫은 상태는 이 브라우저에 남긴다. */
@@ -454,6 +637,13 @@ export class Hud {
     this.dragIcon.hidden = true;
   }
 
+  /** 끌기를 멈추고 칸을 다시 그린다. 휴대폰에서 무기를 길게 눌러 정보를 띄웠을 때 손을 떼도 넣기·옮기기를 하지 않게 한다. */
+  stopDrag() {
+    if (this.drag === null) return;
+    this.cancelDrag();
+    this.render();
+  }
+
   /** 지금 탭의 목록. 단축키 칸에 들어 있는 것은 칸 번호를 붙인다. */
   private renderBag() {
     for (const [id, button] of this.tabButtons) button.classList.toggle('chosen', id === this.tab);
@@ -487,6 +677,7 @@ export class Hud {
   }
 
   private render() {
+    this.bagButton.classList.toggle('chosen', this.isOpen);
     for (const [id, button] of this.viewButtons) button.classList.toggle('chosen', id === this.view);
     this.infoPane.hidden = this.view !== 'info';
     this.bagPane.hidden = this.view !== 'bag';

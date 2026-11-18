@@ -1,5 +1,6 @@
 import { NOTICE_TITLE, UPDATES } from '../updates';
 import { element } from './dom';
+import { byInput } from './touch';
 
 /** 글의 말머리. 서버 board_posts.category와 같다. */
 export type PostCategory = 'general' | 'suggestion';
@@ -142,7 +143,7 @@ export class BoardWindow {
 
     const close = element('office-close', this.root, 'button') as HTMLButtonElement;
     close.type = 'button';
-    close.textContent = '나가기 (Esc)';
+    close.textContent = byInput('나가기 (Esc)', '나가기');
     close.addEventListener('click', () => this.close());
     this.renderTab();
   }
@@ -223,8 +224,8 @@ export class BoardWindow {
     for (const [category, button] of this.categoryButtons) button.classList.toggle('chosen', category === this.category);
     this.input.placeholder =
       this.writeCategory === 'suggestion'
-        ? `바라는 점을 적어 주세요 (${POST_MAX}자까지, Ctrl+Enter로 올리기)`
-        : `아무 말이나 써 보세요 (${POST_MAX}자까지, Ctrl+Enter로 올리기)`;
+        ? `바라는 점을 적어 주세요 (${POST_MAX}자까지${byInput(', Ctrl+Enter로 올리기', '')})`
+        : `아무 말이나 써 보세요 (${POST_MAX}자까지${byInput(', Ctrl+Enter로 올리기', '')})`;
     const length = this.input.value.trim().length;
     this.counter.textContent = `${this.input.value.length} / ${POST_MAX}`;
     this.submit.disabled = this.sending || length === 0;

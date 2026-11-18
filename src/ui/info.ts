@@ -28,6 +28,8 @@ export class InfoView {
     private readonly status: () => MyStatus,
     /** '닉네임 바꾸기'를 누르면 부른다. */
     private readonly onRename: () => void,
+    /** 휴대폰의 '킬/데스 순위'를 누르면 부른다(키보드의 Tab). 버튼은 손가락 화면에만 보인다(touch.css). */
+    private readonly onKillBoard: () => void = () => undefined,
   ) {
     root.classList.add('info');
   }
@@ -39,6 +41,10 @@ export class InfoView {
     const head = element('info-head', this.root);
     element('info-name', head, 'span').textContent = this.nickname();
     element('info-level', head, 'span').textContent = `Lv. ${formatLevel(level)}`;
+    const killBoard = element('info-killboard', head, 'button') as HTMLButtonElement;
+    killBoard.type = 'button';
+    killBoard.textContent = '킬/데스 순위';
+    killBoard.addEventListener('click', () => this.onKillBoard());
 
     // 닉네임 변경권(2026-11-13 사용자 요청 "처음 한 번은 무료, 이후 상점에서 10만 골드")
     const tickets = this.economy.renameTickets;

@@ -36,6 +36,8 @@ export class World {
   version = 0;
   /** 울타리가 막는 변(농장만). 키는 fenceKey. */
   private readonly fences = new Set<number>();
+  /** 모험 맵 몬스터 칸(2026-11-18 부딪히면 싸움): 걸어 들어가거나 점프로 내리거나 넘지 못한다. 길찾기도 피한다. */
+  private readonly monsterTiles = new Set<number>();
 
   constructor(
     readonly map: GameMap,
@@ -109,16 +111,27 @@ export class World {
     return this.map.terrain[i] === Terrain.Ground && !this.map.solid[i];
   }
 
+  /** 모험 맵 몬스터 칸을 정한다(맵마다 한 번). */
+  setMonsterTiles(tiles: readonly { x: number; y: number }[]) {
+    this.monsterTiles.clear();
+    for (const { x, y } of tiles) if (this.inBounds(x, y)) this.monsterTiles.add(this.key(x, y));
+  }
+
+  isMonsterTile(x: number, y: number) {
+    return this.monsterTiles.size > 0 && this.inBounds(x, y) && this.monsterTiles.has(this.key(x, y));
+  }
+
   isWalkable(x: number, y: number) {
     if (!this.isOpenGround(x, y)) return false;
     if (this.covered.has(this.key(x, y))) return false;
+    if (this.monsterTiles.has(this.key(x, y))) return false;
     const block = this.blockAt(x, y);
     return !block || !BLOCKS[block].solid;
   }
 
-  /** 점프로 넘을 수 없는 칸: 두 개 이상 쌓은 블록과 건물 층 안의 벽 */
+  /** 점프로 넘을 수 없는 칸: 두 개 이상 쌓은 블록과 건물 층 안의 벽, 모험 맵 몬스터 칸 */
   blocksJump(x: number, y: number) {
-    return this.heightAt(x, y) >= 2 || this.partitions.has(this.key(x, y));
+    return this.heightAt(x, y) >= 2 || this.partitions.has(this.key(x, y)) || this.monsterTiles.has(this.key(x, y));
   }
 
   /** 총알과 칼을 막는 칸: 건물이나 자원 같은 고정 장애물과 지나갈 수 없는 블록이다. 물과 꽃은 넘어간다. */

@@ -16,8 +16,8 @@ const IDLE_FRAME_MS = 500;
 /** 걷는 그림이 따로 없어서 걸음마다 살짝 뛰어오른다. (아트 픽셀) */
 const STEP_HOP = 2;
 
-/** 캐릭터를 고른 적 없는 옛 계정은 id로 정한다. 어느 화면에서 봐도 같은 캐릭터가 나온다. */
-function memberOf(id: string) {
+/** 캐릭터를 고른 적 없는 옛 계정은 id로 정한다. 어느 화면에서 봐도 같은 캐릭터가 나온다(모험 전투 화면도 씀). */
+export function memberOf(id: string) {
   let sum = 0;
   for (const char of id) sum += char.charCodeAt(0);
   return sum % TEAM_SIZE;
@@ -129,6 +129,11 @@ export class Avatar {
   /** 격자에서 바라보는 방향(dx, dy는 -1, 0, 1) */
   get gridFacing() {
     return this.dir;
+  }
+
+  /** 전쟁터 빛 밖이나 닫힌 숨은 방 안이라 숨겨 두었는지 */
+  get isHidden() {
+    return this.hidden;
   }
 
   /** 전쟁터에서 빛 밖에 있거나 닫힌 숨은 방 안에 있으면 캐릭터와 그림자, 무기를 숨긴다. 바뀌었으면 true */
