@@ -15,7 +15,7 @@ import type { Tile } from './world';
  * 모험 맵 필드(2026-11-18 맵 위 몬스터, 기획 19장 '몬스터를 맵 위에 두며 바뀌는 것'·'몬스터 한 마리씩, 맵 나누기, 부딪히면 싸움, 레벨업 스텟 창').
  * 몬스터는 정해진 자리(adventureMaps.monstersOf, 서버 adventure_spots와 같은 칸)에 떠 있고 잡아도 사라지지 않는다.
  * 몬스터 칸은 막혀 있고(World.setMonsterTiles), 그 쪽으로 방향 키를 누르거나 몬스터를 누르면 싸운다(GameScene이 bump를 부름).
- * 머리 위 이름표 "Lv 350"은 한 색이고, 판 레벨이 몬스터 레벨의 2배 이상이면 회색(판 경험치 없음)이다. 옆 칸에 서면 이름 줄이 더해진다.
+ * 머리 위 이름표 "Lv. 350"은 한 색이다(회색 이름표는 없앰, 2026-11-19, 경험치 줄어듦을 없애서(사용자 "레벨의 2배가 되더라도, 경험치 못얻거나, 아이템 못얻는건 없다. 무조건 얻는다")). 옆 칸에 서면 이름 줄이 더해진다.
  * 이길 확률과 하는 법 안내는 보이지 않는다(2026-11-18 사용자 "이길 확률 같은건 없애라… 플레이어가 게임하면서 자연스럽게 알아가진다").
  * 위 가운데 HUD: BP 점 20개, [스텟 (P)], [귀환](판이 없으면 [귀환]만) / (일곱 빛 들판) 선 구역의 빛. 판 레벨은 아래 정보 칸에 있다(Hud.setRun).
  * 얽힌 숲 되돌림 칸을 밟으면 hooks.reset.
@@ -36,9 +36,8 @@ const VIEW_MARGIN = 96;
 /** 이름표 글씨(월드 px). 그림은 2배로 그려 반으로 줄인다(화면 2배에서 또렷하게). */
 const TAG_FONT = 9;
 const TAG_RES = 2;
-/** 이름표 글 색: 한 가지 #f3e9d2(이길 확률과 상관없음, 디자인 세션이 정함)와 판 경험치가 없는 몬스터의 회색 */
-const TAG_COLOR = { normal: '#f3e9d2', gray: '#b9b9b9' } as const;
-type TagKind = keyof typeof TAG_COLOR;
+/** 이름표 글 색: 한 가지 #f3e9d2(이길 확률과 상관없음, 디자인 세션이 정함) */
+const TAG_COLOR = '#f3e9d2';
 /** 가까이 선 몬스터 이름표 위에 더하는 이름 줄(흰 8px) */
 const NAME_FONT = 8;
 
@@ -361,33 +360,25 @@ export class AdventureField {
     this.bobStats.ms += performance.now() - t0;
   }
 
-  /** 판 레벨이 몬스터 레벨의 2배 이상이면 판 경험치가 0이다(그래도 싸울 수 있음). */
-  private noExp(L: number) {
-    const view = this.adventure.view;
-    const level = view?.inRun ? Number(view.level) : 1;
-    return level >= L * 2;
-  }
-
-  /** 판 레벨이 바뀌면 회색이 바뀔 수 있다: 글·색이 바뀐 이름표만 다시 그린다(paintTag가 키로 거름). */
+  /** 서버 값이 바뀌면 이름표를 맞춘다: 글이 바뀐 이름표만 다시 그린다(paintTag가 키로 거름). */
   private repaintTags() {
     for (const f of this.floats) this.paintTag(f);
   }
 
   /**
-   * 이름표(디자인 세션 adventure-monsters.md 7절 4): "Lv. 350"(일반), "중간 보스 Lv. 2,222", "보스 Lv. 15,000"(줄이지 않은 숫자, 2026-11-18 사용자). 판 경험치가 없으면 회색.
+   * 이름표(디자인 세션 adventure-monsters.md 7절 4): "Lv. 350"(일반), "중간 보스 Lv. 2,222", "보스 Lv. 15,000"(줄이지 않은 숫자, 2026-11-18 사용자).
    * 옆 칸에 선 몬스터만 위에 이름 한 줄을 더한다. 그림은 글과 색이 같으면 다시 쓴다.
    */
   private paintTag(f: Floating) {
     const L = f.m.level;
-    const kind: TagKind = this.noExp(L) ? 'gray' : 'normal';
     const near = this.floats[this.near] === f;
     const lv = `Lv. ${formatNumber(L)}`;
     const text = f.m.kind === 'boss' ? `보스 ${lv}` : f.m.kind === 'mini' ? `중간 보스 ${lv}` : lv;
     const name = near ? f.frame.name : '';
-    const texKey = `adv-tag|${f.m.kind}|${kind}|${name}|${text}`;
+    const texKey = `adv-tag|${f.m.kind}|${name}|${text}`;
     if (texKey === f.tagKey) return;
     f.tagKey = texKey;
-    if (!this.scene.textures.exists(texKey)) this.scene.textures.addCanvas(texKey, tagCanvas(name, text, TAG_COLOR[kind], f.m.kind, kind === 'gray'));
+    if (!this.scene.textures.exists(texKey)) this.scene.textures.addCanvas(texKey, tagCanvas(name, text, TAG_COLOR, f.m.kind));
     f.tag.setTexture(texKey);
   }
 
@@ -521,10 +512,10 @@ export class AdventureField {
 }
 
 /**
- * 몬스터 이름표 그림(디자인 세션 확인 도구 view.js nameTags와 같은 모양): 검은 반투명 판(회색은 45%), 보스 빨강·중간 보스 주황 테두리.
+ * 몬스터 이름표 그림(디자인 세션 확인 도구 view.js nameTags와 같은 모양): 검은 반투명 판, 보스 빨강·중간 보스 주황 테두리.
  * name이 있으면(가까이 선 몬스터) 위에 흰 이름 한 줄을 더한다. 화면 2배에서 또렷하게 TAG_RES배로 그린다.
  */
-function tagCanvas(name: string, text: string, color: string, kind: FieldMonster['kind'], dim: boolean) {
+function tagCanvas(name: string, text: string, color: string, kind: FieldMonster['kind']) {
   const R = TAG_RES;
   const font = `bold ${TAG_FONT * R}px sans-serif`;
   const nameFont = `bold ${NAME_FONT * R}px sans-serif`;
@@ -542,7 +533,7 @@ function tagCanvas(name: string, text: string, color: string, kind: FieldMonster
   c.width = w;
   c.height = h;
   const g = c.getContext('2d')!;
-  g.fillStyle = dim ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.62)';
+  g.fillStyle = 'rgba(0,0,0,0.62)';
   g.fillRect(0, 0, w, h);
   if (kind !== 'normal') {
     g.strokeStyle = kind === 'boss' ? '#ff3b30' : '#ffa53a';

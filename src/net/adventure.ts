@@ -79,9 +79,11 @@ export interface AdvPowerView extends AdvStats {
   mul: number;
   town: AdvStats;
   bonus: AdvStats;
+  /** 무기 고정 포인트(컬렉션 + 장착, 2026-11-19). 판 포인트·마을 스텟 × 10과 같은 자리에 더해짐 */
+  flat: AdvStats;
   fx: AdvFx;
-  /** 장착 무기 효과(서버가 셈). 장착이 없으면 null */
-  equip: { weapon: string; stat: AdvStat; pct: number; fx: AdvEquipFx | null; value: number } | null;
+  /** 장착 무기 효과(서버가 셈). 장착이 없으면 null. flat은 장착 몫 고정 포인트 */
+  equip: { weapon: string; stat: AdvStat; pct: number; flat: number; fx: AdvEquipFx | null; value: number } | null;
 }
 
 /** 끝난 판의 결과(결과 화면). reason은 끝난 까닭: 'bp' BP가 0이 됨, 'return' 귀환. 가져가는 양은 둘이 같다. */

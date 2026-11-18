@@ -1,7 +1,8 @@
 import { adventureArt, HERO_ART, itemIcon, loadAdventureArt, weaponIcon } from '../art/adventureArt';
 import { bigText, type Adventure } from '../game/adventure';
 import { bpDots } from '../game/adventureBattle';
-import { ADV_STATS, baseLevel, BP_RUN, equipPct, MAX_SLOTS, slotCap, slotPrice, SPLIT, TOWN_EXP_PER_WIN, TOWN_X, type AdvStat } from '../game/adventureRules';
+import { ADV_STATS, baseLevel, BP_RUN, equipFlat, equipPct, MAX_SLOTS, PER_POINT, slotCap, slotPrice, SPLIT, TOWN_EXP_PER_WIN, TOWN_X, type AdvStat } from '../game/adventureRules';
+import { formatNumber } from '../game/level';
 import { goldText } from '../game/gold';
 import { adventureAssign, adventureBuy, adventureBuySlot, adventureEquip, adventureSell, adventureSetAuto, adventureEquipWeapon, type AdvEquipFx, type AdvItem, type AdvWeapon, type AdvResult, type AdvView, adventureRanking, type AdvRanking } from '../net/adventure';
 import { bigOf, COUNT, countUp, type Counter } from './countUp';
@@ -162,7 +163,7 @@ export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvVie
     element('adv-stat-key', row).textContent = STAT_NAME[k];
     const mid = element('', row);
     element('adv-stat-value', mid).textContent = bigText(p[k]);
-    element('adv-stat-desc', mid).textContent = compact ? STAT_DESC[k] : `${STAT_DESC[k]} · 나눈 포인트 ${bigText(view.spent[k])} · 마을 +${bigText(p.town[k] * TOWN_X)}`;
+    element('adv-stat-desc', mid).textContent = compact ? STAT_DESC[k] : `${STAT_DESC[k]} · 나눈 포인트 ${bigText(view.spent[k])} · 마을 +${bigText(p.town[k] * TOWN_X)} · 무기 +${bigText(p.flat?.[k] ?? 0)}`;
     const add = element('adv-stat-add', row);
     const steps: [string, bigint][] = [['+1', 1n], ['+10', 10n], ['+100', 100n], ['절반', half], ['전부', points]];
     for (const [label, amount] of steps) {
@@ -182,7 +183,7 @@ export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvVie
  */
 export function confirmReturn(root: HTMLElement, onYes: () => void) {
   const modal = new Modal(root, 'adv-confirm', '귀환할까요?');
-  element('adv-confirm-text', modal.box).textContent = '귀환하면 이번 모험이 끝납니다. 얻은 경험치와 금화의 절반을 마을로 가져갑니다.';
+  element('adv-confirm-text', modal.box).textContent = '귀환하면 이번 모험이 끝납니다. 얻은 경험치와 금화를 마을로 가져갑니다.';
   modal.button('계속하기', () => undefined);
   modal.button('귀환', () => onYes(), true);
   return modal;
@@ -373,7 +374,7 @@ export class AdventureWindow {
     statRows(this.body, this.adventure, view, false, this.say);
     const b = view.power.bonus;
     element('adv-bonus', this.body).textContent =
-      `전투 스텟 = (처음 값 + (나눈 포인트 + 마을 스텟 × ${TOWN_X}) × 1포인트 효과) × (1 + 컬렉션·보석 HP +${pct(b.hp)} · ATK +${pct(b.atk)} · DEF +${pct(b.def)} · AGI +${pct(b.agi)} · LUC +${pct(b.luc)}) × 베이스 ×${view.power.mul}`;
+      `전투 스텟 = (처음 값 + (나눈 포인트 + 마을 스텟 × ${TOWN_X} + 무기 고정 포인트) × 1포인트 효과) × (1 + 컬렉션·보석 HP +${pct(b.hp)} · ATK +${pct(b.atk)} · DEF +${pct(b.def)} · AGI +${pct(b.agi)} · LUC +${pct(b.luc)}) × 베이스 ×${view.power.mul}`;
   }
 
   /** 상점과 장신구 끼기·팔기가 되는지: 시작마을이고 판 중이 아닐 때(서버도 막음, 기획 3장). 안 되면 버튼만 누를 수 없다(까닭은 쓰지 않음). */
@@ -551,13 +552,16 @@ const FX_TEXT: Record<AdvEquipFx, (v: number) => string> = {
 };
 
 /**
- * 장착 효과 글(숫자만, 기획 19장 '컬렉션 무기 장착'): ["ATK +15%"] 또는 ★4 이상이면 ["ATK +40%", "크리티컬 피해 +0.25"].
- * 스텟 몫은 무기 행의 equipPct × (1 + 0.25 × 단계)(서버 adventure_power와 같음).
+ * 장착 효과 글(숫자만, 기획 19장 '모험 숫자 다시 맞추기'): "ATK +8,000 · +20% · 크리티컬 피해 +0.25"(고정 수치, %, ★4 이상 특수 효과).
+ * 고정 수치는 장착 몫 고정 포인트 × 1포인트 효과(HP × 5, DEF × 3)이고, 무기 지역 보스 레벨로 센다(서버 adventure_power와 같음).
+ * 스텟 몫은 무기 행의 equipPct × (1 + 0.25 × 단계).
  */
-export function equipEffects(w: AdvWeapon, copies: number) {
-  const out = [`${STAT_NAME[w.stat]} +${oneDecimal(equipPct(w.equipPct, copies) * 100)}%`];
+export function equipEffects(adv: Adventure, w: AdvWeapon, copies: number) {
+  const bossLevel = adv.view?.zones.find((z) => z.id === w.zone)?.bossLevel ?? 0;
+  const flat = equipFlat(w.equipPct, copies, bossLevel) * PER_POINT[w.stat];
+  const out = [`${STAT_NAME[w.stat]} +${formatNumber(flat)}`, `+${oneDecimal(equipPct(w.equipPct, copies) * 100)}%`];
   if (w.equipFx && w.equipFxValue) out.push(FX_TEXT[w.equipFx](w.equipFxValue));
-  return out;
+  return out.join(' · ');
 }
 
 /** 무기 그림 캔버스(adv-weapons.png 한 칸)를 size px로 */
@@ -586,7 +590,7 @@ function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'e
   if (w.boss) element('adv-wcard-kind', meta, 'span').textContent = ' 보스';
   else if (w.mini) element('adv-wcard-kind', meta, 'span').textContent = ' 중간 보스';
   const fx = element('adv-wcard-fx', body);
-  for (const t of equipEffects(w, copies)) element('', fx, 'span').textContent = t;
+  fx.textContent = equipEffects(adv, w, copies);
   const btns = element('adv-wcard-btns', card);
   button(state === 'equipped' ? 'adv-btn' : 'adv-btn gold', btns, state === 'equipped' ? '빼기' : '장착', () => act?.());
   return card;
@@ -612,7 +616,7 @@ export function equipBlock(parent: HTMLElement, adv: Adventure, view: AdvView, u
     const copies = adv.copies(eq.id);
     if (copies > 1) element('adv-wcard-plus', head, 'span').textContent = ` +${copies - 1}`;
     const fx = element('adv-equip-fx', info);
-    for (const t of equipEffects(eq, copies)) element('', fx, 'span').textContent = t;
+    fx.textContent = equipEffects(adv, eq, copies);
   } else {
     element('', head, 'b').textContent = '장검';
     element('adv-equip-fx dim', info).textContent = '-';
@@ -741,7 +745,7 @@ export function showAdventureResult(root: HTMLElement, result: AdvResult, advent
     const to = bigOf(result.townGold);
     const fmt = (n: bigint) => `마을 골드 +${goldText(n)}`;
     counters.push({ el: element('adv-end-take adv-gold', v, 'span'), from: 0n, to, fmt });
-    line('adv-end-from', v, ['금화 ', [bigText(result.gold), 'adv-coin'], '의 50%'], 'span');
+    line('adv-end-from', v, ['금화 ', [bigText(result.gold), 'adv-coin']], 'span');
   });
   // 얻은 무기가 없으면 무기 줄을 두지 않는다("없음"을 쓰지 않음).
   const drops = result.drops.map((id) => adventure.weapon(id)).filter((w): w is AdvWeapon => !!w);

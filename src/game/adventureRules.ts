@@ -1,7 +1,7 @@
 /**
  * 모험 규칙(2026-11-17 사용자가 정함, 기획 docs/balance/dungeon-rework.md). 서버 SQL `20261117000000_adventure.sql`과 같은 식이다.
  * 결과는 서버가 정하고, 화면은 이 값으로 창에 값을 보이고 추천 나누기를 센다(이길 확률 칸 색은 2026-11-18 없앰).
- * 숫자와 식은 docs/balance/tools/dungeon-run.js 위쪽 값과 같다(fightOnce, expOf, expFalloff, levelFromExp, dropChance, monster, PER_POINT, START).
+ * 숫자와 식은 docs/balance/tools/dungeon-run.js 위쪽 값과 같다(fightOnce, expOf, levelFromExp, dropChance, monster, PER_POINT, START, 무기 고정 수치 flatOf).
  * 바꾸면 그 파일, 서버 SQL(adventure_battle, adventure_power, adventure_buy_slot, adventure_set_auto), 이 파일을 함께 고친다.
  * 몬스터 레벨은 몬스터마다 자료에 있다(adventureMaps.ts, 서버 몬스터 표).
  */
@@ -55,8 +55,8 @@ export const CRIT_MAX = 0.5;
 export const TOWN_X = 10;
 /** 이긴 전투 하나에 가져가는 마을 경험치(기획 8장, 계산기 dungeon-run.js TOWN_EXP_PER_WIN). 4,900 → 5,400(2026-11-18 결과 칸 클릭 규칙 뒤 다시 맞춤, 기획 17장 '결과 칸 클릭 규칙의 안', 사용자 "추천안으로") */
 export const TOWN_EXP_PER_WIN = 5400;
-/** 판 금화 가운데 마을 골드로 가져가는 몫 */
-export const TAKE_GOLD = 0.5;
+/** 판 금화 가운데 마을 골드로 가져가는 몫(0.5 → 1, 2026-11-19 사용자 "가져오는 재화는 100%로 같게하고, 금화를 현재보다 2배로 늘려라.") */
+export const TAKE_GOLD = 1;
 export const BASE_SLOTS = 2;
 export const MAX_SLOTS = 8;
 /** 3~8번째 장신구 칸 값(마을 골드) */
@@ -67,18 +67,26 @@ export const NO_FX: AdvFx = { comboAdd: 0, comboMax: COMBO_MAX, critMul: CRIT_MU
 /** 레벨 L, 세기 d인 몬스터 */
 export const monster = (L: number, d: number) => ({ hp: d * (30 + 10 * L), atk: d * (5 + 1.5 * L) });
 export const expOf = (L: number) => 40 * (L + 3) ** 2;
-/** 내 레벨 n이 칸 레벨 L보다 높으면 경험치가 줄고, 두 배가 되면 0이다. */
-export const expFalloff = (n: number, L: number) => (n <= L ? 1 : Math.max(0, 2 - n / L));
+// 경험치 줄어듦(예전 expFalloff)은 없앴다: 판 레벨과 상관없이 몬스터 경험치를 다 준다(2026-11-18 사용자 "레벨의 2배가 되더라도, 경험치 못얻거나, 아이템 못얻는건 없다. 무조건 얻는다").
 /** 레벨 n까지 쌓인 경험치는 50n(n − 1)이다. */
 export const levelFromExp = (e: number) => Math.floor((1 + Math.sqrt(1 + (8 * e) / 100)) / 2);
 export const lucGold = (luc: number, L: number) => 1 + (3 * luc) / (luc + 4 * L);
 /** 보통 몬스터 무기 드랍(0.02 → 0.002, 2026-11-18 사용자 "전반적으로 드롭률이 너무 높다. 파격적으로 줄여줘.", 서버 adventure_battle). 잡은 보스를 다시 잡을 때는 서버 0.02. */
 export const dropChance = (luc: number, L: number) => 0.002 * (1 + luc / (luc + 4 * L));
+/**
+ * 무기 고정 수치(2026-11-19 사용자 "이대로 (추천)", 기획 10장 '고정 수치'): 고정 포인트 = 그 몫의 % × 2 × 무기 지역의 보스 레벨(무기마다 버림).
+ * 서버 adventure_power(numeric으로 정확히 셈)와 끝자리까지 같게 정수로 센다(소수 곱하기의 오차로 버림이 1 어긋나지 않게).
+ * 컬렉션 몫 % = ★ × 1% × 가진 수, 장착 몫 % = 무기 행 equipPct × (1 + 0.25 × (가진 수 − 1)) = equipPct × (가진 수 + 3) ÷ 4.
+ */
+export const FLAT_X = 2;
+export const collectionFlat = (star: number, copies: number, bossLevel: number) => Math.floor((star * copies * FLAT_X * bossLevel) / 100);
+export const equipFlat = (basePct: number, copies: number, bossLevel: number) =>
+  Math.floor((Math.round(basePct * 10000) * (copies + 3) * FLAT_X * bossLevel) / 40000);
 /** 판 금화의 기준 칸 레벨(지옥 끝, 계산기 GOLD_REF_L) */
 const GOLD_REF_L = 20000;
-/** 한 번 이긴 판 금화: 166 × (L ÷ 2만)^0.08 × LUC 배율. 보스·중간 보스는 처음 잡을 때만 5배(151 → 166, 2026-11-18 결과 칸 클릭 규칙 뒤 다시 맞춤, 기획 17장 '결과 칸 클릭 규칙의 안', 사용자 "추천안으로") */
+/** 한 번 이긴 판 금화: 332 × (L ÷ 2만)^0.08 × LUC 배율(166 → 332, 2026-11-19 사용자 "가져오는 재화는 100%로 같게하고, 금화를 현재보다 2배로 늘려라."). 보스·중간 보스는 처음 잡을 때만 5배(151 → 166, 2026-11-18 결과 칸 클릭 규칙 뒤 다시 맞춤, 기획 17장 '결과 칸 클릭 규칙의 안', 사용자 "추천안으로") */
 export const runGold = (L: number, luc: number, boss: boolean, pouch = 0) =>
-  Math.round(166 * (L / GOLD_REF_L) ** 0.08 * lucGold(luc, L) * (boss ? 5 : 1) * (1 + pouch));
+  Math.round(332 * (L / GOLD_REF_L) ** 0.08 * lucGold(luc, L) * (boss ? 5 : 1) * (1 + pouch));
 /** 베이스 레벨 = 마을 레벨 ÷ 1,000(버림), 모험 스텟 × (1 + 0.25 × 베이스 레벨) */
 export const baseLevel = (townLevel: number) => Math.floor(townLevel / 1000);
 export const baseMul = (townLevel: number) => 1 + baseLevel(townLevel) * 0.25;
