@@ -581,9 +581,8 @@ function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'e
   const copies = adv.copies(w.id);
   element('adv-wcard-icon', card).appendChild(weaponCanvas(w.art, 48));
   const body = element('adv-wcard-body', card);
-  const head = element('adv-wcard-head', body);
-  element('adv-wcard-name', head, 'b').textContent = w.name;
-  if (state === 'equipped') element('adv-wcard-tag', head, 'span').textContent = '장착';
+  // 이름 줄은 뺐다(2026-11-19 사용자 "몬스터 이름, 장비이름 굳이 없어도 된다."). 장착 표만 있으면 그 줄을 둔다.
+  if (state === 'equipped') element('adv-wcard-tag', element('adv-wcard-head', body), 'span').textContent = '장착';
   const meta = element('adv-wcard-meta', body);
   element('adv-wcard-star', meta, 'span').textContent = '★'.repeat(w.star);
   if (copies > 1) element('adv-wcard-plus', meta, 'span').textContent = ` +${copies - 1}`;
@@ -611,14 +610,12 @@ export function equipBlock(parent: HTMLElement, adv: Adventure, view: AdvView, u
   const head = element('adv-equip-head', info);
   if (eq) {
     icon.appendChild(weaponCanvas(eq.art, 40));
-    element('', head, 'b').textContent = eq.name;
-    element('adv-wcard-star', head, 'span').textContent = ` ${'★'.repeat(eq.star)}`;
+    element('adv-wcard-star', head, 'span').textContent = '★'.repeat(eq.star);
     const copies = adv.copies(eq.id);
     if (copies > 1) element('adv-wcard-plus', head, 'span').textContent = ` +${copies - 1}`;
     const fx = element('adv-equip-fx', info);
     fx.textContent = equipEffects(adv, eq, copies);
   } else {
-    element('', head, 'b').textContent = '장검';
     element('adv-equip-fx dim', info).textContent = '-';
   }
   button(ui.open ? 'adv-btn gold' : 'adv-btn', slot, ui.open ? '닫기' : '바꾸기', () => {

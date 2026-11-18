@@ -367,14 +367,14 @@ export class AdventureField {
 
   /**
    * 이름표(디자인 세션 adventure-monsters.md 7절 4): "Lv. 350"(일반), "중간 보스 Lv. 2,222", "보스 Lv. 15,000"(줄이지 않은 숫자, 2026-11-18 사용자).
-   * 옆 칸에 선 몬스터만 위에 이름 한 줄을 더한다. 그림은 글과 색이 같으면 다시 쓴다.
+   * 이름 줄은 없다(2026-11-19). 그림은 글과 색이 같으면 다시 쓴다.
    */
   private paintTag(f: Floating) {
     const L = f.m.level;
-    const near = this.floats[this.near] === f;
     const lv = `Lv. ${formatNumber(L)}`;
     const text = f.m.kind === 'boss' ? `보스 ${lv}` : f.m.kind === 'mini' ? `중간 보스 ${lv}` : lv;
-    const name = near ? f.frame.name : '';
+    // 이름 줄은 뺐다(2026-11-19 사용자 "몬스터 이름, 장비이름 굳이 없어도 된다."): 레벨 줄 하나
+    const name = '';
     const texKey = `adv-tag|${f.m.kind}|${name}|${text}`;
     if (texKey === f.tagKey) return;
     f.tagKey = texKey;

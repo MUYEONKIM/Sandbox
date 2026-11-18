@@ -1,4 +1,4 @@
-import { battleBg, DEFAULT_HELD, HERO_ART, heldWeapon, loadAdventureArt, WEAPON_CELL, weaponIcon as weaponIconOf, type AdventureArt } from '../art/adventureArt';
+import { battleBg, DEFAULT_HELD, HERO_ART, heldWeapon, loadAdventureArt, loadZoneBg, WEAPON_CELL, weaponIcon as weaponIconOf, type AdventureArt } from '../art/adventureArt';
 import { FORGE_HELD, FORGE_HELD_SIZE } from '../art/forgeArt';
 import type { AdvBattle } from '../net/adventure';
 import { bigOf } from '../ui/countUp';
@@ -171,8 +171,13 @@ class Stage {
   /** 시각 t의 장면. live면 새로 맞은 숫자를 띄운다(건너뛸 때는 숫자를 지운다). */
   render(t: number, live: boolean) {
     const d0 = performance.now();
-    const { ctx, fight, plan, art } = this;
-    ctx.drawImage(battleBg(art, fight.zone), 0, 0);
+    const { ctx, fight, plan } = this;
+    const bg = battleBg(fight.zone);
+    if (bg) ctx.drawImage(bg, 0, 0, STAGE_W, STAGE_H);
+    else {
+      ctx.fillStyle = '#1c1014';
+      ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+    }
     let heroHp = fight.heroHp;
     let foeHp = fight.foeHp;
     for (const e of plan.events) {
@@ -479,7 +484,8 @@ export interface BattleContext {
  * 장막은 닫힌 뒤 150ms 동안 걷히며 지워진다.
  */
 export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: BattleContext): Promise<void> {
-  const art = await loadAdventureArt();
+  // 그 지역 배경은 처음 싸울 때 한 장만 읽는다(싸우기를 누를 때 GameScene이 먼저 받기 시작함). 못 읽으면 어두운 바탕.
+  const [art] = await Promise.all([loadAdventureArt(), loadZoneBg(battle.mon.zone).catch(() => null)]);
   const t0 = performance.now();
   const { mon } = battle;
   const maps = infernus();
@@ -497,7 +503,8 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
   bpDots(head, battle.ended ? 0 : battle.state.bp);
   const fighters = element('adv-fighters', panel);
   const heroBar = fighterCard(fighters, 'hero', '나', `Lv. ${bigText(ctx.levelBefore)}`);
-  const foeBar = fighterCard(fighters, 'foe', foe?.name ?? '몬스터', `Lv. ${bigText(mon.level)}`);
+  // 몬스터 이름 대신 역할(2026-11-19 사용자 "몬스터 이름, 장비이름 굳이 없어도 된다.", "모두 빼기 (추천)")
+  const foeBar = fighterCard(fighters, 'foe', mon.kind === 'boss' ? '보스' : mon.kind === 'mini' ? '중간 보스' : '몬스터', `Lv. ${bigText(mon.level)}`);
   const stageBox = element('adv-stage', panel);
   const role: MonsterRole = mon.kind === 'boss' ? 'boss' : mon.kind === 'mini' ? 'mid' : 'normal';
   const log = new BattleLog(panel);

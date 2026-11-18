@@ -24,38 +24,42 @@ export const HERO_ART = {
 };
 
 /**
- * 지역 전투 배경: 평원·지옥 그림 둘과, 지역 3~8은 그 그림의 색을 바꾼 것(bgTint는 캔버스 filter 글, 에이전트가 정함).
- * 새 배경 그림이 나오면 그 지역 줄만 바꾼다.
+ * 지역 전투 배경(2026-11-19 디자인 시안 art-source/adventure/battle-bg/bg-board.png, 사용자 확인): 지역마다 480 × 270 webp 한 장.
+ * 2배로 그리는 전투 캔버스에 240 × 135로 그린다(색 바꾸기는 없앰). 다섯 장을 함께 읽지 않고 그 지역에서 처음 싸울 때 그 한 장만 읽고
+ * 다시 쓴다(loadZoneBg, 싸우기를 누르면 소용돌이 동안 받기 시작함).
  */
-const ZONE_BG: Record<string, { bg: 'plains' | 'inferno'; tint?: string }> = {
-  adv_1: { bg: 'plains' },
-  adv_2: { bg: 'inferno' },
-  adv_3: { bg: 'plains', tint: 'hue-rotate(25deg) brightness(0.62)' },
-  adv_4: { bg: 'inferno', tint: 'grayscale(0.85) brightness(1.1)' },
-  adv_5: { bg: 'plains', tint: 'hue-rotate(170deg) saturate(1.3)' },
-  adv_6: { bg: 'plains', tint: 'hue-rotate(110deg) brightness(1.25)' },
-  adv_7: { bg: 'inferno', tint: 'hue-rotate(230deg) brightness(0.75)' },
-  adv_8: { bg: 'inferno', tint: 'brightness(0.45) grayscale(0.4)' },
+const ZONE_BG: Record<string, string> = {
+  adv_1: 'dark-plains',
+  adv_2: 'hell',
+  adv_3: 'tangled-forest',
+  adv_4: 'cliff-path',
+  adv_5: 'rainbow-field',
+  adv_6: 'stormy-sky',
+  adv_7: 'starlit-sky',
+  adv_8: 'shadow-cave',
 };
+const zoneBgLoads = new Map<string, Promise<HTMLImageElement>>();
+const zoneBgs = new Map<string, HTMLImageElement>();
+const bgName = (zone: string) => ZONE_BG[zone] ?? ZONE_BG.adv_1;
 
-/** 지역 전투 배경. 색을 바꾼 배경은 처음 쓸 때 한 번 만든다. */
-export function battleBg(art: AdventureArt, zone: string): CanvasImageSource {
-  const z = ZONE_BG[zone] ?? ZONE_BG.adv_1;
-  const base = art.bg[z.bg];
-  if (!z.tint) return base;
-  const key = `bg@${zone}`;
-  return (art.tinted[key] ??= tint(base, z.tint));
+/** 지역 배경 한 장을 읽는다(처음 한 번, 실패하면 다음에 다시). */
+export function loadZoneBg(zone: string) {
+  const name = bgName(zone);
+  let load = zoneBgLoads.get(name);
+  if (!load) {
+    load = image(`adv-bg-${name}`, 'webp').then((img) => {
+      zoneBgs.set(name, img);
+      return img;
+    });
+    load.catch(() => zoneBgLoads.delete(name));
+    zoneBgLoads.set(name, load);
+  }
+  return load;
 }
 
-function tint(img: HTMLImageElement, filter: string) {
-  const c = document.createElement('canvas');
-  c.width = img.width;
-  c.height = img.height;
-  const g = c.getContext('2d')!;
-  g.imageSmoothingEnabled = false;
-  g.filter = filter;
-  g.drawImage(img, 0, 0);
-  return c;
+/** 읽어 둔 지역 배경(아직 못 읽었으면 null) */
+export function battleBg(zone: string): HTMLImageElement | null {
+  return zoneBgs.get(bgName(zone)) ?? null;
 }
 
 /** 장신구 아이콘(adv-items.png, 32×32 칸): 보석은 스텟, 그 밖의 장신구는 종류로 고른다. */
@@ -67,9 +71,6 @@ export const itemIconCol = (kind: string, stat: string | null) => ITEM_COL[kind 
 export const DEFAULT_HELD = 'longsword';
 
 export interface AdventureArt {
-  bg: Record<'plains' | 'inferno', HTMLImageElement>;
-  /** 색을 바꾼 배경(지역 3~8). 처음 쓸 때 채운다. */
-  tinted: Record<string, HTMLCanvasElement>;
   heroes: HTMLImageElement;
   items: HTMLImageElement;
   held: HTMLImageElement;
@@ -84,19 +85,19 @@ let loading: Promise<AdventureArt> | null = null;
 /** 이미 읽었으면 바로 쓸 수 있다(창을 그릴 때 기다리지 않으려고). */
 export let adventureArt: AdventureArt | null = null;
 
-function image(name: string) {
+function image(name: string, ext = 'png') {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`이미지를 읽지 못했습니다: ${name}`));
-    img.src = assetUrl(`sprites/adventure/${name}.png`);
+    img.src = assetUrl(`sprites/adventure/${name}.${ext}`);
   });
 }
 
-/** 모험 그림 다섯 장을 한 번 읽는다(약 110KB, 무기 그림 87KB 포함). */
+/** 모험 그림 세 장을 한 번 읽는다(무기 그림 87KB 포함). 전투 배경은 지역마다 따로(loadZoneBg). */
 export function loadAdventureArt() {
-  loading ??= Promise.all(['adv-bg-plains', 'adv-bg-inferno', 'adv-heroes', 'adv-items', 'adv-weapons'].map(image)).then(([plains, inferno, heroes, items, weapons]) => {
-    adventureArt = { bg: { plains, inferno }, tinted: {}, heroes, items, held: sprite('forge/held'), weapons };
+  loading ??= Promise.all(['adv-heroes', 'adv-items', 'adv-weapons'].map((n) => image(n))).then(([heroes, items, weapons]) => {
+    adventureArt = { heroes, items, held: sprite('forge/held'), weapons };
     return adventureArt;
   });
   loading.catch(() => (loading = null));

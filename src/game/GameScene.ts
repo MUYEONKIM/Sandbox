@@ -145,7 +145,7 @@ import { Lights } from './lights';
 import type { Adventure } from './adventure';
 import { AdventureField } from './adventureField';
 import { playBattle } from './adventureBattle';
-import { loadAdventureArt } from '../art/adventureArt';
+import { loadAdventureArt, loadZoneBg } from '../art/adventureArt';
 import { adventureBattle, adventureMove, adventureReturn, adventureStart, type AdvResult } from '../net/adventure';
 import { confirmReturn, failText, showAdventureResult, type AdventureWindow } from '../ui/adventure';
 import { advEntry, advMap, infernus, loadAdventureMaps, adventureMapsReady, monstersOf, type FieldMonster } from './adventureMaps';
@@ -1916,6 +1916,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const art = infernus();
     const frame = art?.monsters.frames[monster.art];
     const mapId = this.mapId;
+    // 그 지역 전투 배경을 소용돌이 동안 받기 시작한다(처음 한 번, playBattle이 기다림)
+    void loadZoneBg(zone).catch(() => null);
     const request = (async () => {
       const gap = FIGHT_GAP_MS - (performance.now() - this.advFoughtAt);
       if (gap > 0) await new Promise((resolve) => window.setTimeout(resolve, gap));
