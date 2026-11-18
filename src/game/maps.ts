@@ -536,10 +536,10 @@ export interface Portal {
   /** 포탈 색. 없으면 가는 곳의 색이다. */
   color?: Color;
   /**
-   * 모험 맵 포탈(adventureMaps.ts): 입구 맵의 지역 포탈('zone'), 보스방 옆 다음 지역 포탈('next')은 서버 값에 따라 보이고 숨는다.
-   * 같은 지역 다음 맵('next_map')·앞 맵('prev_map')은 늘 열려 있다(2026-11-18 맵 열세 장).
+   * 모험 맵 포탈(adventureMaps.ts): 보스방 옆 다음 지역 포탈('next')만 이번 판에 그 지역 보스를 잡았을 때 보인다(서버 run_bosses).
+   * 입구 맵 포탈('zone', 평원 1로 하나), 같은 지역 다음 맵('next_map')·앞 맵('prev_map'), 지역 첫 맵의 앞 지역 포탈('prev_zone')은 늘 열려 있다.
    */
-  adventure?: 'zone' | 'next' | 'next_map' | 'prev_map';
+  adventure?: 'zone' | 'next' | 'next_map' | 'prev_map' | 'prev_zone';
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
   landing: { x: number; y: number };
 }

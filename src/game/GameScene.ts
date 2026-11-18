@@ -901,6 +901,22 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.portalSprites = this.world.portals.map((portal) => this.addPortalSprite(portal));
     // 블록은 이 뒤에 서버에서 받아 놓는다(spawnBlock이 덮는지 본다).
     this.keepClear.guard([...this.portalSprites.map(({ image }) => image), ...boards]);
+    this.clearAdventurePortals();
+  }
+
+  /**
+   * 모험 맵 꾸밈(벽 블록, 나무, Infernus 조각)이 포탈 그림의 보이는 픽셀을 덮으면 반투명하게 둔다. 플레이어가 놓은 블록과 같은 규칙(keepClear,
+   * 2026-11-16 사용자 "가려지면 안 된다")을 맵 꾸밈에도 쓴다(2026-11-18 맵 3판 앞 지역 포탈이 앞 줄 산울타리에 조금 가려서, 에이전트가 정함).
+   * 디자인 세션이 자료를 고친 뒤(adventure-maps13.md 9절)에는 열세 장 모두 덮는 꾸밈이 0이라 아무것도 바꾸지 않는다. 맵 자료가 다시 바뀔 때를 위한 안전장치로 남긴다(에이전트가 정함).
+   * 맵에 들어올 때와 포탈이 새로 보일 때 한 번만 본다(매 프레임 비용 없음). 반투명으로 둔 것은 내 캐릭터 가리기(CoverFader)에서 뺀다.
+   */
+  private clearAdventurePortals() {
+    if (!isAdventure(this.mapId)) return;
+    for (const image of this.mapImages) {
+      if (image.alpha === KEEP_CLEAR_ALPHA || !this.keepClear.covers(image)) continue;
+      this.covers.remove(image);
+      image.setAlpha(KEEP_CLEAR_ALPHA);
+    }
   }
 
   private addPortalSprite(portal: Portal): PortalSprite {
@@ -916,19 +932,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 모험 맵에서 지금 보일 포탈(2026-11-18, 기획 11장): 입구 맵은 열린 지역 포탈만, 지역 맵은 그 지역 보스를 잡은 뒤에 다음 지역 포탈.
-   * 다음 지역 포탈은 다음 지역이 열렸을 때(지금 지역 보스를 처음 잡음) 보인다. 별 하늘은 보스방이 둘이고 둘 다 같은 지역 보스다.
+   * 모험 맵에서 지금 보일 포탈(2026-11-18 사용자 "맵은 전체가 다 이어져있는 것이기 떄문에 시작맵에 포탈이 열리는 형식은 맞지않다", "판마다 다시 잡기", 앞 지역 포탈 "둔다 (추천)"): 다음 지역 포탈만 이번 판에 이 지역 보스를 잡았을 때(서버 runBosses에 지역 id) 보인다.
+   * 새 판이면 다시 숨는다. 처음 잡은 기록(계정)은 보지 않는다. 별 하늘은 보스방이 둘이고 둘 다 같은 지역 보스다.
+   * 입구 맵 포탈(평원 1), 같은 지역 앞뒤 맵, 앞 지역 포탈은 늘 열려 있다. 서버 adventure_move도 같은 규칙이다.
    */
   private visiblePortals(id: MapId): Portal[] {
     const all = portalsOf(id);
     if (!isAdventure(id)) return all;
     const view = this.adventure.view;
     if (!view) return [];
-    // 같은 지역 앞뒤 맵 포탈은 늘 열려 있다. 지역·다음 지역 포탈은 그 지역이 열렸을 때만.
-    return all.filter((p) => p.adventure === 'next_map' || p.adventure === 'prev_map' || view.zones.find((z) => z.map === p.to)?.open === true);
+    const zone = this.adventure.zoneOfMap(id)?.id;
+    const bossDown = zone !== undefined && view.runBosses.includes(zone);
+    return all.filter((p) => p.adventure !== 'next' || bossDown);
   }
 
-  /** 서버 값이 바뀌면(보스를 처음 잡음) 모험 맵 포탈을 맞춘다. 바뀐 것이 없으면 아무것도 하지 않는다. */
+  /** 서버 값이 바뀌면(이번 판에 지역 보스를 잡음, 새 판) 모험 맵 포탈을 맞춘다. 바뀐 것이 없으면 아무것도 하지 않는다. */
   private syncAdventurePortals() {
     if (!isAdventure(this.mapId) || this.traveling || !this.world) return;
     const want = this.visiblePortals(this.mapId);
@@ -947,6 +965,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const portal of want) if (!have.has(key(portal))) this.portalSprites.push(this.addPortalSprite(portal));
     this.world.portals.splice(0, this.world.portals.length, ...want);
     this.keepClear.guard(this.portalSprites.map(({ image }) => image));
+    this.clearAdventurePortals();
   }
 
   /** 입구 맵 지역 포탈 이름표 두 줄(디자인 세션 시안): "1 평원" / "Lv 1 ~ 5,200". 이길 확률 색은 없앴다(2026-11-18 사용자). */

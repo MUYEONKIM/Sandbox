@@ -5,8 +5,9 @@ import type { Tile } from './world';
 /**
  * 모험 맵 열세 장과 맵 위 몬스터 자료(2026-11-18 밤 맵 열세 장·몬스터 한 마리씩, 디자인 세션 공유 노트 adventure-maps13.md, adventure-monsters.md).
  * 게임은 public/sprites/adventure/의 디자인 세션 자료를 그대로 읽는다.
- * - adv-maps.json(version 2, 원본 art-source/adventure/maps/adv-maps.json): 맵 모양, 바닥, 꾸밈, 포탈(도착 칸 at), 몬스터(맵마다 monsters),
- *   돌아오는 자리(back), 보스·중간 보스 칸, 되돌림 칸, 일곱 빛, 별, 지역 여덟(zones). 띠는 없다.
+ * - adv-maps.json(version 3, 원본 art-source/adventure/maps/adv-maps.json, 디자인 노트 adventure-maps13.md 8절): 맵 모양, 바닥, 꾸밈, 포탈(도착 칸 at),
+ *   몬스터(맵마다 monsters), 돌아오는 자리(back, zoneBack), 보스·중간 보스 칸, 되돌림 칸, 일곱 빛, 별, 지역 여덟(zones). 띠는 없다.
+ *   입구 맵 포탈은 평원 1로 가는 하나, 지역 첫 맵에 앞 지역 포탈(prev_zone)(2026-11-18 사용자 "맵은 전체가 다 이어져있는 것이기 떄문에 시작맵에 포탈이 열리는 형식은 맞지않다", "판마다 다시 잡기", 앞 지역 포탈 "둔다 (추천)").
  * - infernus.png, infernus-floor.png, infernus.json: 꾸밈 조각
  * - monsters.json, monsters.webp: 떠 있는 몬스터 59마리 그림(칸, 발밑 점, 역할, 맵, 지역, 자리, 임시 이름). 그림 파일 이름은 json의 image 값,
  *   그림은 2배 해상도(scale 0.5)
@@ -28,12 +29,12 @@ export interface AdvBossSpot extends AdvSpot {
   side?: string;
 }
 export interface AdvPortalSpot extends Tile {
-  /** 지역 포탈(입구 맵), 다음 지역, 같은 지역 다음 맵, 앞 맵 */
-  kind: 'zone' | 'next' | 'next_map' | 'prev_map';
+  /** 입구 맵 포탈(평원 1로 하나), 다음 지역(이번 판에 이 지역 보스를 잡으면 열림), 같은 지역 다음 맵, 앞 맵, 앞 지역(늘 열림) */
+  kind: 'zone' | 'next' | 'next_map' | 'prev_map' | 'prev_zone';
   /** 입구 맵 지역 포탈의 지역 번호(1~8) */
   zone?: number;
   to: string;
-  /** 타고 가면 서는 칸(다음 맵·지역은 그 맵 입구, 앞 맵은 그 맵의 돌아오는 자리) */
+  /** 타고 가면 서는 칸(다음 맵·지역은 그 맵 입구, 앞 맵은 그 맵의 돌아오는 자리 back, 앞 지역은 그 지역 마지막 맵의 zoneBack) */
   at: Tile;
   /** 'either': 보스 둘 가운데 하나만 잡아도 열린다(별 하늘) */
   opensBy?: 'either';
@@ -71,6 +72,8 @@ export interface AdvMapData {
   parts?: number;
   /** 앞 맵 포탈로 이 맵에 돌아올 때 서는 칸 */
   back?: Tile;
+  /** 지역 마지막 맵: 다음 지역의 앞 지역 포탈로 돌아올 때 서는 칸(보스방 옆). 그 포탈의 at과 같다. */
+  zoneBack?: Tile;
   monsters: AdvMonsterSpot[];
   background: string;
   /** 46줄 × 46글자: '.' 땅, '~' 물, ' ' 빈 땅 */

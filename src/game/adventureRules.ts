@@ -40,10 +40,10 @@ export const POINTS_PER_LEVEL = 5;
 export const START: AdvStats = { hp: 100, atk: 10, def: 0, agi: 0, luc: 0 };
 export const PER_POINT: AdvStats = { hp: 5, atk: 1, def: 3, agi: 1, luc: 1 };
 /**
- * "추천대로 나누기"(기획 6장, 지역 여덟으로 바꾼 뒤): HP 3 : ATK 3 : DEF 1. 마을 AGI가 0이면 AGI 1을 더해 3 : 3 : 1 : 1.
- * 서버 adventure_battle·adventure_set_auto의 저절로 나누기와 같다.
+ * "추천대로 나누기"(기획 6장): 마을 AGI와 상관없이 HP 3 : ATK 3 : DEF 1 : AGI 1(2026-11-18 기획 결정, 예전은 마을 AGI가 있으면 3 : 3 : 1).
+ * 서버 adventure_battle·adventure_set_auto의 저절로 나누기, 계산기 SPLIT과 같다.
  */
-export const splitFor = (townAgi: number): AdvStats => ({ hp: 3, atk: 3, def: 1, agi: townAgi > 0 ? 0 : 1, luc: 0 });
+export const SPLIT: AdvStats = { hp: 3, atk: 3, def: 1, agi: 1, luc: 0 };
 export const MAX_TURNS = 20;
 export const MAX_HITS = 5;
 export const CRIT_MUL = 2;
@@ -51,8 +51,8 @@ const COMBO_K = 2;
 const CRIT_K = 2;
 export const COMBO_MAX = 0.5;
 export const CRIT_MAX = 0.5;
-/** 마을 스텟 1 = 그 스텟 모험 포인트 100개 */
-export const TOWN_X = 100;
+/** 마을 스텟 1 = 그 스텟 모험 포인트 10개(100 → 10, 2026-11-18 사용자 "4. 시작 마을 스텟의 *100 으로 시작하니깐 너무 쉽다. 10배로 줄인다.", 서버 adventure_power) */
+export const TOWN_X = 10;
 /** 이긴 전투 하나에 가져가는 마을 경험치(기획 8장, 계산기 dungeon-run.js TOWN_EXP_PER_WIN). 4,900 → 5,400(2026-11-18 결과 칸 클릭 규칙 뒤 다시 맞춤, 기획 17장 '결과 칸 클릭 규칙의 안', 사용자 "추천안으로") */
 export const TOWN_EXP_PER_WIN = 5400;
 /** 판 금화 가운데 마을 골드로 가져가는 몫 */
@@ -72,7 +72,8 @@ export const expFalloff = (n: number, L: number) => (n <= L ? 1 : Math.max(0, 2 
 /** 레벨 n까지 쌓인 경험치는 50n(n − 1)이다. */
 export const levelFromExp = (e: number) => Math.floor((1 + Math.sqrt(1 + (8 * e) / 100)) / 2);
 export const lucGold = (luc: number, L: number) => 1 + (3 * luc) / (luc + 4 * L);
-export const dropChance = (luc: number, L: number) => 0.02 * (1 + luc / (luc + 4 * L));
+/** 보통 몬스터 무기 드랍(0.02 → 0.002, 2026-11-18 사용자 "전반적으로 드롭률이 너무 높다. 파격적으로 줄여줘.", 서버 adventure_battle). 잡은 보스를 다시 잡을 때는 서버 0.02. */
+export const dropChance = (luc: number, L: number) => 0.002 * (1 + luc / (luc + 4 * L));
 /** 판 금화의 기준 칸 레벨(지옥 끝, 계산기 GOLD_REF_L) */
 const GOLD_REF_L = 20000;
 /** 한 번 이긴 판 금화: 166 × (L ÷ 2만)^0.08 × LUC 배율. 보스·중간 보스는 처음 잡을 때만 5배(151 → 166, 2026-11-18 결과 칸 클릭 규칙 뒤 다시 맞춤, 기획 17장 '결과 칸 클릭 규칙의 안', 사용자 "추천안으로") */

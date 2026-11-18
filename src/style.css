@@ -4612,11 +4612,16 @@ canvas {
   cursor: pointer;
 }
 
+/* 창이 낮으면(장착 무기 목록을 열면 더) 화면 아래 16px에서 멈추고 판 안을 스크롤한다(2026-11-18 사용자 "스텟창이 화면을 뚫고 나왔다", 에이전트가 정함).
+   폭 380 → 420px: 스텟 줄(이름 + 값 + 버튼 다섯)이 판 안쪽보다 26px 넓어 판 테두리 밖으로 삐져나오던 것(에이전트가 정함). */
 .adv-stat-panel {
   position: absolute;
   top: 96px;
   right: 16px;
-  width: min(380px, calc(100% - 32px));
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100% - 112px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px 10px 10px;
   border-style: solid;
   border-color: transparent;
@@ -4634,6 +4639,34 @@ canvas {
 
 .adv-stat-panel .adv-stat-desc {
   display: none;
+}
+
+/* PC 스텟 판: 버튼 여백을 줄여 값 자리를 넓히고(9자 안팎까지 한 줄), 값이 더 길면 버튼 줄이 아래로 내려가 판을 넘지 않는다(에이전트가 정함). 휴대폰은 아래 규칙대로 늘 두 줄. */
+@media (min-width: 521px) {
+  .adv-stat-panel .adv-stat {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 6px;
+    row-gap: 2px;
+  }
+
+  .adv-stat-panel .adv-stat-key {
+    flex: none;
+    width: 36px;
+  }
+
+  .adv-stat-panel .adv-stat > div:nth-child(2) {
+    flex: 1 0 auto;
+  }
+
+  .adv-stat-panel .adv-stat-add {
+    margin-left: auto;
+  }
+
+  .adv-stat-panel .adv-stat-add .adv-step.wide {
+    min-width: 34px;
+    padding: 0 4px;
+  }
 }
 
 @media (max-width: 520px) {
@@ -5016,26 +5049,25 @@ canvas {
   border-image-source: url('./ui/skin/button-light.png');
 }
 
+/* 창이 화면보다 길면(휴대폰, 낮은 PC 창, 무기 목록을 연 때) 창 안을 스크롤하고 버튼 둘은 늘 아래에 붙어 보인다.
+   고른 무기 카드를 보이게 밀 때 버튼 줄에 가리지 않게 그만큼 띄운다(scroll-padding). 휴대폰에서만 하던 것을 PC에도(에이전트가 정함). */
+.adv-stat-panel.levelup {
+  scroll-padding-bottom: 100px; /* 버튼 줄 높이 92px(큰 버튼 글이 두 줄) + 여유 */
+}
+
+.adv-stat-panel.levelup .adv-levelup-buttons {
+  position: sticky;
+  bottom: -10px;
+  margin: 8px -10px -10px;
+  padding: 8px 10px 10px;
+  background-color: #e5d6a1;
+  box-shadow: 0 -2px 0 rgb(96 57 40 / 40%);
+}
+
 @media (max-width: 520px) {
   #hud .adv-levelup-buttons .adv-btn {
     min-height: 48px;
     font-size: 14px;
-  }
-
-  /* 휴대폰: 스텟 줄이 두 줄씩이라 창이 화면보다 길다. 창 안을 스크롤하고 버튼 둘은 늘 아래에 붙어 보인다. */
-  .adv-stat-panel.levelup {
-    max-height: calc(100% - 100px);
-    overflow-y: auto;
-  }
-
-  .adv-stat-panel.levelup .adv-levelup-buttons {
-    position: sticky;
-    bottom: -10px;
-    margin: 8px -10px -10px;
-    padding: 8px 10px 10px;
-    background: inherit;
-    background-color: #e5d6a1;
-    box-shadow: 0 -2px 0 rgb(96 57 40 / 40%);
   }
 }
 
@@ -5339,15 +5371,6 @@ canvas {
   min-height: 34px;
 }
 
-/* 마우스를 올렸을 때 떠 있는 카드(버튼 없음, 누르기를 막지 않음) */
-.adv-wcard.tip.float {
-  position: absolute;
-  z-index: 3;
-  width: 270px;
-  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
-  pointer-events: none;
-}
-
 /* 낀 무기 칸: 금빛 테와 작은 E */
 .adv-weapon.equipped {
   border-color: #a86f00;
@@ -5370,9 +5393,7 @@ canvas {
 }
 
 /* 스텟 판 맨 위 장착 칸 */
-/* position: relative는 떠 있는 카드를 이 칸 안 한 층에 두려고(목록 격자가 스크롤되어도 잘리지 않게) */
 .adv-equip {
-  position: relative;
   margin-bottom: 8px;
 }
 
@@ -5400,10 +5421,6 @@ canvas {
   font-size: 15px;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.adv-coll-wrap {
-  position: relative;
 }
 
 .adv-equip-fx {
@@ -5497,10 +5514,6 @@ canvas {
 
   .adv-equip-grid {
     max-height: 130px;
-  }
-
-  .adv-wcard.tip.float {
-    display: none;
   }
 }
 

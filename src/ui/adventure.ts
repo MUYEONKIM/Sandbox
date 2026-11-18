@@ -1,7 +1,7 @@
 import { adventureArt, HERO_ART, itemIcon, loadAdventureArt, weaponIcon } from '../art/adventureArt';
 import { bigText, type Adventure } from '../game/adventure';
 import { bpDots } from '../game/adventureBattle';
-import { ADV_STATS, baseLevel, BP_RUN, equipPct, MAX_SLOTS, slotCap, slotPrice, splitFor, TOWN_EXP_PER_WIN, type AdvStat } from '../game/adventureRules';
+import { ADV_STATS, baseLevel, BP_RUN, equipPct, MAX_SLOTS, slotCap, slotPrice, SPLIT, TOWN_EXP_PER_WIN, TOWN_X, type AdvStat } from '../game/adventureRules';
 import { goldText } from '../game/gold';
 import { adventureAssign, adventureBuy, adventureBuySlot, adventureEquip, adventureSell, adventureSetAuto, adventureEquipWeapon, type AdvEquipFx, type AdvItem, type AdvWeapon, type AdvResult, type AdvView, adventureRanking, type AdvRanking } from '../net/adventure';
 import { bigOf, COUNT, countUp, type Counter } from './countUp';
@@ -153,11 +153,10 @@ export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvVie
     });
   };
   const quick = element('adv-quick', parent);
-  const split = splitFor(view.power.town.agi);
-  const parts = BigInt(ADV_STATS.reduce((a, k) => a + split[k], 0));
+  const parts = BigInt(ADV_STATS.reduce((a, k) => a + SPLIT[k], 0));
   const unit = points / parts;
-  const recommend = button('adv-btn', quick, `추천대로 (${split.agi ? '3 : 3 : 1 : 1' : '3 : 3 : 1'})`, () => {
-    send(Object.fromEntries(ADV_STATS.map((k) => [k, unit * BigInt(split[k])])), '추천대로 나눴습니다.');
+  const recommend = button('adv-btn', quick, '추천대로 (3 : 3 : 1 : 1)', () => {
+    send(Object.fromEntries(ADV_STATS.map((k) => [k, unit * BigInt(SPLIT[k])])), '추천대로 나눴습니다.');
   }, unit === 0n);
   buttons.push(recommend);
   const even = points / 5n;
@@ -171,7 +170,7 @@ export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvVie
     element('adv-stat-key', row).textContent = STAT_NAME[k];
     const mid = element('', row);
     element('adv-stat-value', mid).textContent = bigText(p[k]);
-    element('adv-stat-desc', mid).textContent = compact ? STAT_DESC[k] : `${STAT_DESC[k]} · 나눈 포인트 ${bigText(view.spent[k])} · 마을 +${bigText(p.town[k] * 100)}`;
+    element('adv-stat-desc', mid).textContent = compact ? STAT_DESC[k] : `${STAT_DESC[k]} · 나눈 포인트 ${bigText(view.spent[k])} · 마을 +${bigText(p.town[k] * TOWN_X)}`;
     const add = element('adv-stat-add', row);
     const steps: [string, bigint][] = [['+1', 1n], ['+10', 10n], ['+100', 100n], ['절반', half], ['전부', points]];
     for (const [label, amount] of steps) {
@@ -368,7 +367,7 @@ export class AdventureWindow {
     statRows(this.body, this.adventure, view, false, this.say);
     const b = view.power.bonus;
     element('adv-bonus', this.body).textContent =
-      `전투 스텟 = (처음 값 + (나눈 포인트 + 마을 스텟 × 100) × 1포인트 효과) × (1 + 컬렉션·보석 HP +${pct(b.hp)} · ATK +${pct(b.atk)} · DEF +${pct(b.def)} · AGI +${pct(b.agi)} · LUC +${pct(b.luc)}) × 베이스 ×${view.power.mul}`;
+      `전투 스텟 = (처음 값 + (나눈 포인트 + 마을 스텟 × ${TOWN_X}) × 1포인트 효과) × (1 + 컬렉션·보석 HP +${pct(b.hp)} · ATK +${pct(b.atk)} · DEF +${pct(b.def)} · AGI +${pct(b.agi)} · LUC +${pct(b.luc)}) × 베이스 ×${view.power.mul}`;
   }
 
   /** 상점과 장신구 끼기·팔기가 되는지: 시작마을이고 판 중이 아닐 때(서버도 막음, 기획 3장). 안 되면 버튼만 누를 수 없다(까닭은 쓰지 않음). */
@@ -468,7 +467,7 @@ export class AdventureWindow {
   /**
    * 컬렉션 탭(디자인 adventure-ui.md 17절 2번): 지역마다 "평원 무기 22 / 27"과 격자(가진 것 밝게, 없는 것 그림자, 낀 무기 금빛 테와 E).
    * 가진 무기를 누르면 고르고, 아래 고정 칸에 그 무기 카드와 [장착]을 보인다. 고른 것이 없으면 낀 무기 카드와 [빼기].
-   * 데스크톱은 마우스를 올리고 150ms 머물면 그 칸 오른쪽 위에 버튼 없는 카드가 뜬다(하나를 다시 씀, 격자 밖 한 층).
+   * 마우스를 올려도 카드를 띄우지 않는다(2026-11-18 사용자 "게임내에서의 무기들은 어차피 클릭하면 효과가 보이니깐, 마우스 호버시 무기 설명 뜨는건 안떠도 된다.").
    */
   private renderCollection(view: AdvView) {
     const adv = this.adventure;
@@ -477,7 +476,6 @@ export class AdventureWindow {
       return;
     }
     const wrap = element('adv-coll-wrap', this.body);
-    const tip = new WeaponTip(wrap, adv);
     const foot = element('adv-coll-foot', this.body);
     // 누른 칸의 테와 아래 고정 칸만 바꾼다(창 전체를 다시 그리지 않음, 216칸이라 약 80ms 들던 것)
     let chosenCell: HTMLElement | null = null;
@@ -508,7 +506,6 @@ export class AdventureWindow {
         if (w.id === this.chosenWeapon) chosenCell = slot;
         if (!copies) continue;
         slot.style.cursor = 'pointer';
-        tip.watch(slot, w);
         slot.addEventListener('click', () => {
           chosenCell?.classList.remove('chosen');
           slot.classList.add('chosen');
@@ -567,11 +564,10 @@ function weaponCanvas(art: string, size: number) {
 
 /**
  * 무기 카드(디자인 17절, 대장간 상점 무기 카드와 같은 바탕·테두리): 그림 48px, 이름, 별 + 단계 + 보스/중간 보스, 효과 숫자.
- * state: equipped(장착 표 + [빼기]), pick([장착]), tip(버튼 없음). act는 버튼을 누를 때.
+ * state: equipped(장착 표 + [빼기]), pick([장착]). act는 버튼을 누를 때.
  */
-function fillWeaponCard(card: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'equipped' | 'pick' | 'tip', act?: () => void) {
-  card.replaceChildren();
-  card.className = `adv-wcard${state === 'tip' ? ' tip float' : ''}${state === 'equipped' ? ' on' : ''}`;
+function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'equipped' | 'pick', act?: () => void) {
+  const card = element(`adv-wcard${state === 'equipped' ? ' on' : ''}`, parent);
   const copies = adv.copies(w.id);
   element('adv-wcard-icon', card).appendChild(weaponCanvas(w.art, 48));
   const body = element('adv-wcard-body', card);
@@ -585,56 +581,9 @@ function fillWeaponCard(card: HTMLElement, adv: Adventure, w: AdvWeapon, state: 
   else if (w.mini) element('adv-wcard-kind', meta, 'span').textContent = ' 중간 보스';
   const fx = element('adv-wcard-fx', body);
   for (const t of equipEffects(w, copies)) element('', fx, 'span').textContent = t;
-  if (state === 'tip') return card;
   const btns = element('adv-wcard-btns', card);
   button(state === 'equipped' ? 'adv-btn' : 'adv-btn gold', btns, state === 'equipped' ? '빼기' : '장착', () => act?.());
   return card;
-}
-
-function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'equipped' | 'pick' | 'tip', act?: () => void) {
-  return fillWeaponCard(element('adv-wcard', parent), adv, w, state, act);
-}
-
-/**
- * 데스크톱에서 무기 칸에 마우스를 올리고 150ms 머물면 그 칸 오른쪽 위(넘치면 왼쪽)에 버튼 없는 카드를 띄운다(디자인 17절).
- * 카드는 하나를 만들어 두고 글과 자리만 바꾼다. layer는 스크롤되는 격자 밖(position: relative)이다. 휴대폰은 CSS가 숨긴다.
- */
-class WeaponTip {
-  private card: HTMLElement | null = null;
-  private timer = 0;
-
-  constructor(
-    private readonly layer: HTMLElement,
-    private readonly adv: Adventure,
-  ) {}
-
-  watch(cell: HTMLElement, w: AdvWeapon) {
-    cell.addEventListener('pointerenter', (e) => {
-      if (e.pointerType !== 'mouse') return;
-      window.clearTimeout(this.timer);
-      this.timer = window.setTimeout(() => this.show(cell, w), 150);
-    });
-    cell.addEventListener('pointerleave', () => this.hide());
-  }
-
-  private show(cell: HTMLElement, w: AdvWeapon) {
-    if (!cell.isConnected) return;
-    const card = (this.card ??= element('adv-wcard', this.layer));
-    fillWeaponCard(card, this.adv, w, 'tip');
-    card.hidden = false;
-    const a = cell.getBoundingClientRect();
-    const b = this.layer.getBoundingClientRect();
-    const width = card.offsetWidth;
-    let left = a.right - b.left + 6;
-    if (left + width > b.width) left = Math.max(0, a.left - b.left - width - 6);
-    card.style.left = `${left}px`;
-    card.style.top = `${Math.max(0, a.top - b.top - 10)}px`;
-  }
-
-  private hide() {
-    window.clearTimeout(this.timer);
-    if (this.card) this.card.hidden = true;
-  }
 }
 
 /**
@@ -680,11 +629,11 @@ export function equipBlock(parent: HTMLElement, adv: Adventure, view: AdvView, u
     chip.type = 'button';
   }
   const grid = element('adv-equip-grid', pick);
-  const tip = new WeaponTip(box, adv);
   const selHost = element('adv-equip-sel', pick);
   let chosenCell: HTMLElement | null = null;
-  // 고른 무기 카드(누르면 이것만 바꾼다. 판 전체를 다시 그리지 않음, 216칸이라 약 30ms 들던 것)
-  const showSel = () => {
+  // 고른 무기 카드(누르면 이것만 바꾼다. 판 전체를 다시 그리지 않음, 216칸이라 약 30ms 들던 것).
+  // reveal이면 판이 스크롤될 때 카드가 판 안에 보이게 판을 민다(레벨 업 창은 아래 버튼 줄만큼 띄움, CSS scroll-padding).
+  const showSel = (reveal = false) => {
     selHost.replaceChildren();
     const sel = ui.sel ? adv.weapon(ui.sel) : undefined;
     selHost.hidden = !sel;
@@ -699,6 +648,7 @@ export function equipBlock(parent: HTMLElement, adv: Adventure, view: AdvView, u
         rerender();
       });
     });
+    if (reveal) selHost.scrollIntoView({ block: 'nearest' });
   };
   const mine = adv.weapons.filter((w) => adv.copies(w.id) > 0 && (!ui.filter || w.stat === ui.filter));
   mine.sort((a, b) => b.star - a.star || adv.copies(b.id) - adv.copies(a.id) || Number(a.art) - Number(b.art));
@@ -707,13 +657,12 @@ export function equipBlock(parent: HTMLElement, adv: Adventure, view: AdvView, u
     const cell = weaponSlot(grid, w, { plus: copies > 1 ? copies - 1 : 0, chosen: w.id === ui.sel, equipped: w.id === view.mainWeapon });
     if (w.id === ui.sel) chosenCell = cell;
     cell.style.cursor = 'pointer';
-    tip.watch(cell, w);
     cell.addEventListener('click', () => {
       chosenCell?.classList.remove('chosen');
       cell.classList.add('chosen');
       chosenCell = cell;
       ui.sel = w.id;
-      showSel();
+      showSel(true);
     });
   }
   pick.append(selHost);
@@ -797,8 +746,7 @@ export function showAdventureResult(root: HTMLElement, result: AdvResult, advent
     for (const id of result.drops) seen.set(id, (seen.get(id) ?? 0) + 1);
     for (const w of new Map(drops.map((d) => [d.id, d])).values()) {
       const copies = adventure.copies(w.id);
-      const slot = weaponSlot(list, w, { isNew: copies === (seen.get(w.id) ?? 0), plus: copies > 1 ? copies - 1 : 0 });
-      slot.title = `${w.name} ★${w.star}`;
+      weaponSlot(list, w, { isNew: copies === (seen.get(w.id) ?? 0), plus: copies > 1 ? copies - 1 : 0 });
     }
   });
   modal.button(onVillage ? '마을로' : '확인', () => onVillage?.(), true);
