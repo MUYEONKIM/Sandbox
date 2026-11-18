@@ -1,4 +1,4 @@
-import { formatLevel } from './level';
+import { formatNumber } from './level';
 import { adventureState, type AdvView, type AdvWeapon, type AdvZone } from '../net/adventure';
 import type { AdvPower } from './adventureRules';
 
@@ -64,10 +64,10 @@ export class Adventure {
   }
 }
 
-/** 큰 수를 "12만 3,456"처럼 쓴다. 소수점 아래는 버린다. short면 맨 위 단위만 쓴다. */
-export function bigText(value: number | string, short = false) {
+/** 서버가 글자로 보낸 큰 수(또는 number)를 "123,456"처럼 쓴다(formatNumber). 소수점 아래는 버린다. */
+export function bigText(value: number | string) {
   try {
-    return formatLevel(typeof value === 'string' ? BigInt(value) : BigInt(Math.floor(Math.max(0, value))), short);
+    return formatNumber(typeof value === 'string' ? BigInt(value) : Math.floor(Math.max(0, value)));
   } catch {
     return String(value);
   }

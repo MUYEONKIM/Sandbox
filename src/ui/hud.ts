@@ -1,7 +1,7 @@
 import { paintMemoPadIcon } from '../art/drops';
 import { BLOCK_IDS } from '../blocks';
 import { HOTBAR_SIZE, MEMO_SLOT, TABS, type Inventory, type TabId } from '../game/inventory';
-import { formatLevel, levelNeed } from '../game/level';
+import { formatNumber, levelNeed } from '../game/level';
 import { goldText, type Gold } from '../game/gold';
 import { isPotion, isSeed, paintItem, POTION_IDS, SEED_IDS, WEAPON_IDS, type GearRef, type ItemId, type PotionId, type SeedId } from '../items';
 import { element } from './dom';
@@ -315,7 +315,8 @@ export class Hud {
     this.refreshInfo();
     if (this.run) return false;
     const need = levelNeed(level);
-    const expText = (n: bigint) => `EXP ${n.toLocaleString()} / ${need.toLocaleString()}`;
+    const needText = formatNumber(need);
+    const expText = (n: bigint) => `EXP ${formatNumber(n)} / ${needText}`;
     this.expCount?.finish();
     this.expCount = null;
     // 같은 레벨에서 경험치가 늘면(일·노동) EXP 글도 450ms 동안 오른다(PM 2026-11-18 "마을 일·노동으로 얻는 골드·경험치에도 같은 오르기").
@@ -391,15 +392,15 @@ export class Hud {
     this.bar.finish();
     this.labelFor(mode);
     if (leveled && before && level > before.level) {
-      this.bar.play(before.level, level, before.ratio, ratio, { label: this.levelNum, fmt: (l) => formatLevel(l) }, options);
+      this.bar.play(before.level, level, before.ratio, ratio, { label: this.levelNum, fmt: formatNumber }, options);
       return true;
     }
-    this.levelNum.textContent = formatLevel(level);
+    this.levelNum.textContent = formatNumber(level);
     this.bar.set(ratio);
     return false;
   }
 
-  /** 레벨 글의 모양: 마을 "Lv. 숫자", 모험 [모험] "Lv 숫자", 모험 중이 아님 [모험] "쉬는 중". 모양이 바뀔 때만 다시 만든다. */
+  /** 레벨 글의 모양: 마을 "Lv. 숫자", 모험 [모험] "Lv. 숫자", 모험 중이 아님 [모험] "쉬는 중". 모양이 바뀔 때만 다시 만든다. */
   private labelFor(mode: 'town' | 'run' | 'none') {
     if (this.labelMode === mode) return;
     this.labelMode = mode;
@@ -415,7 +416,7 @@ export class Hud {
       this.levelText.append('쉬는 중');
       return;
     }
-    this.levelText.append(mode === 'run' ? 'Lv ' : 'Lv. ');
+    this.levelText.append('Lv. ');
     this.levelNum = document.createElement('span');
     this.levelNum.className = 'lv-num';
     this.levelText.append(this.levelNum);

@@ -101,8 +101,7 @@ export class CastleWindow extends PurchaseWindow {
     const buy = this.buyButton(row, () => this.actions.onBuyStat(id, this.amount));
     this.refreshers.push(() => {
       const owned = this.economy.stat(id);
-      // 칸이 좁아서 1만이 넘으면 "12억"처럼 맨 위 단위만 쓴다.
-      value.textContent = formatGold(owned, true);
+      value.textContent = formatGold(owned);
       title.textContent = `${name} · ${statEffect(id, owned)}`;
       if (this.amount < 1) {
         buy.textContent = '양을 적어 주세요';

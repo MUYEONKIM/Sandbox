@@ -31,7 +31,7 @@
 - `src/game/battlefield.ts`(전쟁터 장애물 배치), `src/art/battlefield.ts`(모래주머니, 대전차 장애물, 포탄 구덩이 그림), `src/game/vision.ts`(전쟁터 손전등 시야), `src/game/daylight.ts`(바깥 맵의 KST 시간대 밝기).
 - `src/game/market.ts`: 증권거래소 종목의 그림과 소개(`STOCK_INFO`), 시세와 내 주식 사본(`Market`, 1분 안에는 다시 읽지 않음), 가격 변화와 손익 글자.
 - `src/game/dungeon.ts`(던전 꾸밈, 쉼터, 몬스터가 생기는 칸, 던전·몬스터 자료 형식), `src/game/monsters.ts`(몬스터 움직임, 공유, 그림), `src/game/monsterArt.ts`(스크립트가 만드는 몬스터 그림 크기), `src/ui/dungeon.ts`(던전 입장 창).
-- `src/game/gold.ts`: 골드 읽기(`parseGold`, `toGold`)와 보이기(`goldText`: 만·억·조·경 단위, `level.ts`의 `formatLevel`과 같은 방식). 골드는 끝이 없어 화면에서 BigInt로 다룬다(2026-11-15, 대장간 계획 A).
+- `src/game/gold.ts`: 골드 읽기(`parseGold`, `toGold`)와 보이기(`goldText`: "123,456G", `level.ts`의 `formatNumber`). **숫자 표기**(2026-11-18 사용자 "몬스터 레벨 표기를 1.5만 이렇게 하지말고, Lv. 15,000 이렇게 표기로 해줘. 경험치, 골드 hp, 피해등도 다 마찬가지이다.", 게임 전체): 큰 수는 만·억으로 줄이지 않고 쉼표를 넣은 전체 숫자로 쓴다. 모든 화면이 `level.ts`의 `formatNumber` 하나를 쓴다(`bigText`·`goldText`·`formatGold`도 이것을 부름, Intl.NumberFormat 하나를 다시 씀, 10^24 이상은 "1.23×10^42"). 레벨은 늘 "Lv. 15,000"(Lv 뒤 점과 띄어쓰기). 새 화면도 이 함수와 꼴을 쓴다.. 골드는 끝이 없어 화면에서 BigInt로 다룬다(2026-11-15, 대장간 계획 A).
 - 대장간(2026-11-16, 배포 B+C): `src/game/forge.ts`(판매가, 강화비, 두루마리 값, 도전 확률을 서버 `gear_price`·`forge_gear`와 같은 식으로 셈함, 골드는 BigInt), `src/ui/forge.ts`(대장간 창: 사기 탭, 강화·팔기 탭), `src/art/forgeArt.ts`(디자인 세션 스크립트가 만드는 무기·아이콘 칸 자리, 손으로 고치지 않음). 무기 아이콘과 손에 든 그림은 `src/art/weapons.ts`의 `paintForgeIcon`, `forgeHeldArt`.
 - `src/game/keepClear.ts`: 플레이어 블록이 포탈이나 안내판 그림을 덮으면 그 블록을 늘 반투명하게 그린다(2026-11-16).
 - 블록이 많은 맵의 렉 고치기(2026-11-16 사용자 "이번 배포에 넣기"). 바꿀 때 지킬 것:

@@ -8,6 +8,7 @@ import { bigOf, COUNT, countUp, type Counting } from '../ui/countUp';
 import { bigText, type Adventure } from './adventure';
 import { bpDots } from './adventureBattle';
 import { infernus, lightAt, monstersOf, type AdvMapData, type FieldMonster, type MonsterFrame } from './adventureMaps';
+import { formatNumber } from './level';
 import type { Tile } from './world';
 
 /**
@@ -373,14 +374,14 @@ export class AdventureField {
   }
 
   /**
-   * 이름표(디자인 세션 adventure-monsters.md 7절 4): "Lv 350"(일반), "중간 보스 Lv 2,222", "보스 Lv 5,200". 판 경험치가 없으면 회색.
+   * 이름표(디자인 세션 adventure-monsters.md 7절 4): "Lv. 350"(일반), "중간 보스 Lv. 2,222", "보스 Lv. 15,000"(줄이지 않은 숫자, 2026-11-18 사용자). 판 경험치가 없으면 회색.
    * 옆 칸에 선 몬스터만 위에 이름 한 줄을 더한다. 그림은 글과 색이 같으면 다시 쓴다.
    */
   private paintTag(f: Floating) {
     const L = f.m.level;
     const kind: TagKind = this.noExp(L) ? 'gray' : 'normal';
     const near = this.floats[this.near] === f;
-    const lv = `Lv ${tagLevel(L)}`;
+    const lv = `Lv. ${formatNumber(L)}`;
     const text = f.m.kind === 'boss' ? `보스 ${lv}` : f.m.kind === 'mini' ? `중간 보스 ${lv}` : lv;
     const name = near ? f.frame.name : '';
     const texKey = `adv-tag|${f.m.kind}|${kind}|${name}|${text}`;
@@ -419,7 +420,7 @@ export class AdventureField {
         const gold = element('adv-hud-gold', r, 'span');
         gold.append('금화 ');
         this.goldEl = element('adv-coin', gold, 'span');
-        this.goldEl.textContent = hudGold(this.goldShown ?? 0n);
+        this.goldEl.textContent = formatNumber(this.goldShown ?? 0n);
         const stats = element('adv-hud-button', r, 'button') as HTMLButtonElement;
         stats.type = 'button';
         stats.textContent = '스텟 (P)';
@@ -460,12 +461,12 @@ export class AdventureField {
     if (gold === null || !el) return;
     const delay = this.hooks.goldDelay();
     if (from === null || gold < from || delay === null) {
-      el.textContent = hudGold(gold);
+      el.textContent = formatNumber(gold);
       return;
     }
     const start = () => {
       this.goldTimer = 0;
-      this.goldCount = countUp([{ el, from, to: gold, fmt: hudGold }], COUNT.gold, { lockWidth: true, pop: true });
+      this.goldCount = countUp([{ el, from, to: gold, fmt: formatNumber }], COUNT.gold, { lockWidth: true, pop: true });
     };
     if (delay > 0) this.goldTimer = window.setTimeout(start, delay);
     else start();
@@ -476,7 +477,7 @@ export class AdventureField {
     if (this.goldTimer) {
       window.clearTimeout(this.goldTimer);
       this.goldTimer = 0;
-      if (this.goldEl && this.goldShown !== null) this.goldEl.textContent = hudGold(this.goldShown);
+      if (this.goldEl && this.goldShown !== null) this.goldEl.textContent = formatNumber(this.goldShown);
     }
     this.goldCount?.finish();
     this.goldCount = null;
@@ -493,7 +494,7 @@ export class AdventureField {
       const head = element('adv-levelup-head', this.panel);
       element('', head, 'b').textContent = '레벨 업';
       const rest = element('', head, 'span');
-      rest.append(`Lv ${bigText(up.from)} → ${bigText(up.to)} · 포인트 `);
+      rest.append(`Lv. ${bigText(up.from)} → ${bigText(up.to)} · 포인트 `);
       element('', rest, 'em').textContent = `+${bigText(up.gained)}`;
     }
     const say = element('adv-message', document.createElement('div'));
@@ -517,22 +518,6 @@ export class AdventureField {
       close.addEventListener('click', () => this.closeLevelUp(false));
     }
   }
-}
-
-/**
- * 위 HUD 금화 글: 1만 아래는 "7,990", 1억 아래는 "12.3만", 그 위는 "1.2억"(소수 한 자리, 버림 없이 반올림).
- * 휴대폰에서 HUD 줄이 넘치지 않게 줄여 쓴다(에이전트가 정함). 정확한 값은 모험 창 상태 줄에 있다.
- */
-function hudGold(n: bigint) {
-  if (n < 10000n) return n.toLocaleString('ko-KR');
-  const [unit, word] = n < 100000000n ? [10000, '만'] : [100000000, '억'];
-  return `${(Number(n) / unit).toFixed(1).replace(/\.0$/, '')}${word}`;
-}
-
-/** 이름표 레벨 글(디자인 세션 확인 도구 view.js와 같음): 1만 아래는 "5,200", 그 위는 "3.8만"처럼 소수 한 자리 */
-function tagLevel(L: number) {
-  if (L < 10000) return Math.round(L).toLocaleString('ko-KR');
-  return `${(L / 10000).toFixed(1).replace(/\.0$/, '')}만`;
 }
 
 /**

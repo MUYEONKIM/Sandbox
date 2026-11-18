@@ -3,7 +3,8 @@ import { FORGE_HELD, FORGE_HELD_SIZE } from '../art/forgeArt';
 import type { AdvBattle } from '../net/adventure';
 import { bigOf } from '../ui/countUp';
 import { element } from '../ui/dom';
-import { playResult, RES, shortNum, type ResEls, type ResultAnim } from '../ui/resultAnim';
+import { playResult, RES, type ResEls, type ResultAnim } from '../ui/resultAnim';
+import { formatNumber } from './level';
 import { bigText } from './adventure';
 import { infernus, type MonsterFrame, type MonsterRole } from './adventureMaps';
 import { BP_RUN } from './adventureRules';
@@ -488,15 +489,15 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
   const panel = element(`office adv-battle${mon.boss ? ' boss' : ''}`, veil);
   const head = element('adv-battle-head', panel);
   element('adv-battle-place', head).textContent = ctx.miniName
-    ? `${ctx.zoneName} ${ctx.miniName} · 중간 보스 Lv ${bigText(mon.level)}`
+    ? `${ctx.zoneName} ${ctx.miniName} · 중간 보스 Lv. ${bigText(mon.level)}`
     : mon.boss
-      ? `${ctx.zoneName} 보스 · Lv ${bigText(mon.level)}`
-      : `${ctx.zoneName} · 칸 Lv ${bigText(mon.level)}`;
+      ? `${ctx.zoneName} 보스 · Lv. ${bigText(mon.level)}`
+      : `${ctx.zoneName} · 칸 Lv. ${bigText(mon.level)}`;
   // 이 전투로 판이 끝났으면 state는 다음 판 값(BP 20)이라 0을 보인다.
   bpDots(head, battle.ended ? 0 : battle.state.bp);
   const fighters = element('adv-fighters', panel);
-  const heroBar = fighterCard(fighters, 'hero', '나', `Lv ${bigText(ctx.levelBefore)}`);
-  const foeBar = fighterCard(fighters, 'foe', foe?.name ?? '몬스터', `Lv ${bigText(mon.level)}`);
+  const heroBar = fighterCard(fighters, 'hero', '나', `Lv. ${bigText(ctx.levelBefore)}`);
+  const foeBar = fighterCard(fighters, 'foe', foe?.name ?? '몬스터', `Lv. ${bigText(mon.level)}`);
   const stageBox = element('adv-stage', panel);
   const role: MonsterRole = mon.kind === 'boss' ? 'boss' : mon.kind === 'mini' ? 'mid' : 'normal';
   const log = new BattleLog(panel);
@@ -543,7 +544,7 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
         expBefore: bigOf(ctx.expBefore),
         gained: bigOf(battle.exp),
         levelText: (n) => bigText(n.toString()),
-        numText: shortNum,
+        numText: formatNumber,
       });
       void anim.done.then(() => {
         if (!closed && !held && !timer) timer = window.setTimeout(close, RES.closeAfter);
@@ -619,7 +620,7 @@ function fillResult(box: HTMLElement, battle: AdvBattle, ctx: BattleContext): Re
   }
   const top = element('adv-res-top', box);
   const wrap = element('adv-res-lvwrap', top);
-  wrap.append('Lv ');
+  wrap.append('Lv. ');
   const level = element('adv-res-lv', wrap, 'span');
   level.textContent = bigText(ctx.levelBefore);
   const upLayer = element('lvup-layer', wrap);

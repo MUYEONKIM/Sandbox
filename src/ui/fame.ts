@@ -1,4 +1,4 @@
-import { formatLevel } from '../game/level';
+import { formatNumber } from '../game/level';
 import type { RankEntry } from '../net/session';
 import { element } from './dom';
 import { byInput } from './touch';
@@ -9,13 +9,13 @@ type LoadRanking = () => Promise<RankEntry[] | null>;
 const HOUR_MS = 60 * 60 * 1000;
 const LOAD_FAILED = '순위를 불러오지 못했습니다.';
 
-function showRanks(list: HTMLElement, entries: RankEntry[], me: string, short: boolean) {
+function showRanks(list: HTMLElement, entries: RankEntry[], me: string) {
   list.replaceChildren();
   entries.forEach(({ nickname, level }, index) => {
     const row = element(nickname === me ? 'rank-row mine' : 'rank-row', list);
     element('rank-place', row, 'span').textContent = String(index + 1);
     element('rank-name', row, 'span').textContent = nickname;
-    element('rank-level', row, 'span').textContent = `Lv. ${formatLevel(level, short)}`;
+    element('rank-level', row, 'span').textContent = `Lv. ${formatNumber(level)}`;
   });
 }
 
@@ -52,7 +52,7 @@ export class FameWindow {
     this.list.textContent = '불러오는 중입니다.';
     const entries = await this.load();
     if (!entries) this.list.textContent = LOAD_FAILED;
-    else showRanks(this.list, entries, this.me(), false);
+    else showRanks(this.list, entries, this.me());
   }
 
   close() {
@@ -81,7 +81,7 @@ export class RankPanel {
 
   private async refresh() {
     const entries = await this.load();
-    if (entries) showRanks(this.list, entries, this.me(), true);
+    if (entries) showRanks(this.list, entries, this.me());
     else if (!this.list.childElementCount) this.list.textContent = LOAD_FAILED;
     window.setTimeout(() => void this.refresh(), HOUR_MS - (Date.now() % HOUR_MS));
   }

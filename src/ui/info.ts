@@ -1,6 +1,6 @@
 import { RENAME_PRICE, type Economy } from '../game/economy';
 import { GRADE_NAME } from '../game/farm';
-import { formatLevel, levelNeed } from '../game/level';
+import { formatNumber, levelNeed } from '../game/level';
 import { profitText, STOCK_INFO, type Market } from '../game/market';
 import { statEffect } from '../game/stats';
 import { element } from './dom';
@@ -40,7 +40,7 @@ export class InfoView {
 
     const head = element('info-head', this.root);
     element('info-name', head, 'span').textContent = this.nickname();
-    element('info-level', head, 'span').textContent = `Lv. ${formatLevel(level)}`;
+    element('info-level', head, 'span').textContent = `Lv. ${formatNumber(level)}`;
     const killBoard = element('info-killboard', head, 'button') as HTMLButtonElement;
     killBoard.type = 'button';
     killBoard.textContent = '킬/데스 순위';

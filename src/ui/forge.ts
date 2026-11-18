@@ -276,7 +276,8 @@ export class ForgeWindow extends PurchaseWindow {
       else if (this.scrolls.has(id)) cost += price;
     }
 
-    const actions = element('shop-stat', this.bench);
+    // 망치질·팔기 버튼과 강화비 글 한 줄. 값이 길면 꺾인다(.forge-actions, 2026-11-18 숫자를 줄이지 않고 쓴 뒤).
+    const actions = element('shop-stat forge-actions', this.bench);
     const hammer = element('shop-buy', actions, 'button') as HTMLButtonElement;
     hammer.type = 'button';
     const wait = this.nextHammerAt - performance.now();

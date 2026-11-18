@@ -1,4 +1,4 @@
-import { formatLevel } from './level';
+import { formatNumber } from './level';
 
 /**
  * 골드는 끝이 없어서(대장간 높은 단계 판매가가 10^42까지 감, 2026-11-15) BigInt로 다룬다.
@@ -22,15 +22,14 @@ export function toGold(value: unknown, fallback: Gold = 0n): Gold {
   return parseGold(value) ?? fallback;
 }
 
-/** 12만 3,456처럼 만·억·조·경 단위로 쓴다. 1만 밑은 1,234처럼 쓴다. short면 맨 위 단위만 쓴다. */
-export function formatGold(gold: Gold | number, short = false) {
-  const value = typeof gold === 'number' ? BigInt(Math.max(0, Math.round(gold))) : gold;
-  return value < 0n ? `-${formatLevel(-value, short)}` : formatLevel(value, short);
+/** 123,456처럼 쓴다(formatNumber, 만·억으로 줄이지 않음). */
+export function formatGold(gold: Gold | number) {
+  return formatNumber(typeof gold === 'number' ? Math.max(0, Math.round(gold)) : gold);
 }
 
-/** "12만 3,456G" */
-export function goldText(gold: Gold | number, short = false) {
-  return `${formatGold(gold, short)}G`;
+/** "123,456G" */
+export function goldText(gold: Gold | number) {
+  return `${formatGold(gold)}G`;
 }
 
 /** 값(number)이 지금 골드로 살 수 있는 만큼인지. 값은 작은 표 값이라 number로 온다. */

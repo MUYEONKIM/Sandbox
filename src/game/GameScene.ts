@@ -78,7 +78,7 @@ import { KEEP_CLEAR_ALPHA, KeepClear } from './keepClear';
 import type { Economy, ShopTool } from './economy';
 import type { Arm, Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
-import { formatLevel, levelNeed } from './level';
+import { formatNumber, levelNeed } from './level';
 import { goldText, toGold } from './gold';
 import { generateMap, type Building, type GameMap } from './map';
 import {
@@ -968,13 +968,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.clearAdventurePortals();
   }
 
-  /** 입구 맵 지역 포탈 이름표 두 줄(디자인 세션 시안): "1 평원" / "Lv 1 ~ 5,200". 이길 확률 색은 없앴다(2026-11-18 사용자). */
+  /** 입구 맵 지역 포탈 이름표 두 줄(디자인 세션 시안): "1 평원" / "Lv. 1 ~ 5,200". 이길 확률 색은 없앴다(2026-11-18 사용자). */
   private paintZonePortal(tag: string, portal: Portal) {
     const view = this.adventure.view;
     const i = view ? view.zones.findIndex((z) => z.map === portal.to) : -1;
     const zone = view?.zones[i];
     if (!zone) return;
-    this.tags.setLines(tag, `${i + 1} ${zone.name}`, `Lv ${bigText(zone.first)} ~ ${bigText(zone.bossLevel)}`);
+    this.tags.setLines(tag, `${i + 1} ${zone.name}`, `Lv. ${bigText(zone.first)} ~ ${bigText(zone.bossLevel)}`);
   }
 
   /**
@@ -2166,7 +2166,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!leveled) return;
     this.session.refreshPresence();
     if (!animated) this.showLevel(this.session.profile.id, level);
-    this.hud.toast(`레벨 업! Lv. ${formatLevel(level)}`, `다음 레벨까지 경험치 ${levelNeed(level).toLocaleString()}`);
+    this.hud.toast(`레벨 업! Lv. ${formatNumber(level)}`, `다음 레벨까지 경험치 ${formatNumber(levelNeed(level))}`);
   }
 
   /**
@@ -2175,11 +2175,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    */
   private showLevel(id: string, level: bigint) {
     if (!isAdventure(this.mapId)) {
-      this.tags.setLevel(id, `Lv.${formatLevel(level, true)}`, false);
+      this.tags.setLevel(id, `Lv. ${formatNumber(level)}`, false);
       return;
     }
     const run = id === this.session.profile.id ? this.currentRun() : (this.otherRuns.get(id) ?? null);
-    this.tags.setLevel(id, run ? `Lv.${formatLevel(BigInt(run), true)}` : '', true);
+    this.tags.setLevel(id, run ? `Lv. ${formatNumber(BigInt(run))}` : '', true);
   }
 
   /**
@@ -2193,7 +2193,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.showLevel(id, this.level);
       return;
     }
-    this.tags.setLevel(id, `Lv.${formatLevel(level, true)}`, run);
+    this.tags.setLevel(id, `Lv. ${formatNumber(level)}`, run);
     if (pop) this.tags.popLevel(id);
   }
 
@@ -3643,8 +3643,8 @@ function runStatus(level: string, exp: string, hp: number): RunStatus {
   if (cur > need) cur = need;
   return {
     level,
-    exp: bigText(cur.toString(), true),
-    need: bigText(need.toString(), true),
+    exp: bigText(cur.toString()),
+    need: bigText(need.toString()),
     ratio: Number((cur * 1000n) / need) / 1000,
     hp: bigText(Math.round(hp)),
   };

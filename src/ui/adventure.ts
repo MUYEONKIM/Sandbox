@@ -78,14 +78,6 @@ export function itemEffect(item: AdvItem) {
   }
 }
 
-/** 순위 레벨 글(디자인 시안 "Lv 41.7만"): 1만 아래는 "5,200", 1억 아래는 만 단위 소수 한 자리(내림), 그 위는 bigText */
-function rankLevel(level: string) {
-  const n = Number(level);
-  if (!Number.isFinite(n) || n >= 1e8) return bigText(level, true);
-  if (n < 10000) return Math.floor(n).toLocaleString('ko-KR');
-  return `${(Math.floor(n / 1000) / 10).toFixed(1).replace(/\.0$/, '')}만`;
-}
-
 /** 작은 줄 하나를 [글, 클래스] 조각으로 만든다(서버 글은 textContent로만 넣는다). */
 function line(cls: string, parent: HTMLElement, parts: (string | [string, string])[], tag = 'div') {
   const el = element(cls, parent, tag);
@@ -141,7 +133,7 @@ export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvVie
   const points = pointsOf(view.points);
   const top = element('adv-points', parent);
   line('adv-points-left', top, ['남은 포인트 ', [bigText(view.points), 'b']]);
-  if (!compact) element('adv-status-dim', top).textContent = `모험 Lv ${bigText(view.level)}`;
+  if (!compact) element('adv-status-dim', top).textContent = `모험 Lv. ${bigText(view.level)}`;
   const buttons: HTMLButtonElement[] = [];
   // 누른 뒤 서버 값이 올 때까지 모두 끈다(두 번 눌러 모자란 포인트를 보내지 않게). 실패하면 다시 켠다.
   const send = (values: Partial<Record<AdvStat, bigint>>, done: string) => {
@@ -195,6 +187,14 @@ export function confirmReturn(root: HTMLElement, onYes: () => void) {
   modal.button('귀환', () => onYes(), true);
   return modal;
 }
+
+/** [들어가기] 탭 게임 소개 네 줄(문장은 PM 전달 그대로, 디자인 adventure-ui.md 21-2절) */
+const INTRO = [
+  '모험은 판마다 레벨 1에서 다시 시작합니다.',
+  '몬스터와 싸워 레벨을 올리고, 지역 보스를 넘어 더 깊은 곳으로 나아갑니다.',
+  'BP를 다 쓰거나 귀환하면 판이 끝나고, 경험치와 금화 일부를 마을로 가져갑니다.',
+  '모은 무기는 컬렉션에 남아 다음 판에도 힘이 됩니다.',
+].join('\n');
 
 export interface AdventureWindowActions {
   /** 판을 열고(판 중이면 이어 하기) 그 판이 있는 모험 맵 입구로 간다. */
@@ -321,22 +321,28 @@ export class AdventureWindow {
     else this.renderCollection(view);
   }
 
+  /**
+   * 상태 칸(두 칸 격자, 휴대폰도 두 칸): [BP | 금화] [모험 줄 또는 베이스 레벨 | 마을 골드] [베이스 레벨(모험 중)].
+   * 베이스 레벨 줄에 오르는 조건 글은 쓰지 않는다(2026-11-18 PM, 안내 문구 규칙).
+   */
   private renderStatus(view: AdvView) {
     const s = this.status;
     s.replaceChildren();
     bpDots(s, view.inRun ? view.bp : BP_RUN);
-    if (view.inRun) line('', s, ['모험 ', [`Lv ${bigText(view.level)}`, 'b'], ' · 남은 포인트 ', [bigText(view.points), 'adv-gold']]);
     line('adv-status-right', s, ['금화 ', [bigText(view.runGold), 'adv-coin']]);
-    const town = Number(view.townLevel);
-    const base = baseLevel(town);
-    element('adv-status-dim', s).textContent =
-      `베이스 레벨 ${base} (모험 스텟 ×${view.power.mul}) · 마을 레벨 ${((base + 1) * 1000 - town).toLocaleString()} 더 오르면 ${base + 1}`;
+    const baseText = `베이스 레벨 ${baseLevel(Number(view.townLevel))} (모험 스텟 ×${view.power.mul})`;
+    if (view.inRun) line('', s, ['모험 ', [`Lv. ${bigText(view.level)}`, 'b'], ' · 남은 포인트 ', [bigText(view.points), 'adv-gold']]);
+    else element('adv-status-dim', s).textContent = baseText;
     line('adv-status-right', s, [[goldText(BigInt(view.townGold)), 'adv-gold']]);
+    if (view.inRun) element('adv-status-dim', s).textContent = baseText;
   }
 
   private renderEnter(view: AdvView) {
     const label = this.inField ? '모험 중입니다' : view.inRun ? `이어 하기 (BP ${view.bp})` : '들어가기';
     button('adv-go', this.body, label, () => this.actions.enter(), this.inField);
+    // 게임 소개(2026-11-18 사용자 "모험하기에서 첫번째 패널에 들어가기 인 곳에 게임에 대한 간단한 설명이 있으면 좋겠다.",
+    // "처음 열었을때, 게임 소개도 네모난 칸 안에 들어가도록 한다." 사용자가 직접 원한 안내라 안내 문구 규칙의 예외, 이 탭에만).
+    element('adv-intro', this.body).textContent = INTRO;
     this.renderRanking();
   }
 
@@ -356,10 +362,10 @@ export class AdventureWindow {
       element('adv-rank-name', el, 'span').textContent = name;
       element('adv-rank-lv', el, 'span').textContent = level;
     };
-    for (const t of r.top) row(String(t.rank), t.name, `Lv ${rankLevel(t.level)}`, t.me ? ' me' : '');
+    for (const t of r.top) row(String(t.rank), t.name, `Lv. ${bigText(t.level)}`, t.me ? ' me' : '');
     if (r.top.some((t) => t.me)) return;
     element('adv-rank-gap', list).textContent = '⋯';
-    if (r.me) row(String(r.me.rank), r.me.name, `Lv ${rankLevel(r.me.level)}`, ' me');
+    if (r.me) row(String(r.me.rank), r.me.name, `Lv. ${bigText(r.me.level)}`, ' me');
     else row('-', r.name ?? '', '-', ' me none');
   }
 
@@ -723,13 +729,13 @@ export function showAdventureResult(root: HTMLElement, result: AdvResult, advent
     element('adv-end-key', rows).textContent = k;
     fill(element('adv-end-val', rows));
   };
-  row('이번 모험', (v) => (v.textContent = `최고 Lv ${bigText(result.level)} · 이긴 전투 ${result.wins}번 · 진 전투 ${result.losses}번`));
+  row('이번 모험', (v) => (v.textContent = `최고 Lv. ${bigText(result.level)} · 이긴 전투 ${result.wins}번 · 진 전투 ${result.losses}번`));
   const counters: Counter[] = [];
   row('경험치', (v) => {
     const to = bigOf(result.townExp);
     const fmt = (n: bigint) => `마을 경험치 +${bigText(n.toString())}`;
     counters.push({ el: element('adv-end-take', v, 'span'), from: 0n, to, fmt });
-    element('adv-end-from', v, 'span').textContent = `이긴 전투 ${result.wins}번 × ${TOWN_EXP_PER_WIN.toLocaleString()} · 모험 경험치 ${bigText(result.exp, true)}`;
+    element('adv-end-from', v, 'span').textContent = `이긴 전투 ${result.wins}번 × ${TOWN_EXP_PER_WIN.toLocaleString()} · 모험 경험치 ${bigText(result.exp)}`;
   });
   row('골드', (v) => {
     const to = bigOf(result.townGold);

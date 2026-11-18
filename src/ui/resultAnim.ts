@@ -288,21 +288,3 @@ export function playResult(el: ResEls, v: ResValues): ResultAnim {
   };
 }
 
-/** 경험치 글: 1만 아래는 "7,990", 그 위는 만·억·조·경 단위 소수 한 자리("464.4만", "1.1억"). 시안과 같은 꼴. */
-export function shortNum(n: bigint) {
-  if (n < 10000n) return n.toLocaleString('ko-KR');
-  const units: [bigint, string][] = [
-    [10n ** 16n, '경'],
-    [10n ** 12n, '조'],
-    [10n ** 8n, '억'],
-    [10n ** 4n, '만'],
-  ];
-  for (const [unit, word] of units) {
-    if (n < unit) continue;
-    const tenths = (n * 10n) / unit;
-    const whole = tenths / 10n;
-    const frac = tenths % 10n;
-    return `${whole.toLocaleString('ko-KR')}${frac ? `.${frac}` : ''}${word}`;
-  }
-  return n.toLocaleString('ko-KR');
-}
