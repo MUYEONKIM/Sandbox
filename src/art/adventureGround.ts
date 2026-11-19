@@ -129,6 +129,8 @@ export function paintAdventureGround(canvas: HTMLCanvasElement, data: AdvMapData
 
   // 떠 있는 몬스터 발밑 그림자: 두 단계 타원(디자인 세션 adventure-monsters.md 4절, 그림 폭의 30%, 최소 9)
   for (const mo of monsters) {
+    // 수문장은 이번 판에 이기면 사라져서 바닥에 그림자를 굽지 않는다(에이전트가 정함)
+    if (mo.gate) continue;
     const found = monsterArt(mo.art);
     if (!found) continue;
     const f = found.frame;

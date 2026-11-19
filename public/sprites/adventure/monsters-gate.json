@@ -1,0 +1,37 @@
+{
+ "source": "2026-11-19 코드 세션: monsters-new.webp의 Hellfire_Knight_01 칸(0, 632, 110 × 112)을 오린 한 장(평원 1 수문장, 사용자 \"화산폭풍의 일반몹 수문장\"). 평원 1에서 큰 새 몬스터 그림을 읽지 않으려고 따로 둔다.",
+ "image": "monsters-gate.webp",
+ "scale": 0.5,
+ "roles": {
+  "normal": {
+   "h": 56,
+   "lift": 10,
+   "bob": 2
+  },
+  "mid": {
+   "h": 80,
+   "lift": 14,
+   "bob": 3
+  },
+  "boss": {
+   "h": 120,
+   "lift": 18,
+   "bob": 4
+  }
+ },
+ "frames": {
+  "Gate_Hellfire_Knight_01": {
+   "x": 0,
+   "y": 0,
+   "w": 110,
+   "h": 112,
+   "ax": 55,
+   "ay": 111,
+   "role": "normal",
+   "zone": "adv_14",
+   "map": "adv_1a",
+   "slot": "gate",
+   "name": null
+  }
+ }
+}

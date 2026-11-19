@@ -144,7 +144,7 @@ export interface AdvBattle {
   turns: AdvTurn[];
   me: AdvStats;
   /** 싸운 몬스터 자리(adventure_spots). boss는 지역 보스와 중간 보스 모두 true, mini는 중간 보스 번호, bonus는 그 자리 구역 보너스 */
-  mon: { map: string; zone: string; x: number; y: number; kind: 'normal' | 'mini' | 'boss'; art: string | null; mini: number | null; bonus: string | null; level: number; boss: boolean; hp: number; atk: number };
+  mon: { map: string; zone: string; x: number; y: number; kind: 'normal' | 'mini' | 'boss' | 'gate'; art: string | null; mini: number | null; bonus: string | null; level: number; boss: boolean; hp: number; atk: number };
   exp: string;
   level: string;
   points: string;

@@ -67,7 +67,8 @@ export const NO_FX: AdvFx = { comboAdd: 0, comboMax: COMBO_MAX, critMul: CRIT_MU
 
 /** 레벨 L, 세기 d인 몬스터 */
 export const monster = (L: number, d: number) => ({ hp: d * (30 + 10 * L), atk: d * (5 + 1.5 * L) });
-export const expOf = (L: number) => 40 * (L + 3) ** 2;
+/** 한 번 이긴 판 경험치(40 → 20, 2026-11-19 사용자 "모험에서 얻는 경험치를 지금에서 50%를 줄이거나…", 서버 adventure_battle) */
+export const expOf = (L: number) => 20 * (L + 3) ** 2;
 // 경험치 줄어듦(예전 expFalloff)은 없앴다: 판 레벨과 상관없이 몬스터 경험치를 다 준다(2026-11-18 사용자 "레벨의 2배가 되더라도, 경험치 못얻거나, 아이템 못얻는건 없다. 무조건 얻는다").
 /** 레벨 n까지 쌓인 경험치는 50n(n − 1)이다. */
 export const levelFromExp = (e: number) => Math.floor((1 + Math.sqrt(1 + (8 * e) / 100)) / 2);

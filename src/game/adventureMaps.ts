@@ -13,6 +13,8 @@ import type { Tile } from './world';
  *   그림은 2배 해상도(scale 0.5)
  * - monsters-new.json, monsters-new.webp(2026-11-19 새 지역 여섯, 78마리, 844KB, GPU 약 6.7MB): 맵 자료 몬스터의 sheet가 'new'인 것.
  *   처음부터 읽지 않고 그 몬스터가 있는 맵에 들어가기 전에만 읽는다(loadAdventureMaps(map), 렌더링 성능 먼저).
+ * - monsters-gate.json, monsters-gate.webp(2026-11-19, 약 8KB): 평원 1 수문장 한 칸(새 그림의 화산 폭풍 첫 몬스터를 오림). 기본 자료와 함께 읽는다.
+ *   수문장은 맵 자료 몬스터의 gate 키('gate:adv_1a')가 있고, 이번 판에 이기면(서버 run_bosses에 그 키) 화면에서 치우고 그 칸의 높은 지역 포탈을 세운다.
  * - 맵 자료 version 4(2026-11-19, 디자인 노트 adventure-maps-v4.md): 맵 스물다섯 장, 지역 열넷, 맵마다 전투 배경 battleBg, 높은 지역 포탈 jump·gate.
  * 서버 몬스터 표(adventure_spots)와 맵 → 지역 표(adventure_maps)는 monster-spots.json(version 2)과 이 자료로 만든다
  * (공유 노트 code-adventure-tools/monster-rows.cjs). 맵·몬스터를 바꾸면 SQL 행도 다시 만든다.
@@ -60,8 +62,10 @@ export interface AdvMonsterSpot extends Tile {
   slot: string;
   /** monsters.json 프레임 id(sheet가 'new'이면 monsters-new.json 프레임 id) */
   art: string;
-  /** 'new': 두 번째 몬스터 그림(새 지역 여섯) */
+  /** 'new': 두 번째 몬스터 그림(새 지역 여섯), 'gate': 수문장 그림 */
   sheet?: string;
+  /** 수문장: 이번 판에 이기면 서버 run_bosses에 붙는 키('gate:adv_1a') */
+  gate?: string;
   name: string | null;
   /** 일곱 빛 들판 빛 번호(lights.legend) */
   light?: number | null;
@@ -157,6 +161,8 @@ export interface FieldMonster extends Tile {
   slot: string;
   /** 이 자리 전투에 붙는 구역 보너스 키(일곱 빛, 경험치 방 'exp3') */
   bonus: string | null;
+  /** 수문장이면 그 키('gate:adv_1a'), 아니면 null */
+  gate: string | null;
 }
 
 interface Loaded {
@@ -166,6 +172,8 @@ interface Loaded {
   floorPieces: HTMLImageElement;
   monsters: MonsterMeta;
   monsterSheet: HTMLImageElement;
+  /** 수문장 그림(한 칸) */
+  gateSheet: MonsterSheet;
 }
 
 /** 몬스터 그림 한 장(프레임 자료와 그림, Phaser 텍스처 키) */
@@ -229,8 +237,9 @@ function loadBaseMaps() {
     imageFile('infernus.png'),
     imageFile('infernus-floor.png'),
     json<MonsterMeta>('monsters.json').then(async (m) => [m, await imageFile(m.image ?? 'monsters.png')] as const),
-  ]).then(([data, meta, pieces, floorPieces, [monsters, monsterSheet]]) => {
-    loaded = { maps: data.maps, meta, pieces, floorPieces, monsters, monsterSheet };
+    json<MonsterMeta>('monsters-gate.json').then(async (meta): Promise<MonsterSheet> => ({ meta, image: await imageFile(meta.image ?? 'monsters-gate.webp'), key: 'adv-monsters-gate' })),
+  ]).then(([data, meta, pieces, floorPieces, [monsters, monsterSheet], gateSheet]) => {
+    loaded = { maps: data.maps, meta, pieces, floorPieces, monsters, monsterSheet, gateSheet };
     monsterCache.clear();
     return loaded;
   });
@@ -246,6 +255,8 @@ export function monsterArt(art: string): (MonsterSheet & { frame: MonsterFrame }
   if (!loaded) return null;
   const old = loaded.monsters.frames[art];
   if (old) return { meta: loaded.monsters, image: loaded.monsterSheet, key: 'adv-monsters', frame: old };
+  const gate = loaded.gateSheet.meta.frames[art];
+  if (gate) return { ...loaded.gateSheet, frame: gate };
   const next = newSheet?.meta.frames[art];
   return next && newSheet ? { ...newSheet, frame: next } : null;
 }
@@ -289,7 +300,7 @@ export function monstersOf(id: string): FieldMonster[] {
     .filter((m) => monsterArt(m.art))
     .map((m): FieldMonster => {
       const bonus = m.light !== undefined && m.light !== null ? (legend[m.light]?.key ?? null) : m.exp === 3 ? 'exp3' : null;
-      return { x: m.x, y: m.y, art: m.art, kind: m.role === 'mid' ? 'mini' : m.role, level: m.level, slot: m.role === 'mid' ? m.slot : '', bonus };
+      return { x: m.x, y: m.y, art: m.art, kind: m.role === 'mid' ? 'mini' : m.role, level: m.level, slot: m.role === 'mid' ? m.slot : '', bonus, gate: m.gate ?? null };
     });
   if (!missing) monsterCache.set(id, out);
   return out;

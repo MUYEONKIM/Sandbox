@@ -74,6 +74,8 @@ interface Floating {
   shown: boolean;
   /** 이름표 그림 키(바뀔 때만 다시 그림) */
   tagKey: string;
+  /** 이번 판에 이긴 수문장(숨김, 칸이 열림) */
+  gone: boolean;
   /** 보이는지 볼 때 쓰는 월드 자리 */
   cx: number;
   top: number;
@@ -147,7 +149,7 @@ export class AdventureField {
 
   /** 맵 위 몬스터들(World 몬스터 칸으로 막는다) */
   get monsters(): FieldMonster[] {
-    return this.floats.map((f) => f.m);
+    return this.floats.filter((f) => !f.gone).map((f) => f.m);
   }
 
   /**
@@ -183,7 +185,7 @@ export class AdventureField {
         .setDepth(depthOf(m.x, m.y) + 0.5);
       const tag = scene.add.image(c.x, baseY - frame.h * k - 2, '__DEFAULT').setOrigin(0.5, 1).setScale(1 / TAG_RES).setDepth(this.labelDepth);
       const index = this.floats.length;
-      this.floats.push({ m, frame, image, tag, baseY, bob: role.bob, phase: i * BOB_PHASE, shownBob: 0, shown: true, tagKey: '', cx: c.x, top: baseY - frame.h * k - 30, bottom: c.y + 8 });
+      this.floats.push({ m, frame, image, tag, baseY, bob: role.bob, phase: i * BOB_PHASE, shownBob: 0, shown: true, gone: false, tagKey: '', cx: c.x, top: baseY - frame.h * k - 30, bottom: c.y + 8 });
       this.onTile.set(m.x + m.y * MAP_SIZE, index);
       // 둘레 8칸: 이름 줄을 보이는 칸. 둘이 겹치면 더 가까운 몬스터(몬스터끼리 5칸 넘게 떨어져 있어 거의 없음).
       for (let dy = -1; dy <= 1; dy++) {
@@ -200,6 +202,27 @@ export class AdventureField {
       }
     });
     for (const f of this.floats) this.paintTag(f);
+    this.syncGates();
+  }
+
+  /**
+   * 수문장(평원 1, 2026-11-19 사용자 "통로에 길을 막고 있는 화산폭풍의 일반몹 수문장"): 이번 판에 이겼으면(서버 runBosses에 그 키) 그림과 이름표를 숨기고
+   * 칸을 연다(monsters에서 빠짐). 새 판이면 다시 선다. 바뀌었으면 true(GameScene이 몬스터 칸을 다시 막음).
+   */
+  syncGates() {
+    const done = this.adventure.view?.runBosses ?? [];
+    let changed = false;
+    for (const f of this.floats) {
+      if (!f.m.gate) continue;
+      const gone = done.includes(f.m.gate);
+      if (gone === f.gone) continue;
+      f.gone = gone;
+      f.shown = !gone;
+      f.image.setVisible(!gone);
+      f.tag.setVisible(!gone);
+      changed = true;
+    }
+    return changed;
   }
 
   /** 들어온 칸에서 시작한다(맵에 들어올 때, 되돌림 칸으로 옮겼을 때). */
@@ -225,14 +248,15 @@ export class AdventureField {
 
   /** 이 칸에 선 몬스터 */
   monsterAt(tile: Tile): FieldMonster | null {
-    return this.floats[this.onTile.get(tile.x + tile.y * MAP_SIZE) ?? -1]?.m ?? null;
+    const f = this.floats[this.onTile.get(tile.x + tile.y * MAP_SIZE) ?? -1];
+    return f && !f.gone ? f.m : null;
   }
 
   /** 누른 곳(월드 좌표)에 그림이 있는 몬스터. 그림을 눌러도 칸을 눌러도 된다. 겹치면 앞(아래)에 그린 것. */
   monsterAtPoint(wx: number, wy: number): FieldMonster | null {
     let hit: Floating | null = null;
     for (const f of this.floats) {
-      if (!f.shown) continue;
+      if (!f.shown || f.gone) continue;
       const half = f.image.displayWidth / 2;
       const top = f.image.y - f.image.displayHeight * f.image.originY;
       if (wx < f.cx - half || wx > f.cx + half || wy < top || wy > f.bottom) continue;
@@ -349,6 +373,7 @@ export class AdventureField {
     const now = this.scene.time.now;
     let visible = 0;
     for (const f of this.floats) {
+      if (f.gone) continue;
       const inside = f.cx >= left && f.cx <= right && f.bottom >= top && f.top <= bottom;
       if (inside !== f.shown) {
         f.shown = inside;

@@ -567,7 +567,7 @@ export interface Portal {
   /**
    * 모험 맵 포탈(adventureMaps.ts): 보스방 옆 다음 지역 포탈('next')만 이번 판에 그 지역 보스를 잡았을 때 보인다(서버 run_bosses).
    * 입구 맵 포탈('zone', 평원 1로 하나), 같은 지역 다음 맵('next_map')·앞 맵('prev_map'), 지역 첫 맵의 앞 지역 포탈('prev_zone')은 늘 열려 있다.
-   * 평원 1의 높은 지역 포탈('jump', 화산 폭풍 1로)과 화산 폭풍 1의 입구로 가는 포탈('gate')도 늘 열려 있다(2026-11-19 사용자가 정함).
+   * 평원 1의 높은 지역 포탈('jump', 화산 폭풍 1로, 한쪽으로만)은 이번 판에 그 칸의 수문장을 이겼을 때 선다(2026-11-19 사용자). 'gate'(화산 폭풍 1 → 입구)는 2026-11-19 뺐다.
    */
   adventure?: 'zone' | 'next' | 'next_map' | 'prev_map' | 'prev_zone' | 'jump' | 'gate';
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
@@ -586,11 +586,10 @@ function portalAt(corner: Corner, to: MapId): Portal {
 function adventurePortals(id: AdventureMapId): Portal[] {
   return (advMap(id)?.portals ?? []).flatMap((p): Portal[] => {
     if (!isMapId(p.to)) return [];
-    // 이름표: 다음 지역 "→ 심연 골짜기 1 가는 길", 높은 지역 포탈 "→ 화산 폭풍"(지역 이름만), 입구로 가는 포탈 "→ 입구"(디자인 adventure-maps-v4.md)
+    // 이름표: 다음 지역 "→ 심연 골짜기 1 가는 길", 높은 지역 포탈 "→ 화산 폭풍"(지역 이름만, 디자인 adventure-maps-v4.md)
     const label =
       p.kind === 'next' ? { color: NEXT_PORTAL_COLOR, label: `${MAPS[p.to].name} 가는 길` }
       : p.kind === 'jump' ? { label: advMap(p.to)?.zoneName ?? MAPS[p.to].name }
-      : p.kind === 'gate' ? { label: '입구' }
       : {};
     return [{ x: p.x, y: p.y, to: p.to, landing: { x: p.x, y: p.y }, adventure: p.kind, ...label }];
   });

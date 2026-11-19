@@ -944,12 +944,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!view) return [];
     const zone = this.adventure.zoneOfMap(id)?.id;
     const bossDown = zone !== undefined && view.runBosses.includes(zone);
-    return all.filter((p) => p.adventure !== 'next' || bossDown);
+    // 높은 지역 포탈(평원 1)은 이번 판에 그 맵 수문장을 이겼을 때 그 칸에 선다(2026-11-19 사용자 수문장)
+    const gateOpen = view.runBosses.includes(`gate:${id}`);
+    return all.filter((p) => (p.adventure !== 'next' || bossDown) && (p.adventure !== 'jump' || gateOpen));
   }
 
   /** 서버 값이 바뀌면(이번 판에 지역 보스를 잡음, 새 판) 모험 맵 포탈을 맞춘다. 바뀐 것이 없으면 아무것도 하지 않는다. */
   private syncAdventurePortals() {
     if (!isAdventure(this.mapId) || this.traveling || !this.world) return;
+    // 수문장을 이겼으면 그 칸을 연다(몬스터 칸을 다시 막음, 바뀔 때만)
+    if (this.advField?.syncGates()) this.world.setMonsterTiles(this.advField.monsters);
     const want = this.visiblePortals(this.mapId);
     const key = (p: Portal) => `${p.x},${p.y},${p.to}`;
     const have = new Set(this.world.portals.map(key));
