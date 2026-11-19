@@ -147,7 +147,7 @@ import { AdventureField } from './adventureField';
 import { playBattle } from './adventureBattle';
 import { loadAdventureArt, loadMapBg } from '../art/adventureArt';
 import { adventureBattle, adventureMove, adventureReturn, adventureStart, type AdvResult } from '../net/adventure';
-import { confirmReturn, failText, showAdventureResult, type AdventureWindow } from '../ui/adventure';
+import { confirmReturn, failText, showAdventureResult, weaponInfoCard, type AdventureWindow } from '../ui/adventure';
 import { advEntry, advMap, infernus, loadAdventureMaps, adventureMapsReady, monsterArt, monstersOf, type FieldMonster } from './adventureMaps';
 import { paintAdventureGround } from '../art/adventureGround';
 import { FIGHT_GAP_MS } from './adventureRules';
@@ -1966,8 +1966,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         member: this.session.profile.skin ?? memberOf(this.session.profile.id),
         levelBefore,
         expBefore: before?.inRun ? before.exp : '0',
+        goldBefore: before?.inRun ? before.runGold : '0',
+        pointsBefore: before?.inRun ? before.points : '0',
         weapon: main ? { id: main.id, art: main.art } : null,
-        drop: dropped ? { name: dropped.name, star: dropped.star, art: dropped.art } : null,
+        drop: dropped ? { name: dropped.name, star: dropped.star, art: dropped.art, card: (parent) => weaponInfoCard(parent, this.adventure, dropped, battle.dropCopies || 1) } : null,
         onBackdrop: intro.hasBackdrop,
       });
     } finally {

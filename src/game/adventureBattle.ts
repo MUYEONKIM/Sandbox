@@ -3,7 +3,7 @@ import { FORGE_HELD, FORGE_HELD_SIZE } from '../art/forgeArt';
 import type { AdvBattle } from '../net/adventure';
 import { bigOf } from '../ui/countUp';
 import { element } from '../ui/dom';
-import { playResult, RES, type ResEls, type ResultAnim } from '../ui/resultAnim';
+import { playResult, type ResEls, type ResultAnim } from '../ui/resultAnim';
 import { formatNumber } from './level';
 import { bigText } from './adventure';
 import { monsterArt, type MonsterFrame, type MonsterRole } from './adventureMaps';
@@ -44,8 +44,6 @@ const HIT_MAX_MS = 150;
 const FIGHT_MS = 1500;
 const LEAD_MS = 150;
 const END_MS = 400;
-/** 진 전투: "패배"가 이만큼 뒤 닫힌다(PM 2026-11-18). 이긴 전투는 결과 칸 애니메이션이 끝나고 RES.closeAfter(0.5초) 뒤. */
-const LOSE_MS = 1000;
 /** 결과 칸을 눌러 끝 모습으로 멈춘 뒤 이만큼 안의 두 번째 누름(빠른 두 번 클릭)은 닫지 않는다(끝 모습을 보이려고, 에이전트가 정함) */
 const HOLD_GUARD_MS = 300;
 /** 차례가 이보다 많으면 이어진 연타를 숫자 하나("5연타")로 묶는다. */
@@ -372,6 +370,11 @@ const VEIL_LEAVE_MS = 150;
  */
 class BattleLog {
   readonly box: HTMLElement;
+  /**
+   * 이긴 전투 요약 세 줄(2026-11-19 사용자 "Lv. 115 -> 345 (줄바꿈) Gold 35,377 -> 38,999 (줄바꿈) Status point 4 -> 3,777").
+   * 있으면 끝날 때 앞 줄을 지우고 "이겼습니다" 아래에 붙이며, 상자는 네 줄 높이로 늘어난다(.adv-log.summary).
+   */
+  summary: string[] | null = null;
   private last: { el: HTMLElement; by: 'hero' | 'foe'; hits: number; damage: number; heal: number; crit: boolean } | null = null;
 
   constructor(parent: HTMLElement) {
@@ -430,8 +433,16 @@ class BattleLog {
 
   /** 전투가 끝났을 때 */
   end(win: boolean, role: MonsterRole) {
-    this.line(win ? 'win' : 'lose').textContent = !win ? '쓰러졌습니다' : role === 'boss' ? '보스를 쓰러뜨렸습니다' : role === 'mid' ? '중간 보스를 쓰러뜨렸습니다' : '이겼습니다';
+    const text = !win ? '쓰러졌습니다' : role === 'boss' ? '보스를 쓰러뜨렸습니다' : role === 'mid' ? '중간 보스를 쓰러뜨렸습니다' : '이겼습니다';
     this.last = null;
+    if (win && this.summary) {
+      this.box.replaceChildren();
+      this.box.classList.add('summary');
+      element('adv-log-line win', this.box, 'p').textContent = text;
+      for (const s of this.summary) element('adv-log-line sum', this.box, 'p').textContent = s;
+      return;
+    }
+    this.line(win ? 'win' : 'lose').textContent = text;
   }
 }
 
@@ -470,17 +481,22 @@ export interface BattleContext {
   levelBefore: string;
   /** 전투 전 판 경험치(글자, 결과 칸 막대의 처음 자리) */
   expBefore: string;
+  /** 전투 전 판 금화와 남은 포인트(글자, 이긴 전투 요약 줄) */
+  goldBefore: string;
+  pointsBefore: string;
   /** 대표 무기(없으면 장검) */
   weapon: { id: string; art: string } | null;
-  /** 떨어진 무기(이름, 별, 그림 칸) */
-  drop: { name: string; star: number; art: string } | null;
+  /** 떨어진 무기(이름, 별, 그림 칸). card는 마우스를 올리거나 누르면 보일 무기 카드를 그린다(컬렉션 카드와 같음) */
+  drop: { name: string; star: number; art: string; card?: (parent: HTMLElement) => void } | null;
   /** 뒤에 '노이즈 낀 원래 화면' 배경이 깔려 있으면 장막을 더 어둡게 하지 않는다(battleIntro.ts) */
   onBackdrop?: boolean;
 }
 
 /**
- * 전투 창을 띄워 연출하고 결과 칸을 보인 뒤 스스로 닫힌다(이김: 결과 칸 애니메이션이 끝나고 0.5초 뒤, 짐: 1초 뒤).
- * 키는 받지 않는다(2026-11-18 사용자). 결과 칸을 누르면 이김은 끝 모습으로 멈추고 다시 누르면 닫힌다(짐은 한 번에 닫힘).
+ * 전투 창을 띄워 연출하고 결과 칸을 보인다. 스스로 닫히지 않고 결과가 나온 뒤 화면을 누르거나 클릭할 때만 닫힌다
+ * (2026-11-19 사용자 "전투 결과창은 자동으로 닫히지 않고, 내가 화면을 터치하거나, 마우스 클릭을 할 시 에만 닫힌다", 예전 이김 0.5초·짐 1초 뒤 닫힘).
+ * 전투 창 어디를 눌러도 된다. 이김은 결과 숫자가 오르는 중이면 첫 누름에 끝 모습으로 멈추고 다음 누름에 닫힌다(2026-11-18 사용자 결과 칸 클릭 규칙).
+ * 키는 받지 않는다(2026-11-18 사용자). 얻은 무기 칸은 마우스를 올리거나 누르면 카드가 보이고, 그 칸을 눌러서는 닫히지 않는다.
  * 장막은 닫힌 뒤 150ms 동안 걷히며 지워진다.
  */
 export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: BattleContext): Promise<void> {
@@ -508,6 +524,15 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
   const stageBox = element('adv-stage', panel);
   const role: MonsterRole = mon.kind === 'boss' ? 'boss' : mon.kind === 'mini' ? 'mid' : 'normal';
   const log = new BattleLog(panel);
+  if (battle.win) {
+    // 요약(2026-11-19 사용자): 판이 이 전투로 끝났으면 state는 다음 판 값이라 앞 값 + 이번 몫으로 센다.
+    const pointsAfter = battle.ended ? (bigOf(ctx.pointsBefore) + bigOf(battle.points)).toString() : battle.state.points;
+    log.summary = [
+      `Lv. ${bigText(ctx.levelBefore)} -> ${bigText(battle.level)}`,
+      `Gold ${bigText(ctx.goldBefore)} -> ${bigText((bigOf(ctx.goldBefore) + bigOf(battle.gold)).toString())}`,
+      `Status point ${bigText(ctx.pointsBefore)} -> ${bigText(pointsAfter)}`,
+    ];
+  }
   const stage = new Stage(stageBox, art, { map: mon.map, member: ctx.member, weapon: ctx.weapon, foe, heroHp: battle.me.hp, foeHp: mon.hp, win: battle.win, role, turns: toTurns(battle) }, heroBar, foeBar, log);
   const result = element(`adv-result ${battle.win ? 'win' : 'lose'}`, panel);
   result.hidden = true;
@@ -518,16 +543,14 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
     let raf = 0;
     let finished = false;
     let closed = false;
-    let timer = 0;
-    /** 결과 칸을 눌러 끝 모습으로 멈췄는지(그 뒤 스스로 닫히지 않음)와 그 때 */
-    let held = false;
+    /** 이긴 전투의 결과 숫자 오르기가 끝났는지, 누름으로 끝 모습으로 멈춘 때(바로 닫히지 않게) */
+    let animDone = false;
     let heldAt = 0;
     const start = performance.now();
     const close = () => {
       if (closed) return;
       closed = true;
       cancelAnimationFrame(raf);
-      clearTimeout(timer);
       anim?.finish();
       window.removeEventListener('keydown', onKey, true);
       // 장막을 150ms 동안 걷는다(그동안 필드가 다시 보인다). 부르는 쪽은 곧바로 필드를 깨운다.
@@ -540,11 +563,8 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
       finished = true;
       cancelAnimationFrame(raf);
       result.hidden = false;
-      if (!parts) {
-        timer = window.setTimeout(close, LOSE_MS);
-        return;
-      }
-      // 이긴 전투: 막대·레벨·Level up·들어온 경험치(≤ 2.0초) → 무기 튀어 나오기 → 0.5초 뒤 닫힘
+      if (!parts) return;
+      // 이긴 전투: 막대·레벨·Level up·들어온 경험치(≤ 2.0초) → 무기 튀어 나오기. 닫기는 누를 때만.
       anim = playResult(parts, {
         from: bigOf(ctx.levelBefore),
         to: bigOf(battle.level),
@@ -553,9 +573,7 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
         levelText: (n) => bigText(n.toString()),
         numText: formatNumber,
       });
-      void anim.done.then(() => {
-        if (!closed && !held && !timer) timer = window.setTimeout(close, RES.closeAfter);
-      });
+      void anim.done.then(() => (animDone = true));
       // 결과 칸이 창 아래로 넘치면(무기 줄 등, 낮은 화면) 다 보이게 창 안을 내린다(#hud는 건드리지 않게 scrollIntoView 대신).
       if (panel.scrollHeight > panel.clientHeight) panel.scrollTop = panel.scrollHeight;
     };
@@ -577,35 +595,29 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
     };
     // 결과 칸 밖(전투 그림, 어두운 배경)과 연출 중 누르기는 아무것도 하지 않는다. 장막이 화면을 덮고, 누르기가 window까지 올라가
     // Phaser(window의 손 떼기)·HUD로 가지 않게 여기서 멈춘다(닫힌 뒤 캐릭터가 그쪽으로 걷지 않게).
-    for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend'] as const) {
-      veil.addEventListener(type, (e) => {
-        if (type === 'pointerdown') e.preventDefault();
-        e.stopPropagation();
-      });
-    }
     /**
-     * 결과 칸 누르기(2026-11-18 사용자 "해당 결과 팝업 클릭하면 건너뛰도록 하는것이다. 결과팝업이 꺼지는게 아니라, 마지막 레벨이 나온상태로 멈춰있고, 한번더 클릭시 꺼지는 것이다."):
-     * 이김은 첫 누름에 끝 모습(마지막 레벨·막대·무기)으로 멈추고 스스로 닫히지 않으며, 다시 누르면 닫힌다. 짐은 이미 끝 모습이라 한 번에 닫힌다(PM이 정함).
+     * 누르기(2026-11-19 사용자 "화면을 터치하거나, 마우스 클릭을 할 시 에만 닫힌다"): 결과가 나오기 전(연출 중)에는 아무것도 하지 않는다.
+     * 이김은 결과 숫자가 오르는 중이면 첫 누름에 끝 모습(마지막 레벨·막대·무기)으로 멈추고(2026-11-18 사용자 "결과팝업이 꺼지는게 아니라,
+     * 마지막 레벨이 나온상태로 멈춰있고, 한번더 클릭시 꺼지는 것이다."), 그 뒤 누르면 닫힌다. 오르기가 끝났으면 한 번에 닫힌다. 짐도 한 번에 닫힌다.
      */
-    result.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    const press = () => {
       if (!finished || closed) return;
-      if (!parts) {
-        close();
-        return;
-      }
-      if (!held) {
-        held = true;
+      if (parts && !animDone) {
+        animDone = true;
         heldAt = performance.now();
-        clearTimeout(timer);
-        timer = 0;
         anim?.finish();
         return;
       }
       if (performance.now() - heldAt < HOLD_GUARD_MS) return;
       close();
-    });
+    };
+    for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend'] as const) {
+      veil.addEventListener(type, (e) => {
+        if (type === 'pointerdown') e.preventDefault();
+        e.stopPropagation();
+        if (type === 'click') press();
+      });
+    }
     window.addEventListener('keydown', onKey, true);
     stage.render(0, true);
     raf = requestAnimationFrame(frame);
@@ -647,6 +659,32 @@ function fillResult(box: HTMLElement, battle: AdvBattle, ctx: BattleContext): Re
     cell.appendChild(icon);
     element('adv-res-star', cell).textContent = '★'.repeat(ctx.drop.star);
     drops.push(cell);
+    const card = ctx.drop.card;
+    if (card) {
+      // 마우스를 올리면 무기 카드(2026-11-19 사용자 "결과창에서 장비를 얻었다면 마우스 호버시 얻은 장비에 대한 정보를 볼 수 있어야 한다").
+      // 터치는 칸을 누를 때마다 열고 닫는다. 칸을 눌러서는 전투 창이 닫히지 않는다(에이전트가 정함). 카드는 처음 보일 때 한 번 그린다.
+      const tip = element('adv-res-tip', cell);
+      tip.hidden = true;
+      let drawn = false;
+      const show = (on: boolean) => {
+        if (on && !drawn) {
+          drawn = true;
+          card(tip);
+        }
+        tip.hidden = !on;
+      };
+      cell.addEventListener('pointerenter', (e) => {
+        if (e.pointerType === 'mouse') show(true);
+      });
+      cell.addEventListener('pointerleave', (e) => {
+        if (e.pointerType === 'mouse') show(false);
+      });
+      // 마우스로 누르면 그대로 보이고, 터치는 누를 때마다 열고 닫는다.
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        show((e as PointerEvent).pointerType === 'mouse' || tip.hidden !== false);
+      });
+    }
   }
   return { level, upLayer, fill, flash, gain, exp, drops };
 }

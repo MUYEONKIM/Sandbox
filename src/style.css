@@ -5728,6 +5728,29 @@ canvas {
   opacity: 1;
 }
 
+/* 얻은 무기 카드(2026-11-19 사용자 "마우스 호버시 얻은 장비에 대한 정보"): 칸 위에 뜬다. 컬렉션 카드(.adv-wcard)와 같고 버튼만 없다. */
+.adv-res-drop { position: relative; cursor: pointer; }
+.adv-res-tip {
+  position: absolute;
+  left: calc(100% + 8px);
+  bottom: -2px;
+  z-index: 5;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 150px));
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 45%);
+}
+.adv-res-tip[hidden] { display: none; }
+.adv-wcard.view { grid-template-columns: 52px 1fr; text-align: left; }
+
+/* 이긴 전투 요약(2026-11-19 사용자): "이겼습니다"와 요약 세 줄, 상자는 네 줄 높이로 늘고 줄을 흐리게 하지 않는다 */
+.adv-log.summary { height: calc(4 * 18px + 8px); }
+.adv-log.summary .adv-log-line { opacity: 1; }
+.adv-log-line.sum { color: #f7ecd6; }
+@media (max-width: 520px) {
+  .adv-log.summary { height: calc(4 * 17px + 8px); }
+}
+
 .adv-res-star {
   color: #a86f00;
   font-size: 11px;

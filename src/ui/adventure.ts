@@ -579,9 +579,14 @@ function weaponCanvas(art: string, size: number) {
  * 무기 카드(디자인 17절, 대장간 상점 무기 카드와 같은 바탕·테두리): 그림 48px, 이름, 별 + 단계 + 보스/중간 보스, 효과 숫자.
  * state: equipped(장착 표 + [빼기]), pick([장착]). act는 버튼을 누를 때.
  */
-function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'equipped' | 'pick', act?: () => void) {
-  const card = element(`adv-wcard${state === 'equipped' ? ' on' : ''}`, parent);
-  const copies = adv.copies(w.id);
+/** 버튼 없는 무기 카드(전투 결과 창 얻은 무기에 마우스를 올릴 때, 2026-11-19). copies는 얻은 뒤 가진 수 */
+export function weaponInfoCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, copies: number) {
+  return weaponCard(parent, adv, w, 'view', undefined, copies);
+}
+
+function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'equipped' | 'pick' | 'view', act?: () => void, copiesShown?: number) {
+  const card = element(`adv-wcard${state === 'equipped' ? ' on' : ''}${state === 'view' ? ' view' : ''}`, parent);
+  const copies = copiesShown ?? adv.copies(w.id);
   element('adv-wcard-icon', card).appendChild(weaponCanvas(w.art, 48));
   const body = element('adv-wcard-body', card);
   // 이름 줄은 뺐다(2026-11-19 사용자 "몬스터 이름, 장비이름 굳이 없어도 된다."). 장착 표만 있으면 그 줄을 둔다.
@@ -593,6 +598,7 @@ function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'e
   else if (w.mini) element('adv-wcard-kind', meta, 'span').textContent = ' 중간 보스';
   const fx = element('adv-wcard-fx', body);
   fx.textContent = equipEffects(adv, w, copies);
+  if (state === 'view') return card;
   const btns = element('adv-wcard-btns', card);
   button(state === 'equipped' ? 'adv-btn' : 'adv-btn gold', btns, state === 'equipped' ? '빼기' : '장착', () => act?.());
   return card;
