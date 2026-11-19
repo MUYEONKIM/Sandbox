@@ -1,6 +1,6 @@
 import { gridToWorld, tileCenter } from '../iso';
 import { Terrain, type GameMap } from '../game/map';
-import { infernus, type AdvMapData, type FieldMonster } from '../game/adventureMaps';
+import { infernus, monsterArt, type AdvMapData, type FieldMonster } from '../game/adventureMaps';
 import { worldRect } from './ground';
 
 /**
@@ -128,12 +128,12 @@ export function paintAdventureGround(canvas: HTMLCanvasElement, data: AdvMapData
   for (const s of data.mids) ring(s, '#ffa53a');
 
   // 떠 있는 몬스터 발밑 그림자: 두 단계 타원(디자인 세션 adventure-monsters.md 4절, 그림 폭의 30%, 최소 9)
-  const frames = art?.monsters.frames;
   for (const mo of monsters) {
-    const f = frames?.[mo.art];
-    if (!f) continue;
+    const found = monsterArt(mo.art);
+    if (!found) continue;
+    const f = found.frame;
     const c = tileCenter(mo.x, mo.y);
-    const rx = Math.max(9, Math.round(f.w * (art?.monsters.scale ?? 1) * 0.3));
+    const rx = Math.max(9, Math.round(f.w * (found.meta.scale ?? 1) * 0.3));
     const ry = Math.round(rx / 2);
     for (const [k, a] of [
       [1, 0.22],

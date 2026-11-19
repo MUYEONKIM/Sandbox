@@ -1,4 +1,4 @@
-import { battleBg, DEFAULT_HELD, HERO_ART, heldWeapon, loadAdventureArt, loadZoneBg, WEAPON_CELL, weaponIcon as weaponIconOf, type AdventureArt } from '../art/adventureArt';
+import { battleBg, DEFAULT_HELD, HERO_ART, heldWeapon, loadAdventureArt, loadMapBg, WEAPON_CELL, weaponIcon as weaponIconOf, type AdventureArt } from '../art/adventureArt';
 import { FORGE_HELD, FORGE_HELD_SIZE } from '../art/forgeArt';
 import type { AdvBattle } from '../net/adventure';
 import { bigOf } from '../ui/countUp';
@@ -6,7 +6,7 @@ import { element } from '../ui/dom';
 import { playResult, RES, type ResEls, type ResultAnim } from '../ui/resultAnim';
 import { formatNumber } from './level';
 import { bigText } from './adventure';
-import { infernus, type MonsterFrame, type MonsterRole } from './adventureMaps';
+import { monsterArt, type MonsterFrame, type MonsterRole } from './adventureMaps';
 import { BP_RUN } from './adventureRules';
 
 /**
@@ -149,7 +149,7 @@ class Stage {
   constructor(
     stage: HTMLElement,
     private readonly art: AdventureArt,
-    private readonly fight: { zone: string; member: number; weapon: { id: string; art: string } | null; foe: Foe | null; heroHp: number; foeHp: number; win: boolean; role: MonsterRole; turns: Turn[] },
+    private readonly fight: { map: string; member: number; weapon: { id: string; art: string } | null; foe: Foe | null; heroHp: number; foeHp: number; win: boolean; role: MonsterRole; turns: Turn[] },
     private readonly heroBar: Bar,
     private readonly foeBar: Bar,
     private readonly log: BattleLog,
@@ -172,7 +172,7 @@ class Stage {
   render(t: number, live: boolean) {
     const d0 = performance.now();
     const { ctx, fight, plan } = this;
-    const bg = battleBg(fight.zone);
+    const bg = battleBg(fight.map);
     if (bg) ctx.drawImage(bg, 0, 0, STAGE_W, STAGE_H);
     else {
       ctx.fillStyle = '#1c1014';
@@ -484,13 +484,13 @@ export interface BattleContext {
  * 장막은 닫힌 뒤 150ms 동안 걷히며 지워진다.
  */
 export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: BattleContext): Promise<void> {
-  // 그 지역 배경은 처음 싸울 때 한 장만 읽는다(싸우기를 누를 때 GameScene이 먼저 받기 시작함). 못 읽으면 어두운 바탕.
-  const [art] = await Promise.all([loadAdventureArt(), loadZoneBg(battle.mon.zone).catch(() => null)]);
+  // 그 맵 배경은 처음 싸울 때 한 장만 읽는다(싸우기를 누를 때 GameScene이 먼저 받기 시작함). 못 읽으면 어두운 바탕.
+  const [art] = await Promise.all([loadAdventureArt(), loadMapBg(battle.mon.map).catch(() => null)]);
   const t0 = performance.now();
   const { mon } = battle;
-  const maps = infernus();
-  const frame = ctx.foe ? maps?.monsters.frames[ctx.foe.art] : undefined;
-  const foe: Foe | null = frame && maps && ctx.foe ? { frame, sheet: maps.monsterSheet, name: ctx.foe.name, role: ctx.foe.role, k: maps.monsters.scale ?? 1 } : null;
+  // 몬스터 그림은 두 장 가운데 그 몬스터가 있는 것(새 지역 여섯은 monsters-new)
+  const found = ctx.foe ? monsterArt(ctx.foe.art) : null;
+  const foe: Foe | null = found && ctx.foe ? { frame: found.frame, sheet: found.image, name: ctx.foe.name, role: ctx.foe.role, k: found.meta.scale ?? 1 } : null;
   const veil = element(`adv-battle-veil${mon.boss ? ' boss' : ''}${ctx.onBackdrop ? ' on-backdrop' : ''}`, parent);
   const panel = element(`office adv-battle${mon.boss ? ' boss' : ''}`, veil);
   const head = element('adv-battle-head', panel);
@@ -508,7 +508,7 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
   const stageBox = element('adv-stage', panel);
   const role: MonsterRole = mon.kind === 'boss' ? 'boss' : mon.kind === 'mini' ? 'mid' : 'normal';
   const log = new BattleLog(panel);
-  const stage = new Stage(stageBox, art, { zone: mon.zone, member: ctx.member, weapon: ctx.weapon, foe, heroHp: battle.me.hp, foeHp: mon.hp, win: battle.win, role, turns: toTurns(battle) }, heroBar, foeBar, log);
+  const stage = new Stage(stageBox, art, { map: mon.map, member: ctx.member, weapon: ctx.weapon, foe, heroHp: battle.me.hp, foeHp: mon.hp, win: battle.win, role, turns: toTurns(battle) }, heroBar, foeBar, log);
   const result = element(`adv-result ${battle.win ? 'win' : 'lose'}`, panel);
   result.hidden = true;
   const parts = fillResult(result, battle, ctx);

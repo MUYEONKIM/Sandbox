@@ -47,8 +47,9 @@ export const SPLIT: AdvStats = { hp: 3, atk: 3, def: 1, agi: 1, luc: 0 };
 export const MAX_TURNS = 20;
 export const MAX_HITS = 5;
 export const CRIT_MUL = 2;
-const COMBO_K = 2;
-const CRIT_K = 2;
+/** 콤보·크리티컬 식의 몬스터 레벨 배수(2 → 4, 2026-11-19 사용자 "agi 의 효과를 줄이고 세기는 5%만 낮춘다.", 서버 adventure_battle, 계산기 COMBO_K·CRIT_K) */
+const COMBO_K = 4;
+const CRIT_K = 4;
 export const COMBO_MAX = 0.5;
 export const CRIT_MAX = 0.5;
 /** 마을 스텟 1 = 그 스텟 모험 포인트 10개(100 → 10, 2026-11-18 사용자 "4. 시작 마을 스텟의 *100 으로 시작하니깐 너무 쉽다. 10배로 줄인다.", 서버 adventure_power) */

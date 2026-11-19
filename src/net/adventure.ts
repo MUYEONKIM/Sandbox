@@ -81,6 +81,8 @@ export interface AdvPowerView extends AdvStats {
   bonus: AdvStats;
   /** 무기 고정 포인트(컬렉션 + 장착, 2026-11-19). 판 포인트·마을 스텟 × 10과 같은 자리에 더해짐 */
   flat: AdvStats;
+  /** 낀 보석 고정 포인트(2026-11-19 보석을 % 대신 고정 포인트로). 무기 고정 포인트와 같은 자리에 더해짐 */
+  gem?: AdvStats;
   fx: AdvFx;
   /** 장착 무기 효과(서버가 셈). 장착이 없으면 null. flat은 장착 몫 고정 포인트 */
   equip: { weapon: string; stat: AdvStat; pct: number; flat: number; fx: AdvEquipFx | null; value: number } | null;

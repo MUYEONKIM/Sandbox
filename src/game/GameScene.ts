@@ -145,10 +145,10 @@ import { Lights } from './lights';
 import type { Adventure } from './adventure';
 import { AdventureField } from './adventureField';
 import { playBattle } from './adventureBattle';
-import { loadAdventureArt, loadZoneBg } from '../art/adventureArt';
+import { loadAdventureArt, loadMapBg } from '../art/adventureArt';
 import { adventureBattle, adventureMove, adventureReturn, adventureStart, type AdvResult } from '../net/adventure';
 import { confirmReturn, failText, showAdventureResult, type AdventureWindow } from '../ui/adventure';
-import { advEntry, advMap, infernus, loadAdventureMaps, adventureMapsReady, monstersOf, type FieldMonster } from './adventureMaps';
+import { advEntry, advMap, infernus, loadAdventureMaps, adventureMapsReady, monsterArt, monstersOf, type FieldMonster } from './adventureMaps';
 import { paintAdventureGround } from '../art/adventureGround';
 import { FIGHT_GAP_MS } from './adventureRules';
 import { BattleIntro, LEAVE_MS, swirlKind } from './battleIntro';
@@ -651,7 +651,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 맵 바닥 그림은 처음 들어갈 때 한 번만 그린다. 작업장은 길·밭고랑·물가까지 칠한 바닥이다(workGround.ts). */
   private groundTexture(id: MapId) {
     // 모험 맵 자료를 아직 못 읽었으면(읽기 실패) 빈 바닥을 따로 둔다. 읽은 뒤에 들어가면 제대로 그린다.
-    const key = isAdventure(id) && !adventureMapsReady() ? `ground-${id}-empty` : `ground-${id}`;
+    // 그 맵 몬스터 그림(새 지역의 두 번째 그림)을 못 읽었을 때도 따로 둔다(몬스터 그림자가 빠진 바닥).
+    const key = isAdventure(id) && !adventureMapsReady(id) ? `ground-${id}-empty` : `ground-${id}`;
     if (!this.textures.exists(key)) {
       const map = generateMap(id);
       // 농장도 길·둑·풀밭을 칠한 바닥이다(2026-11-16 농장 꾸밈, workGround.ts).
@@ -1789,11 +1790,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         return;
       }
       this.adventure.set(view);
-      if (!adventureMapsReady()) {
+      const map = view.runMap && isMapId(view.runMap) && isAdventure(view.runMap) ? view.runMap : ADVENTURE_GATE_MAP;
+      // 이어 하는 판이 새 지역에 있으면 그 몬스터 그림도 먼저 읽는다.
+      await loadAdventureMaps(map).catch(() => null);
+      if (!adventureMapsReady(map)) {
         this.hud.toast('들어가지 못했습니다', '모험 맵을 읽지 못했습니다. 잠시 후 다시 해 주세요.');
         return;
       }
-      const map = view.runMap && isMapId(view.runMap) && isAdventure(view.runMap) ? view.runMap : ADVENTURE_GATE_MAP;
       this.adventureWindow.close();
       this.travel(map);
     } finally {
@@ -1806,7 +1809,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.advBusy) return;
     this.advBusy = true;
     this.clearRoute();
-    const view = await adventureMove(to);
+    // 새 지역 맵이면 그 몬스터 그림(두 번째 그림, 처음 한 번)을 서버 옮기기와 함께 받는다.
+    const [view] = await Promise.all([adventureMove(to), loadAdventureMaps(to).catch(() => null)]);
     this.advBusy = false;
     if (typeof view === 'string') {
       this.hud.toast('갈 수 없습니다', failText(view));
@@ -1832,7 +1836,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     if (view.runMap && view.runMap !== id && isMapId(view.runMap) && isAdventure(view.runMap)) {
-      this.travel(view.runMap);
+      const runMap = view.runMap;
+      await loadAdventureMaps(runMap).catch(() => null);
+      if (this.mapId === id && !this.advField) this.travel(runMap);
       return;
     }
     const data = advMap(id);
@@ -1913,11 +1919,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.clearRoute();
     const root = document.getElementById('hud')!;
     const before = this.adventure.view;
-    const art = infernus();
-    const frame = art?.monsters.frames[monster.art];
+    const frame = monsterArt(monster.art)?.frame;
     const mapId = this.mapId;
-    // 그 지역 전투 배경을 소용돌이 동안 받기 시작한다(처음 한 번, playBattle이 기다림)
-    void loadZoneBg(zone).catch(() => null);
+    // 그 맵 전투 배경을 소용돌이 동안 받기 시작한다(같은 그림은 처음 한 번, playBattle이 기다림)
+    void loadMapBg(mapId).catch(() => null);
     const request = (async () => {
       const gap = FIGHT_GAP_MS - (performance.now() - this.advFoughtAt);
       if (gap > 0) await new Promise((resolve) => window.setTimeout(resolve, gap));
@@ -1953,7 +1958,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       await playBattle(root, battle, {
         zoneName: zones[place]?.name ?? '',
         miniName: mini?.name ?? null,
-        foe: frame ? { art: monster.art, name: frame.name, role: frame.role } : null,
+        foe: frame ? { art: monster.art, name: frame.name ?? '', role: frame.role } : null,
         member: this.session.profile.skin ?? memberOf(this.session.profile.id),
         levelBefore,
         expBefore: before?.inRun ? before.exp : '0',

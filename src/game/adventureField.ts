@@ -7,7 +7,7 @@ import { equipBlock, statRows, type EquipUi } from '../ui/adventure';
 import { bigOf, COUNT, countUp, type Counting } from '../ui/countUp';
 import { bigText, type Adventure } from './adventure';
 import { bpDots } from './adventureBattle';
-import { infernus, lightAt, monstersOf, type AdvMapData, type FieldMonster, type MonsterFrame } from './adventureMaps';
+import { lightAt, monsterArt, monstersOf, type AdvMapData, type FieldMonster, type MonsterFrame, type MonsterSheet } from './adventureMaps';
 import { formatNumber } from './level';
 import type { Tile } from './world';
 
@@ -150,33 +150,41 @@ export class AdventureField {
     return this.floats.map((f) => f.m);
   }
 
+  /**
+   * 몬스터 그림 텍스처(그림 한 장에 하나, 처음 쓸 때 만든다). 새 지역 여섯의 두 번째 그림은 그 맵에 들어올 때만 GPU에 올린다.
+   * 그린 그림을 줄인 것이라 계단이 생기지 않게 부드럽게 늘린다(Infernus 조각과 같음).
+   */
+  private sheetTexture(sheet: MonsterSheet) {
+    const scene = this.scene;
+    if (scene.textures.exists(sheet.key)) return;
+    const texture = scene.textures.addImage(sheet.key, sheet.image)!;
+    for (const [id, f] of Object.entries(sheet.meta.frames)) texture.add(id, 0, f.x, f.y, f.w, f.h);
+    texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
+  }
+
   /** 몬스터 그림과 이름표를 놓고, 이름 줄을 보일 칸 표를 만든다. */
   private placeMonsters() {
-    const art = infernus();
-    if (!art) return;
     const scene = this.scene;
-    if (!scene.textures.exists('adv-monsters')) {
-      const texture = scene.textures.addImage('adv-monsters', art.monsterSheet)!;
-      for (const [id, f] of Object.entries(art.monsters.frames)) texture.add(id, 0, f.x, f.y, f.w, f.h);
-      // 그린 그림을 줄인 것이라 계단이 생기지 않게 부드럽게 늘린다(Infernus 조각과 같음).
-      texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
-    }
     const best = new Map<number, number>();
-    // 고해상도 그림이면 배율만큼 줄여 그려 월드 크기를 같게 한다(monsters.json scale).
-    const k = art.monsters.scale ?? 1;
     monstersOf(this.map.id).forEach((m, i) => {
-      const frame = art.monsters.frames[m.art];
-      const role = art.monsters.roles[frame.role];
+      const art = monsterArt(m.art);
+      if (!art) return;
+      this.sheetTexture(art);
+      const frame = art.frame;
+      const role = art.meta.roles[frame.role];
+      // 고해상도 그림이면 배율만큼 줄여 그려 월드 크기를 같게 한다(monsters.json scale).
+      const k = art.meta.scale ?? 1;
       const c = tileCenter(m.x, m.y);
       const baseY = c.y - role.lift;
       const image = scene.add
-        .image(c.x, baseY, 'adv-monsters', m.art)
+        .image(c.x, baseY, art.key, m.art)
         .setOrigin(frame.ax / frame.w, frame.ay / frame.h)
         .setScale(k)
         .setDepth(depthOf(m.x, m.y) + 0.5);
       const tag = scene.add.image(c.x, baseY - frame.h * k - 2, '__DEFAULT').setOrigin(0.5, 1).setScale(1 / TAG_RES).setDepth(this.labelDepth);
+      const index = this.floats.length;
       this.floats.push({ m, frame, image, tag, baseY, bob: role.bob, phase: i * BOB_PHASE, shownBob: 0, shown: true, tagKey: '', cx: c.x, top: baseY - frame.h * k - 30, bottom: c.y + 8 });
-      this.onTile.set(m.x + m.y * MAP_SIZE, i);
+      this.onTile.set(m.x + m.y * MAP_SIZE, index);
       // 둘레 8칸: 이름 줄을 보이는 칸. 둘이 겹치면 더 가까운 몬스터(몬스터끼리 5칸 넘게 떨어져 있어 거의 없음).
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
@@ -187,7 +195,7 @@ export class AdventureField {
           const d = Math.abs(dx) + Math.abs(dy);
           if (best.has(key) && best.get(key)! <= d) continue;
           best.set(key, d);
-          this.nearAt.set(key, i);
+          this.nearAt.set(key, index);
         }
       }
     });

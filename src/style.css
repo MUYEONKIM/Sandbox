@@ -4789,8 +4789,10 @@ canvas {
 }
 
 @media (max-width: 520px) {
-  .adv-gems { grid-template-columns: repeat(5, 1fr); gap: 2px; }
-  .adv-gem { font-size: 11px; }
+  /* 보석이 고정 수치가 되어 글이 길다("HP +3,750,000", 2026-11-19): 칸 폭을 고르게 두고 스텟 이름과 숫자 사이에서 줄을 바꾼다 */
+  .adv-gems { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; }
+  .adv-gem { font-size: 11px; min-width: 0; }
+  .adv-gem-stat { font-size: 10px; }
 }
 
 /* 휴대폰: 상태 칸은 한 줄씩, 필드 스텟 창은 HUD 아래에 폭 가득 */

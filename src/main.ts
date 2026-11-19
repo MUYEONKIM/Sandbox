@@ -382,7 +382,7 @@ async function main() {
       loadForge(),
       loadSprites(),
       // 모험 맵에서 새로고침했으면 맵 자료를 먼저 읽는다(맵을 올리기 전에 있어야 함). 못 읽으면 GameScene이 시작마을로 보낸다.
-      isMapId(profile.map) && isAdventure(profile.map) ? loadAdventureMaps().catch(() => null) : null,
+      isMapId(profile.map) && isAdventure(profile.map) ? loadAdventureMaps(profile.map).catch(() => null) : null,
     ]);
     enterGame(profile, economy, dungeons, potions, farm, forge);
   }

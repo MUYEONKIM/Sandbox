@@ -62,8 +62,11 @@ const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 
 export function itemEffect(item: AdvItem) {
   switch (item.kind) {
-    case 'gem':
-      return `${STAT_NAME[item.stat ?? 'hp']} +${pct(item.value)}`;
+    case 'gem': {
+      // 보석은 그 스텟 고정 포인트(2026-11-19 사용자 "보석은 %로 하지않고, 절대값으로 한다."): 화면은 HP × 5, DEF × 3(무기 고정 수치와 같음)
+      const stat = item.stat ?? 'hp';
+      return `${STAT_NAME[stat]} +${formatNumber(item.value * PER_POINT[stat])}`;
+    }
     case 'learn':
       return `경험치 +${pct(item.value)}`;
     case 'pouch':
@@ -75,7 +78,7 @@ export function itemEffect(item: AdvItem) {
     case 'leech':
       return `때린 피해의 ${pct(item.value)} 회복`;
     case 'endure':
-      return '0이 될 때 한 번 1로 버팀';
+      return item.value >= 1 ? '0이 될 때 한 번 1로 버팀' : `0이 될 때 ${pct(item.value)} 확률로 한 번 1로 버팀`;
   }
 }
 
@@ -163,7 +166,7 @@ export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvVie
     element('adv-stat-key', row).textContent = STAT_NAME[k];
     const mid = element('', row);
     element('adv-stat-value', mid).textContent = bigText(p[k]);
-    element('adv-stat-desc', mid).textContent = compact ? STAT_DESC[k] : `${STAT_DESC[k]} · 나눈 포인트 ${bigText(view.spent[k])} · 마을 +${bigText(p.town[k] * TOWN_X)} · 무기 +${bigText(p.flat?.[k] ?? 0)}`;
+    element('adv-stat-desc', mid).textContent = compact ? STAT_DESC[k] : `${STAT_DESC[k]} · 나눈 포인트 ${bigText(view.spent[k])} · 마을 +${bigText(p.town[k] * TOWN_X)} · 무기 +${bigText(p.flat?.[k] ?? 0)}${p.gem?.[k] ? ` · 보석 +${bigText(p.gem[k])}` : ''}`;
     const add = element('adv-stat-add', row);
     const steps: [string, bigint][] = [['+1', 1n], ['+10', 10n], ['+100', 100n], ['절반', half], ['전부', points]];
     for (const [label, amount] of steps) {
@@ -374,7 +377,7 @@ export class AdventureWindow {
     statRows(this.body, this.adventure, view, false, this.say);
     const b = view.power.bonus;
     element('adv-bonus', this.body).textContent =
-      `전투 스텟 = (처음 값 + (나눈 포인트 + 마을 스텟 × ${TOWN_X} + 무기 고정 포인트) × 1포인트 효과) × (1 + 컬렉션·보석 HP +${pct(b.hp)} · ATK +${pct(b.atk)} · DEF +${pct(b.def)} · AGI +${pct(b.agi)} · LUC +${pct(b.luc)}) × 베이스 ×${view.power.mul}`;
+      `전투 스텟 = (처음 값 + (나눈 포인트 + 마을 스텟 × ${TOWN_X} + 무기·보석 고정 포인트) × 1포인트 효과) × (1 + 컬렉션 HP +${pct(b.hp)} · ATK +${pct(b.atk)} · DEF +${pct(b.def)} · AGI +${pct(b.agi)} · LUC +${pct(b.luc)}) × 베이스 ×${view.power.mul}`;
   }
 
   /** 상점과 장신구 끼기·팔기가 되는지: 시작마을이고 판 중이 아닐 때(서버도 막음, 기획 3장). 안 되면 버튼만 누를 수 없다(까닭은 쓰지 않음). */
@@ -394,14 +397,14 @@ export class AdventureWindow {
     button('adv-btn', slots, '칸 늘리기', () => void adventureCall(this.adventure, adventureBuySlot, this.say, '칸을 늘렸습니다.'), price === null || lockedSlot || !atGate);
 
     const ownCount = (id: string) => view.owned.filter((o) => o.item === id).length;
-    element('adv-section', this.body).textContent = '보석 · 그 스텟 +% (여러 개 껴도 됨)';
+    element('adv-section', this.body).textContent = '보석 · 그 스텟 고정 수치 (여러 개 껴도 됨)';
     const gems = view.shop.filter((i) => i.kind === 'gem');
     const tiers = [...new Set(gems.map((g) => g.tier))].sort((a, b) => a - b);
     for (const tier of tiers) {
       const row = gems.filter((g) => g.tier === tier);
       const first = row[0];
       const locked = first.opens > bosses;
-      line('adv-zone-line', this.body, [`${tier}단계 · 그 스텟 `, [`+${pct(first.value)}`, 'b'], ' · ', [goldText(BigInt(first.price)), 'adv-gold']]);
+      line('adv-zone-line', this.body, [`${tier}단계 · `, [goldText(BigInt(first.price)), 'adv-gold']]);
       const cards = element('adv-gems', this.body);
       for (const gem of row) {
         const owned = ownCount(gem.id);

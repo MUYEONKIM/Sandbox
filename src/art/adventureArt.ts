@@ -1,4 +1,5 @@
 import { assetUrl } from '../assetUrl';
+import { advMap } from '../game/adventureMaps';
 import { sprite } from './sprites';
 
 /**
@@ -24,42 +25,33 @@ export const HERO_ART = {
 };
 
 /**
- * 지역 전투 배경(2026-11-19 디자인 시안 art-source/adventure/battle-bg/bg-board.png, 사용자 확인): 지역마다 480 × 270 webp 한 장.
- * 2배로 그리는 전투 캔버스에 240 × 135로 그린다(색 바꾸기는 없앰). 다섯 장을 함께 읽지 않고 그 지역에서 처음 싸울 때 그 한 장만 읽고
- * 다시 쓴다(loadZoneBg, 싸우기를 누르면 소용돌이 동안 받기 시작함).
+ * 맵 전투 배경(2026-11-19 디자인 시안 art-source/adventure/battle-bg/bg-board.png, 사용자 확인. 같은 날 새 지역 여섯과 함께 맵마다로 바꿈, 기획 19장):
+ * 맵마다 480 × 270 webp 한 장(맵 자료 battleBg, 디자인 세션이 고름. 지금 지역 여덟은 지역의 모든 맵이 같은 그림).
+ * 2배로 그리는 전투 캔버스에 240 × 135로 그린다. 함께 읽지 않고 그 배경을 쓰는 맵에서 처음 싸울 때 그 한 장만 읽고
+ * 다시 쓴다(loadMapBg, 싸우기를 누르면 소용돌이 동안 받기 시작함). 맵 자료에 없으면 평원 그림.
  */
-const ZONE_BG: Record<string, string> = {
-  adv_1: 'dark-plains',
-  adv_2: 'hell',
-  adv_3: 'tangled-forest',
-  adv_4: 'cliff-path',
-  adv_5: 'rainbow-field',
-  adv_6: 'stormy-sky',
-  adv_7: 'starlit-sky',
-  adv_8: 'shadow-cave',
-};
-const zoneBgLoads = new Map<string, Promise<HTMLImageElement>>();
-const zoneBgs = new Map<string, HTMLImageElement>();
-const bgName = (zone: string) => ZONE_BG[zone] ?? ZONE_BG.adv_1;
+const bgLoads = new Map<string, Promise<HTMLImageElement>>();
+const bgs = new Map<string, HTMLImageElement>();
+const bgName = (map: string) => advMap(map)?.battleBg ?? 'dark-plains';
 
-/** 지역 배경 한 장을 읽는다(처음 한 번, 실패하면 다음에 다시). */
-export function loadZoneBg(zone: string) {
-  const name = bgName(zone);
-  let load = zoneBgLoads.get(name);
+/** 맵 전투 배경 한 장을 읽는다(같은 그림은 처음 한 번, 실패하면 다음에 다시). */
+export function loadMapBg(map: string) {
+  const name = bgName(map);
+  let load = bgLoads.get(name);
   if (!load) {
     load = image(`adv-bg-${name}`, 'webp').then((img) => {
-      zoneBgs.set(name, img);
+      bgs.set(name, img);
       return img;
     });
-    load.catch(() => zoneBgLoads.delete(name));
-    zoneBgLoads.set(name, load);
+    load.catch(() => bgLoads.delete(name));
+    bgLoads.set(name, load);
   }
   return load;
 }
 
-/** 읽어 둔 지역 배경(아직 못 읽었으면 null) */
-export function battleBg(zone: string): HTMLImageElement | null {
-  return zoneBgs.get(bgName(zone)) ?? null;
+/** 읽어 둔 맵 전투 배경(아직 못 읽었으면 null) */
+export function battleBg(map: string): HTMLImageElement | null {
+  return bgs.get(bgName(map)) ?? null;
 }
 
 /** 장신구 아이콘(adv-items.png, 32×32 칸): 보석은 스텟, 그 밖의 장신구는 종류로 고른다. */

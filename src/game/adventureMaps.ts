@@ -11,6 +11,9 @@ import type { Tile } from './world';
  * - infernus.png, infernus-floor.png, infernus.json: 꾸밈 조각
  * - monsters.json, monsters.webp: 떠 있는 몬스터 59마리 그림(칸, 발밑 점, 역할, 맵, 지역, 자리, 임시 이름). 그림 파일 이름은 json의 image 값,
  *   그림은 2배 해상도(scale 0.5)
+ * - monsters-new.json, monsters-new.webp(2026-11-19 새 지역 여섯, 78마리, 844KB, GPU 약 6.7MB): 맵 자료 몬스터의 sheet가 'new'인 것.
+ *   처음부터 읽지 않고 그 몬스터가 있는 맵에 들어가기 전에만 읽는다(loadAdventureMaps(map), 렌더링 성능 먼저).
+ * - 맵 자료 version 4(2026-11-19, 디자인 노트 adventure-maps-v4.md): 맵 스물다섯 장, 지역 열넷, 맵마다 전투 배경 battleBg, 높은 지역 포탈 jump·gate.
  * 서버 몬스터 표(adventure_spots)와 맵 → 지역 표(adventure_maps)는 monster-spots.json(version 2)과 이 자료로 만든다
  * (공유 노트 code-adventure-tools/monster-rows.cjs). 맵·몬스터를 바꾸면 SQL 행도 다시 만든다.
  * 모험 창에서 들어가거나 모험 맵에서 새로고침할 때 한 번 읽는다(게임 시작 때는 모험 맵에 있을 때만). 맵을 만들기 전에 읽혀 있어야 한다.
@@ -29,8 +32,9 @@ export interface AdvBossSpot extends AdvSpot {
   side?: string;
 }
 export interface AdvPortalSpot extends Tile {
-  /** 입구 맵 포탈(평원 1로 하나), 다음 지역(이번 판에 이 지역 보스를 잡으면 열림), 같은 지역 다음 맵, 앞 맵, 앞 지역(늘 열림) */
-  kind: 'zone' | 'next' | 'next_map' | 'prev_map' | 'prev_zone';
+  /** 입구 맵 포탈(평원 1로 하나), 다음 지역(이번 판에 이 지역 보스를 잡으면 열림), 같은 지역 다음 맵, 앞 맵, 앞 지역(늘 열림),
+   * 평원 1의 높은 지역 포탈(화산 폭풍 1로, 늘 열림), 화산 폭풍 1의 입구로 가는 포탈(늘 열림) */
+  kind: 'zone' | 'next' | 'next_map' | 'prev_map' | 'prev_zone' | 'jump' | 'gate';
   /** 입구 맵 지역 포탈의 지역 번호(1~8) */
   zone?: number;
   to: string;
@@ -54,9 +58,11 @@ export interface AdvMonsterSpot extends Tile {
   level: number;
   /** 'normal' / 중간 보스 방 이름 / 'boss' 등 */
   slot: string;
-  /** monsters.json 프레임 id */
+  /** monsters.json 프레임 id(sheet가 'new'이면 monsters-new.json 프레임 id) */
   art: string;
-  name: string;
+  /** 'new': 두 번째 몬스터 그림(새 지역 여섯) */
+  sheet?: string;
+  name: string | null;
   /** 일곱 빛 들판 빛 번호(lights.legend) */
   light?: number | null;
   /** 경험치 배수(경험치 방 3) */
@@ -67,6 +73,10 @@ export interface AdvMapData {
   name: string;
   /** 지역 번호(입구 맵은 없음) */
   zone?: number;
+  /** 지역 이름(입구 맵은 없음). 높은 지역 포탈 이름표 "→ 화산 폭풍"에 쓴다. */
+  zoneName?: string;
+  /** 이 맵 전투 배경 이름(public/sprites/adventure/adv-bg-<이름>.webp). 입구 맵은 없음 */
+  battleBg?: string;
   /** 지역 안 몇째 맵 / 몇 장 */
   part?: number;
   parts?: number;
@@ -158,10 +168,20 @@ interface Loaded {
   monsterSheet: HTMLImageElement;
 }
 
+/** 몬스터 그림 한 장(프레임 자료와 그림, Phaser 텍스처 키) */
+export interface MonsterSheet {
+  meta: MonsterMeta;
+  image: HTMLImageElement;
+  key: string;
+}
+
 let loaded: Loaded | null = null;
 let loading: Promise<Loaded> | null = null;
+/** 두 번째 몬스터 그림(새 지역 여섯). 그 몬스터가 있는 맵에 처음 들어갈 때 읽는다. */
+let newSheet: MonsterSheet | null = null;
+let newSheetLoading: Promise<MonsterSheet> | null = null;
 
-function image(name: string) {
+function imageFile(name: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -176,14 +196,39 @@ async function json<T>(name: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** 맵 자료(몬스터 포함), Infernus 그림, 몬스터 그림을 한 번 읽는다(약 1.5MB, 처음 한 번). */
-export function loadAdventureMaps() {
+/**
+ * 맵 자료(몬스터 포함), Infernus 그림, 몬스터 그림을 한 번 읽는다(약 1.5MB, 처음 한 번).
+ * map을 주면 그 맵 몬스터가 두 번째 몬스터 그림을 쓸 때 그것도 기다린다(맵을 올리기 전에, 바닥 그림의 몬스터 그림자도 그 그림을 씀).
+ */
+export async function loadAdventureMaps(map?: string) {
+  const base = await loadBaseMaps();
+  if (map && needsNewSheet(map)) await loadNewSheet();
+  return base;
+}
+
+/** 이 맵에 두 번째 몬스터 그림을 쓰는 몬스터가 있는지(맵 자료를 읽은 뒤) */
+function needsNewSheet(map: string) {
+  return (loaded?.maps[map]?.monsters ?? []).some((m) => m.sheet === 'new');
+}
+
+function loadNewSheet() {
+  newSheetLoading ??= json<MonsterMeta>('monsters-new.json').then(async (meta) => {
+    const image = await imageFile(meta.image ?? 'monsters-new.webp');
+    newSheet = { meta, image, key: 'adv-monsters-new' };
+    monsterCache.clear();
+    return newSheet;
+  });
+  newSheetLoading.catch(() => (newSheetLoading = null));
+  return newSheetLoading;
+}
+
+function loadBaseMaps() {
   loading ??= Promise.all([
     json<{ maps: Record<string, AdvMapData> }>('adv-maps.json'),
     json<InfernusMeta>('infernus.json'),
-    image('infernus.png'),
-    image('infernus-floor.png'),
-    json<MonsterMeta>('monsters.json').then(async (m) => [m, await image(m.image ?? 'monsters.png')] as const),
+    imageFile('infernus.png'),
+    imageFile('infernus-floor.png'),
+    json<MonsterMeta>('monsters.json').then(async (m) => [m, await imageFile(m.image ?? 'monsters.png')] as const),
   ]).then(([data, meta, pieces, floorPieces, [monsters, monsterSheet]]) => {
     loaded = { maps: data.maps, meta, pieces, floorPieces, monsters, monsterSheet };
     monsterCache.clear();
@@ -193,7 +238,17 @@ export function loadAdventureMaps() {
   return loading;
 }
 
-export const adventureMapsReady = () => loaded !== null;
+/** 맵 자료를 읽었는지. map을 주면 그 맵이 쓰는 몬스터 그림까지 읽었는지 */
+export const adventureMapsReady = (map?: string) => loaded !== null && (!map || !needsNewSheet(map) || newSheet !== null);
+
+/** 몬스터 그림 키로 그 몬스터의 프레임과 그림을 찾는다(두 그림의 키는 겹치지 않음). 아직 못 읽었으면 null */
+export function monsterArt(art: string): (MonsterSheet & { frame: MonsterFrame }) | null {
+  if (!loaded) return null;
+  const old = loaded.monsters.frames[art];
+  if (old) return { meta: loaded.monsters, image: loaded.monsterSheet, key: 'adv-monsters', frame: old };
+  const next = newSheet?.meta.frames[art];
+  return next && newSheet ? { ...newSheet, frame: next } : null;
+}
 
 /** 맵 자료. 아직 읽지 않았으면 undefined(맵을 올리기 전에 loadAdventureMaps를 기다린다). */
 export function advMap(id: string): AdvMapData | undefined {
@@ -227,14 +282,16 @@ export function monstersOf(id: string): FieldMonster[] {
   if (cached) return cached;
   const data = advMap(id);
   if (!loaded || !data?.zone) return [];
+  // 두 번째 몬스터 그림을 아직 못 읽었으면 그 몬스터는 빼고, 다음에 다시 만든다(남기지 않음).
+  const missing = (data.monsters ?? []).some((m) => !monsterArt(m.art));
   const legend = data.lights?.legend ?? [];
   const out = (data.monsters ?? [])
-    .filter((m) => loaded!.monsters.frames[m.art])
+    .filter((m) => monsterArt(m.art))
     .map((m): FieldMonster => {
       const bonus = m.light !== undefined && m.light !== null ? (legend[m.light]?.key ?? null) : m.exp === 3 ? 'exp3' : null;
       return { x: m.x, y: m.y, art: m.art, kind: m.role === 'mid' ? 'mini' : m.role, level: m.level, slot: m.role === 'mid' ? m.slot : '', bonus };
     });
-  monsterCache.set(id, out);
+  if (!missing) monsterCache.set(id, out);
   return out;
 }
 

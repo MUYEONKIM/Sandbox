@@ -33,7 +33,8 @@ export type WorkId = 'quarry' | 'logging' | 'gathering' | 'fishing';
 export type DungeonId = 'meadow' | 'inferno';
 export const DUNGEON_IDS: readonly DungeonId[] = ['meadow', 'inferno'];
 /**
- * 모험 맵 열세 장(2026-11-18 밤 맵 나누기, 기획 docs/balance/dungeon-rework.md 19장, 디자인 세션 adventure-maps13.md): 입구 맵 adv_gate와 지역 맵 열둘(평원 셋, 지옥 둘, 구름 정원 둘, 나머지 한 장씩).
+ * 모험 맵 스물다섯 장(2026-11-18 밤 맵 나누기, 기획 docs/balance/dungeon-rework.md 19장, 디자인 세션 adventure-maps13.md): 입구 맵 adv_gate와 지역 맵 열둘(평원 셋, 지옥 둘, 구름 정원 둘, 나머지 한 장씩).
+ * 2026-11-19 새 지역 여섯(심연 골짜기 ~ 화산 폭풍, 지역마다 두 장, 기획 19장 '새 지역 여섯(A안)', 디자인 노트 adventure-maps-v4.md)을 더했다.
  * 맵 id는 서버 adventure_maps.map과 같다(지역은 adventure_maps.zone, 지역의 첫 맵이 adventure_zones.map). 맵 모양과 꾸밈은 디자인 세션 자료(adventureMaps.ts)를 읽는다.
  */
 export type AdventureMapId =
@@ -49,9 +50,24 @@ export type AdventureMapId =
   | 'adv_6a'
   | 'adv_6b'
   | 'adv_7'
-  | 'adv_8';
+  | 'adv_8'
+  | 'adv_9a'
+  | 'adv_9b'
+  | 'adv_10a'
+  | 'adv_10b'
+  | 'adv_11a'
+  | 'adv_11b'
+  | 'adv_12a'
+  | 'adv_12b'
+  | 'adv_13a'
+  | 'adv_13b'
+  | 'adv_14a'
+  | 'adv_14b';
 export const ADVENTURE_GATE_MAP: AdventureMapId = 'adv_gate';
-export const ADVENTURE_MAPS: readonly AdventureMapId[] = ['adv_gate', 'adv_1a', 'adv_1b', 'adv_1c', 'adv_2a', 'adv_2b', 'adv_3', 'adv_4', 'adv_5', 'adv_6a', 'adv_6b', 'adv_7', 'adv_8'];
+export const ADVENTURE_MAPS: readonly AdventureMapId[] = [
+  'adv_gate', 'adv_1a', 'adv_1b', 'adv_1c', 'adv_2a', 'adv_2b', 'adv_3', 'adv_4', 'adv_5', 'adv_6a', 'adv_6b', 'adv_7', 'adv_8',
+  'adv_9a', 'adv_9b', 'adv_10a', 'adv_10b', 'adv_11a', 'adv_11b', 'adv_12a', 'adv_12b', 'adv_13a', 'adv_13b', 'adv_14a', 'adv_14b',
+];
 export type MapId = 'plains' | 'snow' | 'farm' | 'forest' | TowerId | WorkId | DungeonId | AdventureMapId;
 
 /** tiles.png의 타일 번호. 왼쪽 위부터 오른쪽으로 센다. 번호를 여러 번 넣으면 더 자주 나온다. */
@@ -332,6 +348,19 @@ export const MAPS: Record<MapId, MapInfo> = {
   adv_6b: adventureInfo('구름 정원 2', 0x8fd0ea, 0x8fd0ff, '#86bfe6'),
   adv_7: adventureInfo('별 하늘', 0x3a4a8a, 0x6a5cff, '#0a0f2c'),
   adv_8: adventureInfo('그늘 동굴', 0x3a2a4a, 0x7a3aa8, '#060509'),
+  // 새 지역 여섯(2026-11-19). accent는 디자인 확인 도구(view.js PORTAL_COLOR 9~14)의 포탈 색, 바탕은 맵 자료 background(에이전트가 정함: color는 accent를 어둡게).
+  adv_9a: adventureInfo('심연 골짜기 1', 0x1f5a5a, 0x2fc8c0, '#04101a'),
+  adv_9b: adventureInfo('심연 골짜기 2', 0x1f5a5a, 0x2fc8c0, '#04101a'),
+  adv_10a: adventureInfo('유령 늪 1', 0x3a6a30, 0x6fbf5a, '#0b1610'),
+  adv_10b: adventureInfo('유령 늪 2', 0x3a6a30, 0x6fbf5a, '#08120a'),
+  adv_11a: adventureInfo('뼈 사막 1', 0x8a7a50, 0xe8d29a, '#1f1a10'),
+  adv_11b: adventureInfo('뼈 사막 2', 0x8a7a50, 0xe8d29a, '#14121c'),
+  adv_12a: adventureInfo('저주받은 성 1', 0x4a3a6a, 0x9a6ad8, '#100d18'),
+  adv_12b: adventureInfo('저주받은 성 2', 0x4a3a6a, 0x9a6ad8, '#0e0b16'),
+  adv_13a: adventureInfo('용의 둥지 1', 0x2a3a7a, 0x5a7aff, '#0a1422'),
+  adv_13b: adventureInfo('용의 둥지 2', 0x2a3a7a, 0x5a7aff, '#0a0812'),
+  adv_14a: adventureInfo('화산 폭풍 1', 0x6a2a10, 0xff7a1a, '#1a0603'),
+  adv_14b: adventureInfo('화산 폭풍 2', 0x6a2a10, 0xff7a1a, '#1a0603'),
 };
 
 function adventureInfo(name: string, color: Color, accent: Color, background: string): MapInfo {
@@ -538,8 +567,9 @@ export interface Portal {
   /**
    * 모험 맵 포탈(adventureMaps.ts): 보스방 옆 다음 지역 포탈('next')만 이번 판에 그 지역 보스를 잡았을 때 보인다(서버 run_bosses).
    * 입구 맵 포탈('zone', 평원 1로 하나), 같은 지역 다음 맵('next_map')·앞 맵('prev_map'), 지역 첫 맵의 앞 지역 포탈('prev_zone')은 늘 열려 있다.
+   * 평원 1의 높은 지역 포탈('jump', 화산 폭풍 1로)과 화산 폭풍 1의 입구로 가는 포탈('gate')도 늘 열려 있다(2026-11-19 사용자가 정함).
    */
-  adventure?: 'zone' | 'next' | 'next_map' | 'prev_map' | 'prev_zone';
+  adventure?: 'zone' | 'next' | 'next_map' | 'prev_map' | 'prev_zone' | 'jump' | 'gate';
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
   landing: { x: number; y: number };
 }
@@ -556,7 +586,13 @@ function portalAt(corner: Corner, to: MapId): Portal {
 function adventurePortals(id: AdventureMapId): Portal[] {
   return (advMap(id)?.portals ?? []).flatMap((p): Portal[] => {
     if (!isMapId(p.to)) return [];
-    return [{ x: p.x, y: p.y, to: p.to, landing: { x: p.x, y: p.y }, adventure: p.kind, ...(p.kind === 'next' ? { color: NEXT_PORTAL_COLOR, label: `${MAPS[p.to].name} 가는 길` } : {}) }];
+    // 이름표: 다음 지역 "→ 심연 골짜기 1 가는 길", 높은 지역 포탈 "→ 화산 폭풍"(지역 이름만), 입구로 가는 포탈 "→ 입구"(디자인 adventure-maps-v4.md)
+    const label =
+      p.kind === 'next' ? { color: NEXT_PORTAL_COLOR, label: `${MAPS[p.to].name} 가는 길` }
+      : p.kind === 'jump' ? { label: advMap(p.to)?.zoneName ?? MAPS[p.to].name }
+      : p.kind === 'gate' ? { label: '입구' }
+      : {};
+    return [{ x: p.x, y: p.y, to: p.to, landing: { x: p.x, y: p.y }, adventure: p.kind, ...label }];
   });
 }
 
