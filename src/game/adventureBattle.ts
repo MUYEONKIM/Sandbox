@@ -525,8 +525,9 @@ export async function playBattle(parent: HTMLElement, battle: AdvBattle, ctx: Ba
   const role: MonsterRole = mon.kind === 'boss' ? 'boss' : mon.kind === 'mini' ? 'mid' : 'normal';
   const log = new BattleLog(panel);
   if (battle.win) {
-    // 요약(2026-11-19 사용자): 판이 이 전투로 끝났으면 state는 다음 판 값이라 앞 값 + 이번 몫으로 센다.
-    const pointsAfter = battle.ended ? (bigOf(ctx.pointsBefore) + bigOf(battle.points)).toString() : battle.state.points;
+    // 요약(2026-11-19 사용자). Status point 뒤 값은 나누기 전의 남은 포인트 = 앞 값 + 이번에 얻은 포인트다
+    // (사용자 "당연히 분배 되기전의 남은 status point 가 떠야한다": 저절로 나누기가 켜져 있어도 나눈 뒤 값이 아니다).
+    const pointsAfter = (bigOf(ctx.pointsBefore) + bigOf(battle.points)).toString();
     log.summary = [
       `Lv. ${bigText(ctx.levelBefore)} -> ${bigText(battle.level)}`,
       `Gold ${bigText(ctx.goldBefore)} -> ${bigText((bigOf(ctx.goldBefore) + bigOf(battle.gold)).toString())}`,
