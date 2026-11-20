@@ -1,0 +1,342 @@
+{
+ "area": "dragon-lair",
+ "name": "용의 둥지",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/dragon-lair-tiles.png",
+  "props": "art-source/adventure/sources/props/dragon-lair-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-dragon-lair.png",
+ "size": [
+  256,
+  184
+ ],
+ "tiles": [
+  {
+   "id": "ice_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ice_b",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ice_c",
+   "role": "floor",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ice_cracked",
+   "role": "path",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "snow_a",
+   "role": "floor",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "snow_crystal",
+   "role": "floor",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ice_edge_a",
+   "role": "edge",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ice_edge_b",
+   "role": "edge",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_crystal_a",
+   "role": "floor",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_crystal_b",
+   "role": "floor",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "gold_chest",
+   "role": "special",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "gold_a",
+   "role": "floor",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "gold_b",
+   "role": "floor",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_path_snow",
+   "role": "path",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_path",
+   "role": "path",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_crystal_c",
+   "role": "floor",
+   "x": 224,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "ice_spike_a": {
+   "x": 188,
+   "y": 65,
+   "w": 32,
+   "h": 39,
+   "ax": 14,
+   "ay": 31,
+   "fp": 1,
+   "role": "small"
+  },
+  "ice_spike_b": {
+   "x": 221,
+   "y": 65,
+   "w": 30,
+   "h": 37,
+   "ax": 13,
+   "ay": 29,
+   "fp": 1,
+   "role": "small"
+  },
+  "snow_rock_a": {
+   "x": 86,
+   "y": 156,
+   "w": 40,
+   "h": 28,
+   "ax": 19,
+   "ay": 20,
+   "fp": 1,
+   "role": "small"
+  },
+  "snow_rock_b": {
+   "x": 119,
+   "y": 119,
+   "w": 40,
+   "h": 31,
+   "ax": 18,
+   "ay": 23,
+   "fp": 1,
+   "role": "small"
+  },
+  "frozen_tree_a": {
+   "x": 104,
+   "y": 65,
+   "w": 44,
+   "h": 46,
+   "ax": 21,
+   "ay": 38,
+   "fp": 1,
+   "role": "tree"
+  },
+  "frozen_tree_b": {
+   "x": 0,
+   "y": 65,
+   "w": 42,
+   "h": 53,
+   "ax": 19,
+   "ay": 45,
+   "fp": 1,
+   "role": "tree"
+  },
+  "lair_crystal_a": {
+   "x": 0,
+   "y": 119,
+   "w": 40,
+   "h": 36,
+   "ax": 19,
+   "ay": 28,
+   "fp": 1,
+   "role": "small"
+  },
+  "lair_crystal_b": {
+   "x": 149,
+   "y": 65,
+   "w": 38,
+   "h": 41,
+   "ax": 18,
+   "ay": 33,
+   "fp": 1,
+   "role": "small"
+  },
+  "treasure_chest_a": {
+   "x": 82,
+   "y": 119,
+   "w": 36,
+   "h": 32,
+   "ax": 19,
+   "ay": 24,
+   "fp": 1,
+   "role": "small"
+  },
+  "gold_pile_a": {
+   "x": 127,
+   "y": 156,
+   "w": 40,
+   "h": 24,
+   "ax": 17,
+   "ay": 16,
+   "fp": 1,
+   "role": "small"
+  },
+  "gold_pile_b": {
+   "x": 0,
+   "y": 156,
+   "w": 42,
+   "h": 28,
+   "ax": 22,
+   "ay": 20,
+   "fp": 1,
+   "role": "small"
+  },
+  "gold_pile_c": {
+   "x": 43,
+   "y": 156,
+   "w": 42,
+   "h": 28,
+   "ax": 20,
+   "ay": 20,
+   "fp": 1,
+   "role": "small"
+  },
+  "treasure_chest_b": {
+   "x": 41,
+   "y": 119,
+   "w": 40,
+   "h": 33,
+   "ax": 22,
+   "ay": 25,
+   "fp": 1,
+   "role": "small"
+  },
+  "lair_dragon_skull": {
+   "x": 43,
+   "y": 65,
+   "w": 60,
+   "h": 52,
+   "ax": 25,
+   "ay": 44,
+   "fp": 2,
+   "role": "medium"
+  },
+  "dragon_egg_blue": {
+   "x": 160,
+   "y": 119,
+   "w": 34,
+   "h": 31,
+   "ax": 16,
+   "ay": 23,
+   "fp": 1,
+   "role": "small"
+  },
+  "dragon_egg_gold": {
+   "x": 195,
+   "y": 119,
+   "w": 34,
+   "h": 30,
+   "ax": 17,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": []
+}

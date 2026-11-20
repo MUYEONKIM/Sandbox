@@ -1,0 +1,268 @@
+{
+ "area": "tangled-forest",
+ "name": "얽힌 숲",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/tangled-forest-tiles.png",
+  "props": "art-source/adventure/sources/props/tangled-forest-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-tangled-forest.png",
+ "size": [
+  256,
+  222
+ ],
+ "tiles": [
+  {
+   "id": "moss_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "roots_a",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "leaves_a",
+   "role": "path",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "moss_b",
+   "role": "floor",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "leaves_b",
+   "role": "path",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "moss_c",
+   "role": "floor",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "moss_d",
+   "role": "floor",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "mushroom_glow",
+   "role": "special",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "moss_e",
+   "role": "floor",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "roots_b",
+   "role": "floor",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "leaves_c",
+   "role": "path",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "root_wall_a": {
+   "x": 139,
+   "y": 173,
+   "w": 32,
+   "h": 26,
+   "ax": 16,
+   "ay": 18,
+   "fp": 1,
+   "role": "block"
+  },
+  "root_wall_b": {
+   "x": 205,
+   "y": 173,
+   "w": 32,
+   "h": 20,
+   "ax": 16,
+   "ay": 12,
+   "fp": 1,
+   "role": "block"
+  },
+  "root_wall_c": {
+   "x": 172,
+   "y": 173,
+   "w": 32,
+   "h": 24,
+   "ax": 16,
+   "ay": 16,
+   "fp": 1,
+   "role": "block"
+  },
+  "root_wall_d": {
+   "x": 73,
+   "y": 173,
+   "w": 32,
+   "h": 29,
+   "ax": 16,
+   "ay": 21,
+   "fp": 1,
+   "role": "block"
+  },
+  "root_wall_e": {
+   "x": 106,
+   "y": 173,
+   "w": 32,
+   "h": 29,
+   "ax": 16,
+   "ay": 21,
+   "fp": 1,
+   "role": "block"
+  },
+  "tree_twisted_a": {
+   "x": 31,
+   "y": 65,
+   "w": 61,
+   "h": 105,
+   "ax": 31,
+   "ay": 97,
+   "fp": 1,
+   "role": "tree"
+  },
+  "tree_moss_a": {
+   "x": 0,
+   "y": 65,
+   "w": 30,
+   "h": 107,
+   "ax": 11,
+   "ay": 99,
+   "fp": 1,
+   "role": "tree"
+  },
+  "tree_twisted_b": {
+   "x": 93,
+   "y": 65,
+   "w": 58,
+   "h": 104,
+   "ax": 28,
+   "ay": 96,
+   "fp": 1,
+   "role": "tree"
+  },
+  "mushrooms_blue": {
+   "x": 39,
+   "y": 173,
+   "w": 33,
+   "h": 29,
+   "ax": 15,
+   "ay": 21,
+   "fp": 1,
+   "role": "small"
+  },
+  "mushrooms_purple": {
+   "x": 152,
+   "y": 65,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 24,
+   "fp": 1,
+   "role": "small"
+  },
+  "vines_a": {
+   "x": 0,
+   "y": 204,
+   "w": 37,
+   "h": 18,
+   "ax": 21,
+   "ay": 10,
+   "fp": 1,
+   "role": "small"
+  },
+  "stump_a": {
+   "x": 185,
+   "y": 65,
+   "w": 36,
+   "h": 31,
+   "ax": 17,
+   "ay": 23,
+   "fp": 1,
+   "role": "small"
+  },
+  "stump_b": {
+   "x": 0,
+   "y": 173,
+   "w": 38,
+   "h": 30,
+   "ax": 18,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": [
+  {
+   "src": "props 29,785",
+   "id": "log_a",
+   "why": "두 칸 크기, 얽힌 숲 미로 맵에 놓을 빈 땅이 없음(그림은 잘 나옴, 아틀라스에서 뺌)"
+  }
+ ]
+}

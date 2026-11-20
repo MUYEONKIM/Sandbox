@@ -1,0 +1,302 @@
+{
+ "area": "abyss",
+ "name": "심연 골짜기",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/abyss-tiles.png",
+  "props": "art-source/adventure/sources/props/abyss-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-abyss.png",
+ "size": [
+  256,
+  212
+ ],
+ "tiles": [
+  {
+   "id": "deep_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "deep_spot_a",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "algae_a",
+   "role": "path",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ruin_slab_a",
+   "role": "floor",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "deep_b",
+   "role": "floor",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "deep_spot_b",
+   "role": "floor",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "algae_b",
+   "role": "path",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "abyss_seal",
+   "role": "special",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "deep_c",
+   "role": "floor",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "deep_spot_c",
+   "role": "floor",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "algae_c",
+   "role": "path",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ruin_slab_b",
+   "role": "floor",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "deep_d",
+   "role": "floor",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sunken_pool_a",
+   "role": "edge",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sunken_pool_b",
+   "role": "edge",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "abyss_pit",
+   "role": "special",
+   "x": 224,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "kelp_a": {
+   "x": 94,
+   "y": 65,
+   "w": 30,
+   "h": 63,
+   "ax": 15,
+   "ay": 55,
+   "fp": 1,
+   "role": "small"
+  },
+  "glow_shrooms_a": {
+   "x": 133,
+   "y": 135,
+   "w": 44,
+   "h": 35,
+   "ax": 20,
+   "ay": 27,
+   "fp": 1,
+   "role": "small"
+  },
+  "coral_a": {
+   "x": 43,
+   "y": 135,
+   "w": 44,
+   "h": 44,
+   "ax": 21,
+   "ay": 36,
+   "fp": 1,
+   "role": "small"
+  },
+  "glow_shrooms_b": {
+   "x": 0,
+   "y": 182,
+   "w": 42,
+   "h": 30,
+   "ax": 21,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  },
+  "kelp_b": {
+   "x": 65,
+   "y": 65,
+   "w": 28,
+   "h": 68,
+   "ax": 14,
+   "ay": 60,
+   "fp": 1,
+   "role": "small"
+  },
+  "coral_b": {
+   "x": 0,
+   "y": 135,
+   "w": 42,
+   "h": 46,
+   "ax": 20,
+   "ay": 38,
+   "fp": 1,
+   "role": "small"
+  },
+  "sunken_pillar_a": {
+   "x": 182,
+   "y": 65,
+   "w": 38,
+   "h": 54,
+   "ax": 18,
+   "ay": 46,
+   "fp": 1,
+   "role": "small"
+  },
+  "sunken_pillar_b": {
+   "x": 221,
+   "y": 65,
+   "w": 30,
+   "h": 54,
+   "ax": 14,
+   "ay": 46,
+   "fp": 1,
+   "role": "small"
+  },
+  "coral_rocks": {
+   "x": 125,
+   "y": 65,
+   "w": 56,
+   "h": 54,
+   "ax": 29,
+   "ay": 46,
+   "fp": 2,
+   "role": "medium"
+  },
+  "sunken_arch": {
+   "x": 0,
+   "y": 65,
+   "w": 64,
+   "h": 69,
+   "ax": 41,
+   "ay": 61,
+   "fp": 2,
+   "role": "medium"
+  },
+  "giant_clam": {
+   "x": 88,
+   "y": 135,
+   "w": 44,
+   "h": 36,
+   "ax": 22,
+   "ay": 28,
+   "fp": 1,
+   "role": "small"
+  },
+  "abyss_rocks": {
+   "x": 178,
+   "y": 135,
+   "w": 44,
+   "h": 31,
+   "ax": 24,
+   "ay": 23,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": []
+}

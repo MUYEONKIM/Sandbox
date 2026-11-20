@@ -15,6 +15,9 @@ import type { Tile } from './world';
  *   처음부터 읽지 않고 그 몬스터가 있는 맵에 들어가기 전에만 읽는다(loadAdventureMaps(map), 렌더링 성능 먼저).
  * - monsters-gate.json, monsters-gate.webp(2026-11-19, 약 8KB): 평원 1 수문장 한 칸(새 그림의 화산 폭풍 첫 몬스터를 오림). 기본 자료와 함께 읽는다.
  *   수문장은 맵 자료 몬스터의 gate 키('gate:adv_1a')가 있고, 이번 판에 이기면(서버 run_bosses에 그 키) 화면에서 치우고 그 칸의 높은 지역 포탈을 세운다.
+ * - deco-<지역>.json, deco-<지역>.png(2026-11-20 디자인 세션 새 바닥·꾸밈, 디자인 노트 adventure-deco.md): 지역마다 아틀라스 하나(열다섯, 256px 폭, GPU 150~383KB).
+ *   맵 자료 deco(아틀라스 이름), decoFloor(칸마다 tiles 번호), decoProps(서 있는 조각), decoFloors(바닥 조각). 그 맵에 들어가기 전에만 읽고,
+ *   한 번에 하나만 둔다(다른 지역으로 가면 앞 것은 버림, GameScene이 Phaser 텍스처도 지움).
  * - 맵 자료 version 4(2026-11-19, 디자인 노트 adventure-maps-v4.md): 맵 스물다섯 장, 지역 열넷, 맵마다 전투 배경 battleBg, 높은 지역 포탈 jump·gate.
  * 서버 몬스터 표(adventure_spots)와 맵 → 지역 표(adventure_maps)는 monster-spots.json(version 2)과 이 자료로 만든다
  * (공유 노트 code-adventure-tools/monster-rows.cjs). 맵·몬스터를 바꾸면 SQL 행도 다시 만든다.
@@ -106,6 +109,41 @@ export interface AdvMapData {
   floors: { id: string; x: number; y: number; clip?: boolean }[];
   lights?: AdvLights;
   stars?: { x: number; y: number; s: number; a: number }[];
+  /** 새 바닥·꾸밈 아틀라스 이름(deco-<이름>.png/.json, 2026-11-20) */
+  deco?: string;
+  /** 46줄, 칸마다 아틀라스 tiles 차례 번호(36진수 두 글자, '--'는 물·빈 땅) */
+  decoFloor?: string[];
+  /** 서 있는 조각(아틀라스 props[id]). (x, y)가 맨 앞 칸이고 fp × fp 칸을 막는다(fp 0은 막지 않음) */
+  decoProps?: { id: string; x: number; y: number }[];
+  /** 바닥에 납작한 조각(아틀라스 floors[id]). 칸 가운데에 그림 가운데를 맞춘다(물 칸 포함) */
+  decoFloors?: { id: string; x: number; y: number }[];
+}
+/** 새 바닥·꾸밈 아틀라스 한 칸(그림 픽셀). 타일은 tiles.png와 같은 32 × 32 칸 모양 */
+export interface DecoRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+export interface DecoPiece extends DecoRect {
+  ax: number;
+  ay: number;
+  fp: number;
+  role?: string;
+}
+export interface DecoMeta {
+  area: string;
+  image?: string;
+  tiles: DecoRect[];
+  props: Record<string, DecoPiece>;
+  floors: Record<string, DecoRect>;
+}
+/** 읽어 둔 아틀라스(이름, 자료, 그림, Phaser 텍스처 키) */
+export interface DecoArt {
+  name: string;
+  meta: DecoMeta;
+  image: HTMLImageElement;
+  key: string;
 }
 export interface InfernusPiece {
   x: number;
@@ -188,6 +226,9 @@ let loading: Promise<Loaded> | null = null;
 /** 두 번째 몬스터 그림(새 지역 여섯). 그 몬스터가 있는 맵에 처음 들어갈 때 읽는다. */
 let newSheet: MonsterSheet | null = null;
 let newSheetLoading: Promise<MonsterSheet> | null = null;
+/** 새 바닥·꾸밈 아틀라스: 한 번에 하나(지금 맵 지역 것) */
+let deco: DecoArt | null = null;
+let decoLoading: { name: string; promise: Promise<DecoArt> } | null = null;
 
 function imageFile(name: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -210,8 +251,36 @@ async function json<T>(name: string): Promise<T> {
  */
 export async function loadAdventureMaps(map?: string) {
   const base = await loadBaseMaps();
-  if (map && needsNewSheet(map)) await loadNewSheet();
+  const area = map ? base.maps[map]?.deco : undefined;
+  await Promise.all([map && needsNewSheet(map) ? loadNewSheet() : null, area ? loadDeco(area) : null]);
   return base;
+}
+
+/** 지역 아틀라스 하나를 읽는다. 같은 이름이면 다시 읽지 않고, 다른 이름이면 앞 것을 버린다(한 번에 하나). */
+function loadDeco(name: string): Promise<DecoArt> {
+  if (deco?.name === name) return Promise.resolve(deco);
+  if (decoLoading?.name === name) return decoLoading.promise;
+  const promise = json<DecoMeta>(`deco-${name}.json`).then(async (meta) => {
+    const image = await imageFile(meta.image ?? `deco-${name}.png`);
+    deco = { name, meta, image, key: `deco-${name}` };
+    return deco;
+  });
+  decoLoading = { name, promise };
+  promise.then(
+    () => {
+      if (decoLoading?.promise === promise) decoLoading = null;
+    },
+    () => {
+      if (decoLoading?.promise === promise) decoLoading = null;
+    },
+  );
+  return promise;
+}
+
+/** 이 맵의 아틀라스(읽었으면). 맵 자료에 deco가 없거나 아직 못 읽었으면 null */
+export function decoArt(map: string): DecoArt | null {
+  const name = loaded?.maps[map]?.deco;
+  return name && deco?.name === name ? deco : null;
 }
 
 /** 이 맵에 두 번째 몬스터 그림을 쓰는 몬스터가 있는지(맵 자료를 읽은 뒤) */
@@ -248,7 +317,8 @@ function loadBaseMaps() {
 }
 
 /** 맵 자료를 읽었는지. map을 주면 그 맵이 쓰는 몬스터 그림까지 읽었는지 */
-export const adventureMapsReady = (map?: string) => loaded !== null && (!map || !needsNewSheet(map) || newSheet !== null);
+export const adventureMapsReady = (map?: string) =>
+  loaded !== null && (!map || ((!needsNewSheet(map) || newSheet !== null) && (!loaded.maps[map]?.deco || decoArt(map) !== null)));
 
 /** 몬스터 그림 키로 그 몬스터의 프레임과 그림을 찾는다(두 그림의 키는 겹치지 않음). 아직 못 읽었으면 null */
 export function monsterArt(art: string): (MonsterSheet & { frame: MonsterFrame }) | null {

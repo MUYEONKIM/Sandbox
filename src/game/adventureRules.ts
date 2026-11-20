@@ -66,9 +66,13 @@ export const SLOT_PRICES = [200000, 1000000, 5000000, 25000000, 125000000, 62500
 export const NO_FX: AdvFx = { comboAdd: 0, comboMax: COMBO_MAX, critMul: CRIT_MUL, leech: 0, endure: [], exp: 0, gold: 0, guard: 0, drop: 0 };
 
 /** 레벨 L, 세기 d인 몬스터 */
-export const monster = (L: number, d: number) => ({ hp: d * (30 + 10 * L), atk: d * (5 + 1.5 * L) });
-/** 한 번 이긴 판 경험치(40 → 20, 2026-11-19 사용자 "모험에서 얻는 경험치를 지금에서 50%를 줄이거나…", 서버 adventure_battle) */
-export const expOf = (L: number) => 20 * (L + 3) ** 2;
+/** 몬스터 체력 × 2, 공격 × 1.5(2026-11-20 사용자 "공격 1.5, 체력 *2 로", 서버 adventure_battle, 지역 세기는 그대로) */
+export const MON_HP_X = 2;
+export const MON_ATK_X = 1.5;
+// 곱하는 차례는 계산기(dungeon-run.js monster)와 같게 둔다(소수 끝자리까지 같게).
+export const monster = (L: number, d: number) => ({ hp: MON_HP_X * d * (30 + 10 * L), atk: MON_ATK_X * d * (5 + 1.5 * L) });
+/** 한 번 이긴 판 경험치(40 → 20 → 10, 2026-11-19·2026-11-20 사용자 "…다시 50% 줄여라", 서버 adventure_battle) */
+export const expOf = (L: number) => 10 * (L + 3) ** 2;
 // 경험치 줄어듦(예전 expFalloff)은 없앴다: 판 레벨과 상관없이 몬스터 경험치를 다 준다(2026-11-18 사용자 "레벨의 2배가 되더라도, 경험치 못얻거나, 아이템 못얻는건 없다. 무조건 얻는다").
 /** 레벨 n까지 쌓인 경험치는 50n(n − 1)이다. */
 export const levelFromExp = (e: number) => Math.floor((1 + Math.sqrt(1 + (8 * e) / 100)) / 2);

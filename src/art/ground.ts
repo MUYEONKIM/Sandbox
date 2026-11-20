@@ -32,7 +32,11 @@ function pick(tiles: number[], x: number, y: number) {
  * 뒤쪽 칸부터 그려서 앞 칸이 뒤 칸의 옆면을 덮게 한다. 물 타일은 블록보다 얇아서
  * 같은 높이에 그리면 바닥보다 낮은 연못처럼 보인다.
  */
-export function paintGround(map: GameMap): HTMLCanvasElement {
+/**
+ * deco: 모험 맵 새 바닥 아틀라스(2026-11-20). 땅 칸에 decoTiles 번호가 있으면 아틀라스 그 칸(32 × 32, tiles.png와 같은 모양)을 같은 자리에 그린다.
+ * 물 칸과 번호 없는 칸은 지금처럼 tiles.png. 뒤 칸부터 한 번에 그리는 차례는 그대로다(앞 칸이 뒤 칸 옆면을 덮음).
+ */
+export function paintGround(map: GameMap, deco?: { image: CanvasImageSource; tiles: { x: number; y: number }[] }): HTMLCanvasElement {
   const { size } = map;
   const rect = worldRect(size);
   const canvas = document.createElement('canvas');
@@ -55,6 +59,12 @@ export function paintGround(map: GameMap): HTMLCanvasElement {
       const corner = gridToWorld(x, y);
       const left = corner.x - TILE_CELL / 2 - rect.left;
       const top = corner.y - map.floorTop;
+      const dt = deco && !water ? map.decoTiles.get(index) : undefined;
+      const dr = dt !== undefined ? deco!.tiles[dt] : undefined;
+      if (dr) {
+        context.drawImage(deco!.image, dr.x, dr.y, TILE_CELL, TILE_CELL, left, top, TILE_CELL, TILE_CELL);
+        continue;
+      }
       // 건물 안처럼 바닥 타일이 없는 맵은 바닥을 따로 그린다.
       const tile = map.floorTiles.get(index) ?? pick(water ? WATER_TILES : map.floor, x, y);
       if (tile !== undefined) draw(tile, left, top);

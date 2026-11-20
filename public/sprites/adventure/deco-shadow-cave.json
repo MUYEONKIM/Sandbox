@@ -1,0 +1,317 @@
+{
+ "area": "shadow-cave",
+ "name": "그늘 동굴",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/shadow-cave-tiles.png",
+  "props": "art-source/adventure/sources/props/shadow-cave-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-shadow-cave.png",
+ "size": [
+  256,
+  186
+ ],
+ "tiles": [
+  {
+   "id": "cave_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_b",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_c",
+   "role": "floor",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_glint_a",
+   "role": "floor",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_glint_b",
+   "role": "floor",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_glint_c",
+   "role": "floor",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_d",
+   "role": "floor",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_e",
+   "role": "floor",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_glint_d",
+   "role": "floor",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_wet_a",
+   "role": "path",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_wet_b",
+   "role": "path",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_f",
+   "role": "floor",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_g",
+   "role": "floor",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_h",
+   "role": "floor",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cave_rift",
+   "role": "special",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "amethyst_a": {
+   "x": 0,
+   "y": 65,
+   "w": 42,
+   "h": 53,
+   "ax": 21,
+   "ay": 45,
+   "fp": 1,
+   "role": "small"
+  },
+  "amethyst_b": {
+   "x": 43,
+   "y": 65,
+   "w": 40,
+   "h": 52,
+   "ax": 18,
+   "ay": 44,
+   "fp": 1,
+   "role": "small"
+  },
+  "amethyst_c": {
+   "x": 172,
+   "y": 119,
+   "w": 40,
+   "h": 32,
+   "ax": 17,
+   "ay": 24,
+   "fp": 1,
+   "role": "small"
+  },
+  "amethyst_d": {
+   "x": 43,
+   "y": 119,
+   "w": 40,
+   "h": 33,
+   "ax": 19,
+   "ay": 25,
+   "fp": 1,
+   "role": "small"
+  },
+  "amethyst_e": {
+   "x": 213,
+   "y": 119,
+   "w": 42,
+   "h": 31,
+   "ax": 20,
+   "ay": 23,
+   "fp": 1,
+   "role": "small"
+  },
+  "amethyst_f": {
+   "x": 45,
+   "y": 155,
+   "w": 38,
+   "h": 28,
+   "ax": 14,
+   "ay": 20,
+   "fp": 1,
+   "role": "small"
+  },
+  "stalagmite_a": {
+   "x": 127,
+   "y": 65,
+   "w": 38,
+   "h": 49,
+   "ax": 18,
+   "ay": 41,
+   "fp": 1,
+   "role": "small"
+  },
+  "stalagmite_b": {
+   "x": 84,
+   "y": 65,
+   "w": 42,
+   "h": 50,
+   "ax": 20,
+   "ay": 42,
+   "fp": 1,
+   "role": "small"
+  },
+  "pale_mushrooms_a": {
+   "x": 0,
+   "y": 119,
+   "w": 42,
+   "h": 35,
+   "ax": 21,
+   "ay": 27,
+   "fp": 1,
+   "role": "small"
+  },
+  "pale_mushrooms_b": {
+   "x": 84,
+   "y": 119,
+   "w": 44,
+   "h": 32,
+   "ax": 19,
+   "ay": 24,
+   "fp": 1,
+   "role": "small"
+  },
+  "cave_bones_a": {
+   "x": 84,
+   "y": 155,
+   "w": 44,
+   "h": 26,
+   "ax": 19,
+   "ay": 18,
+   "fp": 1,
+   "role": "small"
+  },
+  "cave_bones_b": {
+   "x": 0,
+   "y": 155,
+   "w": 44,
+   "h": 30,
+   "ax": 21,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  },
+  "crystal_rock": {
+   "x": 166,
+   "y": 65,
+   "w": 60,
+   "h": 45,
+   "ax": 26,
+   "ay": 37,
+   "fp": 2,
+   "role": "medium"
+  },
+  "amethyst_g": {
+   "x": 129,
+   "y": 119,
+   "w": 42,
+   "h": 32,
+   "ax": 21,
+   "ay": 24,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": [
+  {
+   "src": "tiles 칸 12",
+   "why": "바위 아치(굽은 벽 조각): 타일 칸 크기로 그려져 꾸밈으로 줄이면 깨진 그릇처럼 보이고 타일 8과 맞닿아 있음 → 뺌"
+  }
+ ]
+}

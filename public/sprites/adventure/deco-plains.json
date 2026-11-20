@@ -1,0 +1,282 @@
+{
+ "area": "plains",
+ "name": "평원",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/plains-tiles.png",
+  "props": "art-source/adventure/sources/props/plains-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-plains.png",
+ "size": [
+  256,
+  182
+ ],
+ "tiles": [
+  {
+   "id": "grass_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "dirt_a",
+   "role": "path",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_b",
+   "role": "floor",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_c",
+   "role": "floor",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "dirt_b",
+   "role": "path",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "mud_a",
+   "role": "path",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_d",
+   "role": "floor",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_e",
+   "role": "floor",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_f",
+   "role": "floor",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "mud_b",
+   "role": "path",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_g",
+   "role": "floor",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "road_edge",
+   "role": "edge",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_h",
+   "role": "floor",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "puddle",
+   "role": "edge",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cobble",
+   "role": "path",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_i",
+   "role": "floor",
+   "x": 224,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "plains_dead_tree_a": {
+   "x": 0,
+   "y": 65,
+   "w": 40,
+   "h": 96,
+   "ax": 20,
+   "ay": 88,
+   "fp": 1,
+   "role": "tree"
+  },
+  "plains_dead_tree_b": {
+   "x": 41,
+   "y": 65,
+   "w": 39,
+   "h": 85,
+   "ax": 19,
+   "ay": 77,
+   "fp": 1,
+   "role": "tree"
+  },
+  "thorn_bush": {
+   "x": 141,
+   "y": 65,
+   "w": 40,
+   "h": 30,
+   "ax": 20,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  },
+  "plains_stone": {
+   "x": 112,
+   "y": 65,
+   "w": 28,
+   "h": 32,
+   "ax": 14,
+   "ay": 24,
+   "fp": 1,
+   "role": "small"
+  },
+  "broken_fence": {
+   "x": 182,
+   "y": 65,
+   "w": 39,
+   "h": 23,
+   "ax": 19,
+   "ay": 15,
+   "fp": 1,
+   "role": "small"
+  },
+  "stone_post": {
+   "x": 81,
+   "y": 65,
+   "w": 30,
+   "h": 41,
+   "ax": 14,
+   "ay": 33,
+   "fp": 1,
+   "role": "small"
+  },
+  "dry_grass_a": {
+   "x": 222,
+   "y": 65,
+   "w": 32,
+   "h": 23,
+   "ax": 17,
+   "ay": 15,
+   "fp": 1,
+   "role": "small"
+  },
+  "dry_grass_b": {
+   "x": 0,
+   "y": 162,
+   "w": 28,
+   "h": 20,
+   "ax": 15,
+   "ay": 12,
+   "fp": 1,
+   "role": "small"
+  },
+  "plains_skull": {
+   "x": 60,
+   "y": 162,
+   "w": 30,
+   "h": 18,
+   "ax": 11,
+   "ay": 10,
+   "fp": 1,
+   "role": "small"
+  },
+  "plains_bones": {
+   "x": 29,
+   "y": 162,
+   "w": 30,
+   "h": 19,
+   "ax": 17,
+   "ay": 11,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": []
+}

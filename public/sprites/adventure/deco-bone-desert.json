@@ -1,0 +1,349 @@
+{
+ "area": "bone-desert",
+ "name": "뼈 사막",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/bone-desert-tiles.png",
+  "props": "art-source/adventure/sources/props/bone-desert-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-bone-desert.png",
+ "size": [
+  256,
+  254
+ ],
+ "tiles": [
+  {
+   "id": "sand_glow",
+   "role": "special",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sand_a",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sand_bones_a",
+   "role": "floor",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sand_bones_b",
+   "role": "floor",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sand_bones_c",
+   "role": "floor",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cracked_a",
+   "role": "path",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sand_bones_d",
+   "role": "floor",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cracked_b",
+   "role": "path",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sand_b",
+   "role": "floor",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cracked_c",
+   "role": "path",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "cracked_glow",
+   "role": "special",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "temple_a",
+   "role": "floor",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "temple_b",
+   "role": "floor",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "temple_border",
+   "role": "path",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "temple_c",
+   "role": "floor",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "temple_d",
+   "role": "floor",
+   "x": 224,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "ribcage_arch": {
+   "x": 0,
+   "y": 65,
+   "w": 96,
+   "h": 80,
+   "ax": 63,
+   "ay": 72,
+   "fp": 3,
+   "role": "large"
+  },
+  "dragon_skull_a": {
+   "x": 97,
+   "y": 65,
+   "w": 64,
+   "h": 58,
+   "ax": 31,
+   "ay": 50,
+   "fp": 2,
+   "role": "medium"
+  },
+  "dragon_skull_b": {
+   "x": 162,
+   "y": 65,
+   "w": 62,
+   "h": 49,
+   "ax": 22,
+   "ay": 41,
+   "fp": 2,
+   "role": "medium"
+  },
+  "bone_heap": {
+   "x": 119,
+   "y": 146,
+   "w": 58,
+   "h": 37,
+   "ax": 30,
+   "ay": 29,
+   "fp": 2,
+   "role": "medium"
+  },
+  "sand_pillar_a": {
+   "x": 88,
+   "y": 146,
+   "w": 30,
+   "h": 43,
+   "ax": 15,
+   "ay": 35,
+   "fp": 1,
+   "role": "small"
+  },
+  "sand_pillar_b": {
+   "x": 59,
+   "y": 146,
+   "w": 28,
+   "h": 46,
+   "ax": 14,
+   "ay": 38,
+   "fp": 1,
+   "role": "small"
+  },
+  "desert_bones": {
+   "x": 133,
+   "y": 228,
+   "w": 44,
+   "h": 21,
+   "ax": 20,
+   "ay": 13,
+   "fp": 1,
+   "role": "small"
+  },
+  "desert_rocks_a": {
+   "x": 175,
+   "y": 194,
+   "w": 40,
+   "h": 28,
+   "ax": 16,
+   "ay": 20,
+   "fp": 1,
+   "role": "small"
+  },
+  "sand_pillar_c": {
+   "x": 178,
+   "y": 146,
+   "w": 32,
+   "h": 35,
+   "ax": 15,
+   "ay": 27,
+   "fp": 1,
+   "role": "small"
+  },
+  "sarcophagus": {
+   "x": 0,
+   "y": 146,
+   "w": 58,
+   "h": 47,
+   "ax": 31,
+   "ay": 39,
+   "fp": 2,
+   "role": "medium"
+  },
+  "sand_ribs": {
+   "x": 59,
+   "y": 194,
+   "w": 58,
+   "h": 31,
+   "ax": 30,
+   "ay": 23,
+   "fp": 2,
+   "role": "medium"
+  },
+  "bone_ruin": {
+   "x": 0,
+   "y": 194,
+   "w": 58,
+   "h": 33,
+   "ax": 29,
+   "ay": 25,
+   "fp": 2,
+   "role": "medium"
+  },
+  "desert_rocks_b": {
+   "x": 0,
+   "y": 228,
+   "w": 44,
+   "h": 26,
+   "ax": 20,
+   "ay": 18,
+   "fp": 1,
+   "role": "small"
+  },
+  "sand_rubble": {
+   "x": 45,
+   "y": 228,
+   "w": 44,
+   "h": 26,
+   "ax": 23,
+   "ay": 18,
+   "fp": 1,
+   "role": "small"
+  },
+  "desert_rocks_c": {
+   "x": 90,
+   "y": 228,
+   "w": 42,
+   "h": 22,
+   "ax": 17,
+   "ay": 14,
+   "fp": 1,
+   "role": "small"
+  },
+  "desert_skull": {
+   "x": 178,
+   "y": 228,
+   "w": 38,
+   "h": 21,
+   "ax": 22,
+   "ay": 13,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {
+  "sand_dune": {
+   "x": 118,
+   "y": 194,
+   "w": 56,
+   "h": 31
+  }
+ },
+ "skipped": []
+}

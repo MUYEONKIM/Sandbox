@@ -1,0 +1,368 @@
+{
+ "area": "rainbow",
+ "name": "일곱 빛 들판",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/rainbow-tiles.png",
+  "props": "art-source/adventure/sources/props/rainbow-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-rainbow.png",
+ "size": [
+  256,
+  146
+ ],
+ "tiles": [
+  {
+   "id": "light_yellow",
+   "role": "light",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "light_orange",
+   "role": "light",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "light_green",
+   "role": "light",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "light_blue",
+   "role": "light",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "light_purple",
+   "role": "light",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "light_red",
+   "role": "light",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "light_crimson",
+   "role": "light",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "dark_a",
+   "role": "floor",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_a",
+   "role": "floor",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_b",
+   "role": "floor",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "stone_a",
+   "role": "path",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "dark_b",
+   "role": "floor",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_c",
+   "role": "floor",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "grass_d",
+   "role": "floor",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "stone_b",
+   "role": "path",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "light_indigo",
+   "role": "light",
+   "x": 224,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "yellow_tree": {
+   "x": 213,
+   "y": 65,
+   "w": 35,
+   "h": 34,
+   "ax": 14,
+   "ay": 26,
+   "fp": 1,
+   "role": "small"
+  },
+  "orange_tree": {
+   "x": 0,
+   "y": 113,
+   "w": 36,
+   "h": 33,
+   "ax": 18,
+   "ay": 25,
+   "fp": 1,
+   "role": "small"
+  },
+  "green_tree": {
+   "x": 104,
+   "y": 113,
+   "w": 36,
+   "h": 32,
+   "ax": 18,
+   "ay": 24,
+   "fp": 1,
+   "role": "small"
+  },
+  "blue_tree": {
+   "x": 122,
+   "y": 65,
+   "w": 30,
+   "h": 36,
+   "ax": 17,
+   "ay": 28,
+   "fp": 1,
+   "role": "small"
+  },
+  "purple_tree_a": {
+   "x": 92,
+   "y": 65,
+   "w": 29,
+   "h": 40,
+   "ax": 14,
+   "ay": 32,
+   "fp": 1,
+   "role": "small"
+  },
+  "purple_tree_b": {
+   "x": 64,
+   "y": 65,
+   "w": 27,
+   "h": 42,
+   "ax": 12,
+   "ay": 34,
+   "fp": 1,
+   "role": "small"
+  },
+  "yellow_bush": {
+   "x": 37,
+   "y": 113,
+   "w": 36,
+   "h": 33,
+   "ax": 21,
+   "ay": 25,
+   "fp": 1,
+   "role": "small"
+  },
+  "orange_bush": {
+   "x": 172,
+   "y": 113,
+   "w": 36,
+   "h": 30,
+   "ax": 20,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  },
+  "green_bush": {
+   "x": 141,
+   "y": 113,
+   "w": 30,
+   "h": 31,
+   "ax": 19,
+   "ay": 23,
+   "fp": 1,
+   "role": "small"
+  },
+  "green_cypress": {
+   "x": 47,
+   "y": 65,
+   "w": 16,
+   "h": 43,
+   "ax": 8,
+   "ay": 35,
+   "fp": 1,
+   "role": "small"
+  },
+  "purple_reed": {
+   "x": 0,
+   "y": 65,
+   "w": 11,
+   "h": 47,
+   "ax": 5,
+   "ay": 39,
+   "fp": 1,
+   "role": "small"
+  },
+  "blue_crystal_bush": {
+   "x": 209,
+   "y": 113,
+   "w": 35,
+   "h": 28,
+   "ax": 14,
+   "ay": 20,
+   "fp": 1,
+   "role": "small"
+  },
+  "indigo_crystal": {
+   "x": 74,
+   "y": 113,
+   "w": 29,
+   "h": 33,
+   "ax": 13,
+   "ay": 25,
+   "fp": 1,
+   "role": "small"
+  },
+  "blue_bush": {
+   "x": 186,
+   "y": 65,
+   "w": 26,
+   "h": 35,
+   "ax": 15,
+   "ay": 27,
+   "fp": 1,
+   "role": "small"
+  },
+  "red_tree": {
+   "x": 12,
+   "y": 65,
+   "w": 34,
+   "h": 44,
+   "ax": 20,
+   "ay": 36,
+   "fp": 1,
+   "role": "small"
+  },
+  "purple_tree_c": {
+   "x": 153,
+   "y": 65,
+   "w": 32,
+   "h": 35,
+   "ax": 16,
+   "ay": 27,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": [
+  {
+   "src": "props 800,313",
+   "id": "small_statue",
+   "why": "쓸 자리 없음: 일곱 빛 들판은 모두 걷는 땅이라 구역 귀퉁이 18곳에만 그 구역 색 나무·덤불을 놓음(색 없는 조각은 뺌)"
+  },
+  {
+   "src": "props 915,302",
+   "id": "ice_pillar",
+   "why": "쓸 자리 없음: 일곱 빛 들판은 모두 걷는 땅이라 구역 귀퉁이 18곳에만 그 구역 색 나무·덤불을 놓음(색 없는 조각은 뺌)"
+  },
+  {
+   "src": "props 738,400",
+   "id": "small_post",
+   "why": "쓸 자리 없음: 일곱 빛 들판은 모두 걷는 땅이라 구역 귀퉁이 18곳에만 그 구역 색 나무·덤불을 놓음(색 없는 조각은 뺌)"
+  },
+  {
+   "src": "props 921,474",
+   "id": "ice_crystal",
+   "why": "쓸 자리 없음: 일곱 빛 들판은 모두 걷는 땅이라 구역 귀퉁이 18곳에만 그 구역 색 나무·덤불을 놓음(색 없는 조각은 뺌)"
+  },
+  {
+   "src": "props 54,852",
+   "id": "wood_post",
+   "why": "쓸 자리 없음: 일곱 빛 들판은 모두 걷는 땅이라 구역 귀퉁이 18곳에만 그 구역 색 나무·덤불을 놓음(색 없는 조각은 뺌)"
+  }
+ ]
+}

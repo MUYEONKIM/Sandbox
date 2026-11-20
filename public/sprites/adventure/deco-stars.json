@@ -1,0 +1,302 @@
+{
+ "area": "stars",
+ "name": "별 하늘",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/stars-tiles.png",
+  "props": "art-source/adventure/sources/props/stars-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-stars.png",
+ "size": [
+  256,
+  186
+ ],
+ "tiles": [
+  {
+   "id": "nebula_blue",
+   "role": "special",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "starry_a",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "starry_b",
+   "role": "floor",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "starry_c",
+   "role": "floor",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "constellation_a",
+   "role": "special",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "constellation_b",
+   "role": "special",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "constellation_c",
+   "role": "special",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "starry_d",
+   "role": "floor",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "nebula_mix",
+   "role": "special",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "nebula_purple_a",
+   "role": "special",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "nebula_purple_b",
+   "role": "special",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "black_hole",
+   "role": "special",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "starry_e",
+   "role": "floor",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "star_crack_a",
+   "role": "edge",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "star_crack_b",
+   "role": "edge",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "star_crack_c",
+   "role": "edge",
+   "x": 224,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "star_crystal_a": {
+   "x": 139,
+   "y": 65,
+   "w": 18,
+   "h": 62,
+   "ax": 8,
+   "ay": 54,
+   "fp": 1,
+   "role": "small"
+  },
+  "asteroid_a": {
+   "x": 0,
+   "y": 152,
+   "w": 40,
+   "h": 34,
+   "ax": 18,
+   "ay": 26,
+   "fp": 0,
+   "role": "float"
+  },
+  "asteroid_b": {
+   "x": 41,
+   "y": 152,
+   "w": 42,
+   "h": 33,
+   "ax": 25,
+   "ay": 25,
+   "fp": 0,
+   "role": "float"
+  },
+  "asteroid_c": {
+   "x": 185,
+   "y": 65,
+   "w": 38,
+   "h": 35,
+   "ax": 16,
+   "ay": 27,
+   "fp": 0,
+   "role": "float"
+  },
+  "star_crystal_b": {
+   "x": 0,
+   "y": 65,
+   "w": 22,
+   "h": 86,
+   "ax": 11,
+   "ay": 78,
+   "fp": 1,
+   "role": "small"
+  },
+  "rune_pillar_a": {
+   "x": 23,
+   "y": 65,
+   "w": 24,
+   "h": 71,
+   "ax": 12,
+   "ay": 63,
+   "fp": 1,
+   "role": "small"
+  },
+  "rune_pillar_b": {
+   "x": 48,
+   "y": 65,
+   "w": 24,
+   "h": 70,
+   "ax": 12,
+   "ay": 62,
+   "fp": 1,
+   "role": "small"
+  },
+  "star_spire_a": {
+   "x": 158,
+   "y": 65,
+   "w": 26,
+   "h": 54,
+   "ax": 12,
+   "ay": 46,
+   "fp": 1,
+   "role": "small"
+  },
+  "star_spark_a": {
+   "x": 84,
+   "y": 152,
+   "w": 30,
+   "h": 32,
+   "ax": 15,
+   "ay": 24,
+   "fp": 0,
+   "role": "float"
+  },
+  "star_spark_b": {
+   "x": 115,
+   "y": 152,
+   "w": 30,
+   "h": 31,
+   "ax": 15,
+   "ay": 23,
+   "fp": 0,
+   "role": "float"
+  },
+  "star_spire_b": {
+   "x": 106,
+   "y": 65,
+   "w": 32,
+   "h": 67,
+   "ax": 15,
+   "ay": 59,
+   "fp": 1,
+   "role": "small"
+  },
+  "star_spire_c": {
+   "x": 73,
+   "y": 65,
+   "w": 32,
+   "h": 69,
+   "ax": 16,
+   "ay": 61,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": []
+}

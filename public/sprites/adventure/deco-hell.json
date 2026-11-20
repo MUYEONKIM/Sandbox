@@ -1,0 +1,335 @@
+{
+ "area": "hell",
+ "name": "지옥",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/hell-tiles.png",
+  "props": "art-source/adventure/sources/props/hell-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-hell.png",
+ "size": [
+  256,
+  242
+ ],
+ "tiles": [
+  {
+   "id": "basalt_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "basalt_b",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "crack_a",
+   "role": "floor",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "lava_pool_a",
+   "role": "edge",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "basalt_c",
+   "role": "floor",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "basalt_d",
+   "role": "floor",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "crack_b",
+   "role": "floor",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "lava_pool_b",
+   "role": "edge",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ash_a",
+   "role": "path",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ash_b",
+   "role": "path",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "bridge_a",
+   "role": "path",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "bridge_b",
+   "role": "path",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "basalt_e",
+   "role": "floor",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "basalt_f",
+   "role": "floor",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ember_a",
+   "role": "floor",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "ember_b",
+   "role": "floor",
+   "x": 224,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "spire_a": {
+   "x": 169,
+   "y": 65,
+   "w": 46,
+   "h": 56,
+   "ax": 21,
+   "ay": 48,
+   "fp": 1,
+   "role": "medium"
+  },
+  "spire_b": {
+   "x": 0,
+   "y": 65,
+   "w": 46,
+   "h": 63,
+   "ax": 22,
+   "ay": 55,
+   "fp": 1,
+   "role": "medium"
+  },
+  "lava_rocks": {
+   "x": 0,
+   "y": 129,
+   "w": 60,
+   "h": 54,
+   "ax": 28,
+   "ay": 46,
+   "fp": 2,
+   "role": "medium"
+  },
+  "lava_peak": {
+   "x": 104,
+   "y": 65,
+   "w": 64,
+   "h": 60,
+   "ax": 30,
+   "ay": 52,
+   "fp": 2,
+   "role": "medium"
+  },
+  "chain_post_a": {
+   "x": 121,
+   "y": 129,
+   "w": 36,
+   "h": 40,
+   "ax": 12,
+   "ay": 32,
+   "fp": 1,
+   "role": "small"
+  },
+  "lava_heap_a": {
+   "x": 0,
+   "y": 184,
+   "w": 64,
+   "h": 36,
+   "ax": 28,
+   "ay": 28,
+   "fp": 2,
+   "role": "medium"
+  },
+  "lava_heap_b": {
+   "x": 65,
+   "y": 184,
+   "w": 60,
+   "h": 35,
+   "ax": 26,
+   "ay": 27,
+   "fp": 2,
+   "role": "medium"
+  },
+  "lava_heap_c": {
+   "x": 126,
+   "y": 184,
+   "w": 42,
+   "h": 26,
+   "ax": 20,
+   "ay": 18,
+   "fp": 1,
+   "role": "small"
+  },
+  "chain_post_b": {
+   "x": 158,
+   "y": 129,
+   "w": 38,
+   "h": 39,
+   "ax": 14,
+   "ay": 31,
+   "fp": 1,
+   "role": "small"
+  },
+  "brazier_a": {
+   "x": 61,
+   "y": 129,
+   "w": 28,
+   "h": 42,
+   "ax": 14,
+   "ay": 34,
+   "fp": 1,
+   "role": "small"
+  },
+  "brazier_b": {
+   "x": 90,
+   "y": 129,
+   "w": 30,
+   "h": 41,
+   "ax": 15,
+   "ay": 33,
+   "fp": 1,
+   "role": "small"
+  },
+  "bones_a": {
+   "x": 208,
+   "y": 184,
+   "w": 40,
+   "h": 22,
+   "ax": 20,
+   "ay": 14,
+   "fp": 1,
+   "role": "small"
+  },
+  "demon_skull": {
+   "x": 47,
+   "y": 65,
+   "w": 56,
+   "h": 62,
+   "ax": 27,
+   "ay": 54,
+   "fp": 2,
+   "role": "medium"
+  },
+  "bones_b": {
+   "x": 0,
+   "y": 221,
+   "w": 40,
+   "h": 20,
+   "ax": 21,
+   "ay": 12,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {
+  "ember_vent_a": {
+   "x": 41,
+   "y": 221,
+   "w": 34,
+   "h": 17
+  },
+  "ember_vent_b": {
+   "x": 169,
+   "y": 184,
+   "w": 38,
+   "h": 23
+  }
+ },
+ "skipped": []
+}

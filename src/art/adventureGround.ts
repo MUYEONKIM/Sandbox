@@ -1,6 +1,6 @@
 import { gridToWorld, tileCenter } from '../iso';
 import { Terrain, type GameMap } from '../game/map';
-import { infernus, monsterArt, type AdvMapData, type FieldMonster } from '../game/adventureMaps';
+import { decoArt, infernus, monsterArt, type AdvMapData, type FieldMonster } from '../game/adventureMaps';
 import { worldRect } from './ground';
 
 /**
@@ -36,6 +36,17 @@ export function paintAdventureGround(canvas: HTMLCanvasElement, data: AdvMapData
   const size = SIZE_OF(map);
   const ox = worldRect(size).left;
   const ground = (x: number, y: number) => x >= 0 && y >= 0 && x < size && y < size && map.terrain[x + y * size] === Terrain.Ground;
+
+  // 새 바닥 조각(2026-11-20, 지옥 불씨 구멍·유령 늪 연잎(물 칸 위)·뼈 사막 모래 언덕): 칸 가운데에 그림 가운데를 맞춘다.
+  const deco = decoArt(data.id);
+  if (deco) {
+    for (const f of data.decoFloors ?? []) {
+      const r = deco.meta.floors[f.id];
+      if (!r) continue;
+      const c = tileCenter(f.x, f.y);
+      g.drawImage(deco.image, r.x, r.y, r.w, r.h, Math.round(c.x - ox - r.w / 2), Math.round(c.y - r.h / 2), r.w, r.h);
+    }
+  }
 
   // 별 하늘: 빈 땅에 별을 찍는다.
   for (const s of data.stars ?? []) {

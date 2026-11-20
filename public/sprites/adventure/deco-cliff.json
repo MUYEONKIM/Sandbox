@@ -1,0 +1,312 @@
+{
+ "area": "cliff",
+ "name": "벼랑길",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/cliff-tiles.png",
+  "props": "art-source/adventure/sources/props/cliff-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-cliff.png",
+ "size": [
+  256,
+  374
+ ],
+ "tiles": [
+  {
+   "id": "slab_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "slab_b",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "gravel_a",
+   "role": "path",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "slab_c",
+   "role": "floor",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "edge_a",
+   "role": "edge",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "gravel_b",
+   "role": "path",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "edge_b",
+   "role": "edge",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "gravel_c",
+   "role": "path",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "gravel_d",
+   "role": "path",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "edge_c",
+   "role": "edge",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "gravel_e",
+   "role": "path",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "gravel_f",
+   "role": "path",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "rock_block_a": {
+   "x": 154,
+   "y": 280,
+   "w": 32,
+   "h": 33,
+   "ax": 16,
+   "ay": 25,
+   "fp": 1,
+   "role": "block"
+  },
+  "rock_block_b": {
+   "x": 55,
+   "y": 280,
+   "w": 32,
+   "h": 35,
+   "ax": 16,
+   "ay": 27,
+   "fp": 1,
+   "role": "block"
+  },
+  "rock_block_c": {
+   "x": 88,
+   "y": 280,
+   "w": 32,
+   "h": 35,
+   "ax": 16,
+   "ay": 27,
+   "fp": 1,
+   "role": "block"
+  },
+  "rock_block_d": {
+   "x": 121,
+   "y": 280,
+   "w": 32,
+   "h": 35,
+   "ax": 16,
+   "ay": 27,
+   "fp": 1,
+   "role": "block"
+  },
+  "cliff_wall_a": {
+   "x": 99,
+   "y": 65,
+   "w": 100,
+   "h": 119,
+   "ax": 39,
+   "ay": 111,
+   "fp": 3,
+   "role": "large"
+  },
+  "cliff_wall_b": {
+   "x": 0,
+   "y": 65,
+   "w": 98,
+   "h": 121,
+   "ax": 40,
+   "ay": 113,
+   "fp": 3,
+   "role": "large"
+  },
+  "dead_tree_a": {
+   "x": 0,
+   "y": 187,
+   "w": 59,
+   "h": 92,
+   "ax": 25,
+   "ay": 84,
+   "fp": 1,
+   "role": "tree"
+  },
+  "dead_tree_b": {
+   "x": 60,
+   "y": 187,
+   "w": 64,
+   "h": 82,
+   "ax": 24,
+   "ay": 74,
+   "fp": 1,
+   "role": "tree"
+  },
+  "dead_tree_c": {
+   "x": 200,
+   "y": 65,
+   "w": 52,
+   "h": 96,
+   "ax": 25,
+   "ay": 88,
+   "fp": 1,
+   "role": "tree"
+  },
+  "rocks_a": {
+   "x": 78,
+   "y": 346,
+   "w": 38,
+   "h": 26,
+   "ax": 17,
+   "ay": 18,
+   "fp": 1,
+   "role": "small"
+  },
+  "rocks_b": {
+   "x": 117,
+   "y": 346,
+   "w": 34,
+   "h": 18,
+   "ax": 17,
+   "ay": 10,
+   "fp": 1,
+   "role": "small"
+  },
+  "rocks_c": {
+   "x": 39,
+   "y": 346,
+   "w": 38,
+   "h": 27,
+   "ax": 18,
+   "ay": 19,
+   "fp": 1,
+   "role": "small"
+  },
+  "rope_post_a": {
+   "x": 0,
+   "y": 346,
+   "w": 38,
+   "h": 28,
+   "ax": 30,
+   "ay": 20,
+   "fp": 1,
+   "role": "small"
+  },
+  "rope_post_b": {
+   "x": 187,
+   "y": 280,
+   "w": 42,
+   "h": 30,
+   "ax": 33,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  },
+  "rock_spire_a": {
+   "x": 176,
+   "y": 187,
+   "w": 52,
+   "h": 66,
+   "ax": 25,
+   "ay": 58,
+   "fp": 2,
+   "role": "medium"
+  },
+  "rock_spire_b": {
+   "x": 125,
+   "y": 187,
+   "w": 50,
+   "h": 71,
+   "ax": 24,
+   "ay": 63,
+   "fp": 2,
+   "role": "medium"
+  },
+  "rock_spire_c": {
+   "x": 0,
+   "y": 280,
+   "w": 54,
+   "h": 65,
+   "ax": 24,
+   "ay": 57,
+   "fp": 2,
+   "role": "medium"
+  }
+ },
+ "floors": {},
+ "skipped": []
+}

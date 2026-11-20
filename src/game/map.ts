@@ -4,7 +4,7 @@ import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, isAdventure, isDungeon, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
 import { layoutDungeon } from './dungeon';
-import { advMap, infernus } from './adventureMaps';
+import { advMap, infernus, decoArt } from './adventureMaps';
 import { FARM_ROAD_TILES, isPlot } from './farm';
 import {
   ANNEX,
@@ -81,6 +81,10 @@ export interface GameMap extends Scenery {
   fences: FenceEdge[];
   /** 모험 맵의 Infernus 조각(infernus.png). (x, y)가 맨 앞 칸이고 막는 칸은 이미 solid에 넣었다. */
   pieces: { id: string; x: number; y: number }[];
+  /** 모험 맵 새 바닥(2026-11-20): 칸 번호 → 지역 아틀라스 tiles 번호(땅 칸만). tiles.png 번호인 floorTiles와 섞지 않는다. */
+  decoTiles: Map<number, number>;
+  /** 모험 맵 새 서 있는 조각(지역 아틀라스 props). (x, y)가 맨 앞 칸이고 막는 칸은 이미 solid에 넣었다. */
+  decoPieces: { id: string; x: number; y: number }[];
 }
 
 /** 작업장 건물이 들어가는 자리. 도착하는 귀퉁이 근처다. */
@@ -183,6 +187,8 @@ export function generateMap(id: MapId): GameMap {
   let battleProps: BattleProp[] = [];
   let battleWalls: FixedWall[] = [];
   const pieces: GameMap['pieces'] = [];
+  const decoTiles: GameMap['decoTiles'] = new Map();
+  const decoPieces: GameMap['decoPieces'] = [];
 
   if (id === 'plains') {
     for (const { sprite, x, y, w, d } of [OFFICE, CASTLE, SHOP]) buildings.push({ sprite, x, y, w, d });
@@ -242,7 +248,7 @@ export function generateMap(id: MapId): GameMap {
     // 농장 꾸밈 소품(2026-11-16, farmLayout.ts): 작업장 소품처럼 건물로 놓고 아래 반복문이 칸을 막는다.
     buildings.push(...FARM_PROPS);
   } else if (isAdventure(id)) {
-    battleWalls = layoutAdventure(id, size, terrain, solid, scenery, pieces);
+    battleWalls = layoutAdventure(id, size, terrain, solid, scenery, pieces, decoTiles, decoPieces);
   } else if (isDungeon(id)) {
     const dungeon = layoutDungeon(id);
     scenery.trees.push(...dungeon.trees);
@@ -290,7 +296,7 @@ export function generateMap(id: MapId): GameMap {
   const buildZones = isDungeon(id) || isAdventure(id) ? [] : id === HIDEOUT.map ? [bounds, HIDEOUT.area] : [bounds];
   const reserved = id === HIDEOUT.map ? [HIDEOUT.trigger, HIDEOUT.passage] : [];
   const fences = id === 'farm' ? farmFences() : [];
-  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved, battleProps, fences, pieces };
+  return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved, battleProps, fences, pieces, decoTiles, decoPieces };
 }
 
 /** 장식 벽을 놓을 수 있는 칸에만 세우고 그 칸을 막는다. */
@@ -320,7 +326,16 @@ function workWalls(id: WorkId, terrain: Uint8Array, solid: Uint8Array): FixedWal
  * Infernus 조각(막는 칸 fp × fp)을 자료 그대로 놓는다. 자료를 아직 읽지 않았으면 빈 땅이다(맵을 올리기 전에 loadAdventureMaps를 기다린다).
  * 바닥 조각, 일곱 빛 색, 별, 띠 경계 점선은 바닥 그림을 그릴 때 더한다(art/adventureGround.ts).
  */
-function layoutAdventure(id: string, size: number, terrain: Uint8Array, solid: Uint8Array, scenery: Scenery, pieces: GameMap['pieces']): FixedWall[] {
+function layoutAdventure(
+  id: string,
+  size: number,
+  terrain: Uint8Array,
+  solid: Uint8Array,
+  scenery: Scenery,
+  pieces: GameMap['pieces'],
+  decoTiles: GameMap['decoTiles'],
+  decoPieces: GameMap['decoPieces'],
+): FixedWall[] {
   const data = advMap(id);
   const meta = infernus()?.meta;
   if (!data || !meta) {
@@ -349,6 +364,30 @@ function layoutAdventure(id: string, size: number, terrain: Uint8Array, solid: U
     const piece = meta.props[p.id];
     if (!piece) continue;
     pieces.push({ id: p.id, x: p.x, y: p.y });
+    for (let j = 0; j < piece.fp; j++) {
+      for (let i = 0; i < piece.fp; i++) {
+        const x = p.x - i;
+        const y = p.y - j;
+        if (x >= 0 && y >= 0 && x < size && y < size) solid[x + y * size] = 1;
+      }
+    }
+  }
+  // 새 바닥·꾸밈(2026-11-20, 디자인 세션 adventure-deco.md): 땅 칸 바닥 번호와 서 있는 조각(fp × fp 칸을 막음, fp 0은 막지 않음).
+  // 막는 칸은 아틀라스 json의 fp로 센다. 아틀라스를 읽기 전에는 맵을 올리지 않는다(loadAdventureMaps(map), adventureMapsReady(map)).
+  const art = decoArt(id);
+  if (art && data.decoFloor) {
+    for (let y = 0; y < size; y++) {
+      const row = data.decoFloor[y] ?? '';
+      for (let x = 0; x < size; x++) {
+        const f = row.slice(2 * x, 2 * x + 2);
+        if (f && f !== '--' && terrain[x + y * size] === Terrain.Ground) decoTiles.set(x + y * size, parseInt(f, 36));
+      }
+    }
+  }
+  for (const p of art ? (data.decoProps ?? []) : []) {
+    const piece = art!.meta.props[p.id];
+    if (!piece) continue;
+    decoPieces.push({ id: p.id, x: p.x, y: p.y });
     for (let j = 0; j < piece.fp; j++) {
       for (let i = 0; i < piece.fp; i++) {
         const x = p.x - i;

@@ -1,0 +1,292 @@
+{
+ "area": "volcano",
+ "name": "화산 폭풍",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/volcano-tiles.png",
+  "props": "art-source/adventure/sources/props/volcano-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-volcano.png",
+ "size": [
+  256,
+  174
+ ],
+ "tiles": [
+  {
+   "id": "v_basalt_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_lava_crack_a",
+   "role": "edge",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_lava_crack_b",
+   "role": "edge",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_vein_a",
+   "role": "floor",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_basalt_b",
+   "role": "floor",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_vein_b",
+   "role": "floor",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_drip",
+   "role": "floor",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_vein_c",
+   "role": "floor",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_ash_a",
+   "role": "path",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_ash_b",
+   "role": "path",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_lava_crack_c",
+   "role": "edge",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_lava_pool_a",
+   "role": "edge",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_lava_pool_b",
+   "role": "edge",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_ridged",
+   "role": "path",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_lava_crack_d",
+   "role": "edge",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "v_lava_pool_c",
+   "role": "edge",
+   "x": 224,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "magma_spire_a": {
+   "x": 29,
+   "y": 65,
+   "w": 28,
+   "h": 57,
+   "ax": 13,
+   "ay": 49,
+   "fp": 1,
+   "role": "small"
+  },
+  "magma_spire_b": {
+   "x": 84,
+   "y": 65,
+   "w": 27,
+   "h": 53,
+   "ax": 13,
+   "ay": 45,
+   "fp": 1,
+   "role": "small"
+  },
+  "magma_spire_c": {
+   "x": 58,
+   "y": 65,
+   "w": 25,
+   "h": 55,
+   "ax": 12,
+   "ay": 47,
+   "fp": 1,
+   "role": "small"
+  },
+  "charred_tree": {
+   "x": 0,
+   "y": 65,
+   "w": 28,
+   "h": 78,
+   "ax": 12,
+   "ay": 70,
+   "fp": 1,
+   "role": "tree"
+  },
+  "smoke_vent_a": {
+   "x": 0,
+   "y": 144,
+   "w": 35,
+   "h": 30,
+   "ax": 17,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  },
+  "smoke_vent_b": {
+   "x": 152,
+   "y": 65,
+   "w": 38,
+   "h": 36,
+   "ax": 19,
+   "ay": 28,
+   "fp": 1,
+   "role": "small"
+  },
+  "magma_heap_a": {
+   "x": 112,
+   "y": 65,
+   "w": 39,
+   "h": 36,
+   "ax": 18,
+   "ay": 28,
+   "fp": 1,
+   "role": "small"
+  },
+  "magma_heap_b": {
+   "x": 36,
+   "y": 144,
+   "w": 35,
+   "h": 30,
+   "ax": 18,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  },
+  "lava_pit_a": {
+   "x": 110,
+   "y": 144,
+   "w": 37,
+   "h": 25,
+   "ax": 18,
+   "ay": 17,
+   "fp": 1,
+   "role": "small"
+  },
+  "obsidian_rocks": {
+   "x": 72,
+   "y": 144,
+   "w": 37,
+   "h": 29,
+   "ax": 18,
+   "ay": 21,
+   "fp": 1,
+   "role": "small"
+  },
+  "lava_pit_b": {
+   "x": 191,
+   "y": 65,
+   "w": 34,
+   "h": 33,
+   "ax": 17,
+   "ay": 25,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": []
+}

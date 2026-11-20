@@ -1,0 +1,382 @@
+{
+ "area": "cloud",
+ "name": "구름 정원",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/cloud-tiles.png",
+  "props": "art-source/adventure/sources/props/cloud-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-cloud.png",
+ "size": [
+  256,
+  282
+ ],
+ "tiles": [
+  {
+   "id": "sky_stone_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_stone_b",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_stone_c",
+   "role": "floor",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_rock_a",
+   "role": "edge",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_stone_d",
+   "role": "floor",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "plank_a",
+   "role": "path",
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_stone_e",
+   "role": "floor",
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_rock_b",
+   "role": "edge",
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_stone_f",
+   "role": "floor",
+   "x": 0,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "plank_b",
+   "role": "path",
+   "x": 32,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_stone_g",
+   "role": "floor",
+   "x": 64,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_rock_c",
+   "role": "edge",
+   "x": 96,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_stone_h",
+   "role": "floor",
+   "x": 128,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "plank_c",
+   "role": "path",
+   "x": 160,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_stone_i",
+   "role": "floor",
+   "x": 192,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "sky_rock_d",
+   "role": "edge",
+   "x": 224,
+   "y": 32,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "isle_tree": {
+   "x": 41,
+   "y": 65,
+   "w": 39,
+   "h": 99,
+   "ax": 20,
+   "ay": 91,
+   "fp": 0,
+   "role": "float"
+  },
+  "isle_spear": {
+   "x": 0,
+   "y": 65,
+   "w": 40,
+   "h": 113,
+   "ax": 20,
+   "ay": 105,
+   "fp": 0,
+   "role": "float"
+  },
+  "sky_isle_a": {
+   "x": 0,
+   "y": 179,
+   "w": 46,
+   "h": 51,
+   "ax": 23,
+   "ay": 43,
+   "fp": 0,
+   "role": "float"
+  },
+  "isle_lamp": {
+   "x": 81,
+   "y": 65,
+   "w": 41,
+   "h": 95,
+   "ax": 21,
+   "ay": 87,
+   "fp": 0,
+   "role": "float"
+  },
+  "sky_isle_b": {
+   "x": 141,
+   "y": 179,
+   "w": 44,
+   "h": 41,
+   "ax": 21,
+   "ay": 33,
+   "fp": 0,
+   "role": "float"
+  },
+  "sky_isle_c": {
+   "x": 47,
+   "y": 179,
+   "w": 46,
+   "h": 41,
+   "ax": 21,
+   "ay": 33,
+   "fp": 0,
+   "role": "float"
+  },
+  "sky_isle_d": {
+   "x": 186,
+   "y": 179,
+   "w": 42,
+   "h": 38,
+   "ax": 21,
+   "ay": 30,
+   "fp": 0,
+   "role": "float"
+  },
+  "storm_cloud_a": {
+   "x": 0,
+   "y": 231,
+   "w": 46,
+   "h": 28,
+   "ax": 23,
+   "ay": 20,
+   "fp": 0,
+   "role": "float"
+  },
+  "storm_cloud_b": {
+   "x": 94,
+   "y": 231,
+   "w": 44,
+   "h": 26,
+   "ax": 21,
+   "ay": 18,
+   "fp": 0,
+   "role": "float"
+  },
+  "storm_cloud_c": {
+   "x": 47,
+   "y": 231,
+   "w": 46,
+   "h": 26,
+   "ax": 23,
+   "ay": 18,
+   "fp": 0,
+   "role": "float"
+  },
+  "storm_cloud_d": {
+   "x": 139,
+   "y": 231,
+   "w": 44,
+   "h": 26,
+   "ax": 23,
+   "ay": 18,
+   "fp": 0,
+   "role": "float"
+  },
+  "storm_cloud_e": {
+   "x": 0,
+   "y": 260,
+   "w": 42,
+   "h": 22,
+   "ax": 20,
+   "ay": 14,
+   "fp": 0,
+   "role": "float"
+  },
+  "sky_pillar_a": {
+   "x": 168,
+   "y": 65,
+   "w": 17,
+   "h": 64,
+   "ax": 8,
+   "ay": 56,
+   "fp": 1,
+   "role": "small"
+  },
+  "sky_pillar_b": {
+   "x": 215,
+   "y": 65,
+   "w": 20,
+   "h": 57,
+   "ax": 10,
+   "ay": 49,
+   "fp": 1,
+   "role": "small"
+  },
+  "sky_dead_tree": {
+   "x": 186,
+   "y": 65,
+   "w": 28,
+   "h": 57,
+   "ax": 14,
+   "ay": 49,
+   "fp": 1,
+   "role": "tree"
+  },
+  "isle_column": {
+   "x": 123,
+   "y": 65,
+   "w": 44,
+   "h": 81,
+   "ax": 22,
+   "ay": 73,
+   "fp": 0,
+   "role": "float"
+  },
+  "sky_isle_e": {
+   "x": 94,
+   "y": 179,
+   "w": 46,
+   "h": 41,
+   "ax": 23,
+   "ay": 33,
+   "fp": 0,
+   "role": "float"
+  },
+  "sky_rubble_a": {
+   "x": 184,
+   "y": 231,
+   "w": 32,
+   "h": 23,
+   "ax": 16,
+   "ay": 15,
+   "fp": 1,
+   "role": "small"
+  },
+  "sky_rubble_b": {
+   "x": 43,
+   "y": 260,
+   "w": 33,
+   "h": 17,
+   "ax": 18,
+   "ay": 9,
+   "fp": 1,
+   "role": "small"
+  },
+  "sky_rubble_c": {
+   "x": 77,
+   "y": 260,
+   "w": 30,
+   "h": 17,
+   "ax": 15,
+   "ay": 9,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": []
+}

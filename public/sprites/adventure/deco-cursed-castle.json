@@ -1,0 +1,307 @@
+{
+ "area": "cursed-castle",
+ "name": "저주받은 성",
+ "made": "2026-11-20 디자인 세션 두 번째 판(art-source/adventure/deco/make-deco.cjs)",
+ "source": {
+  "tiles": "art-source/adventure/sources/tiles/cursed-castle-tiles.png",
+  "props": "art-source/adventure/sources/props/cursed-castle-props.png"
+ },
+ "credit": "사용자가 만든 그림(시트, 출처는 디자인 노트 adventure-deco.md)",
+ "note": "tiles: 바닥 타일(맵 decoFloor 번호 = 이 목록 차례). 32 × 32 칸, tiles.png와 같은 자리와 모양(윗면 꼭짓점 y 8, 옆면 8px): 칸 (x, y)의 왼쪽 위 = gridToWorld(x, y) − (16, floorTop 8). ax, ay는 칸 가운데. props: 서 있는 조각(맵 decoProps). 그림 안 (ax, ay)를 맨 앞 칸 가운데에 맞추고, 그 칸에서 fp × fp 칸(뒤쪽으로)을 막는다(fp 0은 허공 위에 떠서 막지 않음). 깊이 depthOf(x, y). floors: 바닥에 납작한 조각(맵 decoFloors, 물 칸에도 놓임), 칸 가운데에 그림 가운데를 맞춰 바닥 그림에 한 번. 알파는 0 또는 255(도트 그림이라 NEAREST로 그리면 된다).",
+ "image": "deco-cursed-castle.png",
+ "size": [
+  256,
+  182
+ ],
+ "tiles": [
+  {
+   "id": "brick_a",
+   "role": "floor",
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "brick_b",
+   "role": "floor",
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "brick_c",
+   "role": "floor",
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "brick_d",
+   "role": "floor",
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  },
+  {
+   "id": "castle_rune",
+   "role": "special",
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 32,
+   "ax": 16,
+   "ay": 16
+  }
+ ],
+ "props": {
+  "castle_wall_a": {
+   "x": 33,
+   "y": 153,
+   "w": 32,
+   "h": 28,
+   "ax": 16,
+   "ay": 20,
+   "fp": 1,
+   "role": "block"
+  },
+  "castle_wall_b": {
+   "x": 41,
+   "y": 121,
+   "w": 32,
+   "h": 31,
+   "ax": 16,
+   "ay": 23,
+   "fp": 1,
+   "role": "block"
+  },
+  "battlement_a": {
+   "x": 155,
+   "y": 121,
+   "w": 32,
+   "h": 30,
+   "ax": 16,
+   "ay": 22,
+   "fp": 1,
+   "role": "block"
+  },
+  "battlement_b": {
+   "x": 66,
+   "y": 153,
+   "w": 32,
+   "h": 28,
+   "ax": 16,
+   "ay": 20,
+   "fp": 1,
+   "role": "block"
+  },
+  "battlement_c": {
+   "x": 221,
+   "y": 121,
+   "w": 32,
+   "h": 29,
+   "ax": 16,
+   "ay": 21,
+   "fp": 1,
+   "role": "block"
+  },
+  "battlement_d": {
+   "x": 188,
+   "y": 121,
+   "w": 32,
+   "h": 30,
+   "ax": 16,
+   "ay": 22,
+   "fp": 1,
+   "role": "block"
+  },
+  "battlement_e": {
+   "x": 0,
+   "y": 153,
+   "w": 32,
+   "h": 29,
+   "ax": 16,
+   "ay": 21,
+   "fp": 1,
+   "role": "block"
+  },
+  "castle_column_a": {
+   "x": 93,
+   "y": 33,
+   "w": 16,
+   "h": 76,
+   "ax": 7,
+   "ay": 68,
+   "fp": 1,
+   "role": "small"
+  },
+  "castle_column_b": {
+   "x": 140,
+   "y": 33,
+   "w": 16,
+   "h": 75,
+   "ax": 8,
+   "ay": 67,
+   "fp": 1,
+   "role": "small"
+  },
+  "torch_stand_a": {
+   "x": 110,
+   "y": 33,
+   "w": 14,
+   "h": 76,
+   "ax": 6,
+   "ay": 68,
+   "fp": 1,
+   "role": "small"
+  },
+  "torch_stand_b": {
+   "x": 125,
+   "y": 33,
+   "w": 14,
+   "h": 76,
+   "ax": 6,
+   "ay": 68,
+   "fp": 1,
+   "role": "small"
+  },
+  "castle_candelabra_a": {
+   "x": 157,
+   "y": 33,
+   "w": 21,
+   "h": 61,
+   "ax": 10,
+   "ay": 53,
+   "fp": 1,
+   "role": "small"
+  },
+  "castle_candelabra_b": {
+   "x": 212,
+   "y": 33,
+   "w": 20,
+   "h": 53,
+   "ax": 10,
+   "ay": 45,
+   "fp": 1,
+   "role": "small"
+  },
+  "gothic_statue": {
+   "x": 179,
+   "y": 33,
+   "w": 32,
+   "h": 58,
+   "ax": 15,
+   "ay": 50,
+   "fp": 1,
+   "role": "small"
+  },
+  "dark_throne": {
+   "x": 0,
+   "y": 33,
+   "w": 44,
+   "h": 87,
+   "ax": 22,
+   "ay": 79,
+   "fp": 2,
+   "role": "medium"
+  },
+  "banner_a": {
+   "x": 45,
+   "y": 33,
+   "w": 24,
+   "h": 83,
+   "ax": 7,
+   "ay": 75,
+   "fp": 1,
+   "role": "small"
+  },
+  "banner_b": {
+   "x": 70,
+   "y": 33,
+   "w": 22,
+   "h": 83,
+   "ax": 10,
+   "ay": 75,
+   "fp": 1,
+   "role": "small"
+  },
+  "coffin_a": {
+   "x": 0,
+   "y": 121,
+   "w": 40,
+   "h": 31,
+   "ax": 11,
+   "ay": 23,
+   "fp": 1,
+   "role": "small"
+  },
+  "coffin_b": {
+   "x": 74,
+   "y": 121,
+   "w": 40,
+   "h": 30,
+   "ax": 28,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  },
+  "castle_rubble_a": {
+   "x": 99,
+   "y": 153,
+   "w": 32,
+   "h": 24,
+   "ax": 18,
+   "ay": 16,
+   "fp": 1,
+   "role": "small"
+  },
+  "castle_rubble_b": {
+   "x": 115,
+   "y": 121,
+   "w": 39,
+   "h": 30,
+   "ax": 17,
+   "ay": 22,
+   "fp": 1,
+   "role": "small"
+  }
+ },
+ "floors": {},
+ "skipped": [
+  {
+   "src": "tiles 칸 9",
+   "why": "붉은 카펫이 낮은 벽 상자 안에 그려져 바닥으로 이으면 칸마다 벽이 생김(블록으로는 상자처럼 보임)"
+  },
+  {
+   "src": "tiles 칸 10",
+   "why": "붉은 카펫 상자(9와 같음)"
+  },
+  {
+   "src": "tiles 칸 11",
+   "why": "흙바닥이 낮은 벽 상자 안(바닥으로 못 이음)"
+  },
+  {
+   "src": "tiles 칸 12",
+   "why": "흙바닥 벽 상자(11과 같음)"
+  },
+  {
+   "src": "tiles 칸 13",
+   "why": "흙바닥 벽 상자(11과 같음)"
+  },
+  {
+   "src": "tiles 칸 15",
+   "why": "계단(맵에 높이 차가 없어 쓸 곳 없음)"
+  }
+ ]
+}

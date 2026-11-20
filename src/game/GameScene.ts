@@ -148,7 +148,7 @@ import { playBattle } from './adventureBattle';
 import { loadAdventureArt, loadMapBg } from '../art/adventureArt';
 import { adventureBattle, adventureMove, adventureReturn, adventureStart, type AdvResult } from '../net/adventure';
 import { confirmReturn, failText, showAdventureResult, weaponInfoCard, type AdventureWindow } from '../ui/adventure';
-import { advEntry, advMap, infernus, loadAdventureMaps, adventureMapsReady, monsterArt, monstersOf, type FieldMonster } from './adventureMaps';
+import { advEntry, advMap, decoArt, infernus, loadAdventureMaps, adventureMapsReady, monsterArt, monstersOf, type FieldMonster } from './adventureMaps';
 import { paintAdventureGround } from '../art/adventureGround';
 import { FIGHT_GAP_MS } from './adventureRules';
 import { BattleIntro, LEAVE_MS, swirlKind } from './battleIntro';
@@ -656,7 +656,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!this.textures.exists(key)) {
       const map = generateMap(id);
       // 농장도 길·둑·풀밭을 칠한 바닥이다(2026-11-16 농장 꾸밈, workGround.ts).
-      const canvas = MAPS[id].work ? paintWorkGround(map, id as WorkId) : id === 'farm' ? paintWorkGround(map, 'farm') : paintGround(map);
+      // 모험 맵은 그 지역 새 바닥 아틀라스로 땅 칸을 그린다(2026-11-20).
+      const deco = isAdventure(id) ? decoArt(id) : null;
+      const canvas = MAPS[id].work
+        ? paintWorkGround(map, id as WorkId)
+        : id === 'farm'
+          ? paintWorkGround(map, 'farm')
+          : paintGround(map, deco ? { image: deco.image, tiles: deco.meta.tiles } : undefined);
       // 모험 맵: 바닥 조각, 일곱 빛, 별, 보스 고리, 떠 있는 몬스터 그림자를 같은 바닥 그림에 한 번 그린다.
       const data = isAdventure(id) ? advMap(id) : undefined;
       if (data) paintAdventureGround(canvas, data, map, monstersOf(id));
@@ -679,6 +685,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 모험 맵의 Infernus 조각을 세운다. (x, y)가 맨 앞 칸이고, 그림 안 (ax, ay)를 그 칸 가운데에 맞춘다. */
   private showPieces(map: GameMap) {
+    this.showDecoPieces(map);
     const art = map.pieces.length ? this.infernusTexture() : null;
     if (!art) return;
     for (const { id, x, y } of map.pieces) {
@@ -688,6 +695,31 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.mapImages.push(image);
       // 막는 칸이 있는 조각은 내 캐릭터를 가리면 반투명해진다(나무와 같음). 떠 있는 섬(fp 0)은 허공 위라 넣지 않는다.
       if (f.fp > 0) this.covers.add([image]);
+    }
+  }
+
+  /**
+   * 모험 맵 새 꾸밈 조각(2026-11-20, 디자인 세션 adventure-deco.md). 지역 아틀라스를 텍스처 하나(deco-<지역>)로 올리고 조각마다 그림 하나를 세운다.
+   * 도트 그림이라 기본(NEAREST) 필터. 다른 지역 아틀라스 텍스처는 지운다(한 번에 하나, GPU 많아야 383KB). 움직이지 않아 매 프레임 일은 없고,
+   * 블록처럼 덩어리(BlockChunks)에 넣어 화면 밖 조각은 표시 목록에서 뺀다(얽힌 숲 미로 벽 369개). 막는 조각은 내 캐릭터를 가리면 반투명.
+   */
+  private showDecoPieces(map: GameMap) {
+    const art = isAdventure(this.mapId) ? decoArt(this.mapId) : null;
+    for (const key of this.textures.getTextureKeys()) {
+      if (key.startsWith('deco-') && key !== art?.key) this.textures.remove(key);
+    }
+    if (!art || !map.decoPieces.length) return;
+    if (!this.textures.exists(art.key)) {
+      const texture = this.textures.addImage(art.key, art.image)!;
+      for (const [id, f] of Object.entries(art.meta.props)) texture.add(id, 0, f.x, f.y, f.w, f.h);
+    }
+    for (const { id, x, y } of map.decoPieces) {
+      const f = art.meta.props[id];
+      const c = tileCenter(x, y);
+      const image = this.add.image(c.x, c.y, art.key, id).setOrigin(f.ax / f.w, f.ay / f.h).setDepth(depthOf(x, y));
+      this.mapImages.push(image);
+      if (f.fp > 0) this.covers.add([image]);
+      this.blockChunks.add(image, x, y);
     }
   }
 
@@ -1813,8 +1845,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.advBusy) return;
     this.advBusy = true;
     this.clearRoute();
-    // 새 지역 맵이면 그 몬스터 그림(두 번째 그림, 처음 한 번)을 서버 옮기기와 함께 받는다.
-    const [view] = await Promise.all([adventureMove(to), loadAdventureMaps(to).catch(() => null)]);
+    // 그 맵의 바닥·꾸밈 아틀라스와 새 지역 몬스터 그림을 먼저 받는다(2026-11-20). 못 읽으면 서버 판 맵을 옮기지 않는다
+    // (아틀라스가 있어야 미로 벽 같은 막는 칸을 셀 수 있음).
+    const ready = await loadAdventureMaps(to)
+      .then(() => adventureMapsReady(to))
+      .catch(() => false);
+    if (!ready) {
+      this.advBusy = false;
+      this.hud.toast('갈 수 없습니다', '모험 맵을 읽지 못했습니다. 잠시 후 다시 해 주세요.');
+      return;
+    }
+    const view = await adventureMove(to);
     this.advBusy = false;
     if (typeof view === 'string') {
       this.hud.toast('갈 수 없습니다', failText(view));
@@ -1846,8 +1887,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     const data = advMap(id);
-    // 맵 자료를 못 읽었으면(새로고침 때 읽기 실패) 시작마을로 보낸다. 판은 서버에 남아 다시 들어가면 이어 한다.
-    if (!data) {
+    // 맵 자료나 그 맵 아틀라스·몬스터 그림을 못 읽었으면(새로고침 때 읽기 실패) 시작마을로 보낸다. 판은 서버에 남아 다시 들어가면 이어 한다.
+    if (!data || !adventureMapsReady(id)) {
       this.travel(DEFAULT_MAP);
       return;
     }
