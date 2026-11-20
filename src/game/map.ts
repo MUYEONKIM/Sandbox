@@ -4,7 +4,7 @@ import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, isAdventure, isDungeon, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
 import { layoutDungeon } from './dungeon';
-import { advMap, infernus, decoArt } from './adventureMaps';
+import { advMap, advSize, infernus, decoArt } from './adventureMaps';
 import { FARM_ROAD_TILES, isPlot } from './farm';
 import {
   ANNEX,
@@ -168,8 +168,9 @@ function digPond(terrain: Uint8Array): Tile[] {
 /** 건물 층의 바닥 앞쪽에 남기는 빈칸 수 */
 const FRONT_GAP = 3;
 
-/** 맵 한 변의 칸 수. 건물 층은 바닥에 맞추고(4층은 바닥 밖 숨은 방까지), 나머지 맵은 기본 크기다. */
+/** 맵 한 변의 칸 수. 건물 층은 바닥에 맞추고(4층은 바닥 밖 숨은 방까지), 모험 맵은 맵 자료 size(v5 64·46), 나머지 맵은 기본 크기다. */
 export function mapSize(id: MapId) {
+  if (isAdventure(id)) return advSize(id);
   if (!isTower(id)) return MAP_SIZE;
   const [, , x1, y1] = FLOORS[id].area;
   const hideout = id === HIDEOUT.map ? Math.max(HIDEOUT.area[2], HIDEOUT.area[3]) + 1 : 0;

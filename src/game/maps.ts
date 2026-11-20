@@ -2,7 +2,7 @@ import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
 import { GAMES, isGame, type GameId } from './casino';
 import { COUNTER_INFO, FLOORS, isTower, PANEL_INFO, type TowerId } from './tower';
-import { advEntry, advMap, advArrival } from './adventureMaps';
+import { advEntry, advMap, advArrival, type AdvPortalSpot } from './adventureMaps';
 
 const END = MAP_SIZE - 1;
 
@@ -41,32 +41,70 @@ export type AdventureMapId =
   | 'adv_gate'
   | 'adv_1a'
   | 'adv_1b'
+  | 'adv_1r'
   | 'adv_1c'
   | 'adv_2a'
+  | 'adv_2l'
+  | 'adv_2r'
   | 'adv_2b'
+  | 'adv_3a'
+  | 'adv_3l'
+  | 'adv_3r'
   | 'adv_3'
+  | 'adv_4a'
+  | 'adv_4l'
+  | 'adv_4r'
   | 'adv_4'
+  | 'adv_5a'
+  | 'adv_5l'
+  | 'adv_5r'
   | 'adv_5'
   | 'adv_6a'
+  | 'adv_6l'
+  | 'adv_6r'
   | 'adv_6b'
+  | 'adv_7a'
+  | 'adv_7l'
+  | 'adv_7r'
   | 'adv_7'
+  | 'adv_8a'
+  | 'adv_8l'
+  | 'adv_8r'
   | 'adv_8'
   | 'adv_9a'
+  | 'adv_9l'
+  | 'adv_9r'
   | 'adv_9b'
   | 'adv_10a'
+  | 'adv_10l'
+  | 'adv_10r'
   | 'adv_10b'
   | 'adv_11a'
+  | 'adv_11l'
+  | 'adv_11r'
   | 'adv_11b'
   | 'adv_12a'
+  | 'adv_12l'
+  | 'adv_12r'
   | 'adv_12b'
   | 'adv_13a'
+  | 'adv_13l'
+  | 'adv_13r'
   | 'adv_13b'
   | 'adv_14a'
+  | 'adv_14l'
+  | 'adv_14r'
   | 'adv_14b';
 export const ADVENTURE_GATE_MAP: AdventureMapId = 'adv_gate';
 export const ADVENTURE_MAPS: readonly AdventureMapId[] = [
-  'adv_gate', 'adv_1a', 'adv_1b', 'adv_1c', 'adv_2a', 'adv_2b', 'adv_3', 'adv_4', 'adv_5', 'adv_6a', 'adv_6b', 'adv_7', 'adv_8',
-  'adv_9a', 'adv_9b', 'adv_10a', 'adv_10b', 'adv_11a', 'adv_11b', 'adv_12a', 'adv_12b', 'adv_13a', 'adv_13b', 'adv_14a', 'adv_14b',
+  'adv_gate', 'adv_1a', 'adv_1b', 'adv_1r', 'adv_1c', 'adv_2a', 'adv_2l', 'adv_2r',
+  'adv_2b', 'adv_3a', 'adv_3l', 'adv_3r', 'adv_3', 'adv_4a', 'adv_4l', 'adv_4r',
+  'adv_4', 'adv_5a', 'adv_5l', 'adv_5r', 'adv_5', 'adv_6a', 'adv_6l', 'adv_6r',
+  'adv_6b', 'adv_7a', 'adv_7l', 'adv_7r', 'adv_7', 'adv_8a', 'adv_8l', 'adv_8r',
+  'adv_8', 'adv_9a', 'adv_9l', 'adv_9r', 'adv_9b', 'adv_10a', 'adv_10l', 'adv_10r',
+  'adv_10b', 'adv_11a', 'adv_11l', 'adv_11r', 'adv_11b', 'adv_12a', 'adv_12l', 'adv_12r',
+  'adv_12b', 'adv_13a', 'adv_13l', 'adv_13r', 'adv_13b', 'adv_14a', 'adv_14l', 'adv_14r',
+  'adv_14b',
 ];
 export type MapId = 'plains' | 'snow' | 'farm' | 'forest' | TowerId | WorkId | DungeonId | AdventureMapId;
 
@@ -335,32 +373,65 @@ export const MAPS: Record<MapId, MapInfo> = {
   },
   // 모험 맵(2026-11-18). 모양, 바닥, 꾸밈, 포탈 자리는 디자인 세션 자료(adv-maps.json)를 읽는다(map.ts generateMap).
   // 나가는 포탈은 없다(마을로는 귀환과 BP 0뿐, 기획 3장). 공격은 서버 hit_player도 막는다. accent는 입구 맵 지역 포탈 색(디자인 세션 시안).
+  // v5(2026-11-21, 디자인 adventure-maps-v5.md): 지역마다 맵 넷(들머리, 왼길, 오른길, 보스 마당). 바탕은 맵 자료 background, 색은 그 지역 지금 색(에이전트가 정함).
+  // 이름은 장소 분위기에 맞춘 이름(2026-11-21 사용자 "맵이름도 분위기에 걸맞게 바꿔줘", 이름은 에이전트가 정함). 맵 자료 name('지역 + 번호')은 화면에 쓰지 않는다.
   adv_gate: adventureInfo('모험 입구', 0x8a8f9e, 0xffffff, '#161a24'),
-  adv_1a: adventureInfo('평원 1', 0x86b048, 0x7fd36a, '#20301c'),
-  adv_1b: adventureInfo('평원 2', 0x86b048, 0x7fd36a, '#20301c'),
-  adv_1c: adventureInfo('평원 3', 0x86b048, 0x7fd36a, '#20301c'),
-  adv_2a: { ...adventureInfo('지옥 1', 0x5a2418, 0xff4a2a, '#1a0508'), mood: { color: 0x1a0207, alpha: 0.5, background: '#1a0508' } },
-  adv_2b: { ...adventureInfo('지옥 2', 0x5a2418, 0xff4a2a, '#1a0508'), mood: { color: 0x1a0207, alpha: 0.5, background: '#1a0508' } },
-  adv_3: adventureInfo('얽힌 숲', 0x2f5a2a, 0x2f8a3a, '#0e1a10'),
-  adv_4: adventureInfo('벼랑길', 0x6a6a72, 0x9a9aa6, '#0c0f16'),
-  adv_5: adventureInfo('일곱 빛 들판', 0x8a8a96, 0xffffff, '#14141c'),
-  adv_6a: adventureInfo('구름 정원 1', 0x8fd0ea, 0x8fd0ff, '#86bfe6'),
-  adv_6b: adventureInfo('구름 정원 2', 0x8fd0ea, 0x8fd0ff, '#86bfe6'),
-  adv_7: adventureInfo('별 하늘', 0x3a4a8a, 0x6a5cff, '#0a0f2c'),
-  adv_8: adventureInfo('그늘 동굴', 0x3a2a4a, 0x7a3aa8, '#060509'),
-  // 새 지역 여섯(2026-11-19). accent는 디자인 확인 도구(view.js PORTAL_COLOR 9~14)의 포탈 색, 바탕은 맵 자료 background(에이전트가 정함: color는 accent를 어둡게).
-  adv_9a: adventureInfo('심연 골짜기 1', 0x1f5a5a, 0x2fc8c0, '#04101a'),
-  adv_9b: adventureInfo('심연 골짜기 2', 0x1f5a5a, 0x2fc8c0, '#04101a'),
-  adv_10a: adventureInfo('유령 늪 1', 0x3a6a30, 0x6fbf5a, '#0b1610'),
-  adv_10b: adventureInfo('유령 늪 2', 0x3a6a30, 0x6fbf5a, '#08120a'),
-  adv_11a: adventureInfo('뼈 사막 1', 0x8a7a50, 0xe8d29a, '#1f1a10'),
-  adv_11b: adventureInfo('뼈 사막 2', 0x8a7a50, 0xe8d29a, '#14121c'),
-  adv_12a: adventureInfo('저주받은 성 1', 0x4a3a6a, 0x9a6ad8, '#100d18'),
-  adv_12b: adventureInfo('저주받은 성 2', 0x4a3a6a, 0x9a6ad8, '#0e0b16'),
-  adv_13a: adventureInfo('용의 둥지 1', 0x2a3a7a, 0x5a7aff, '#0a1422'),
-  adv_13b: adventureInfo('용의 둥지 2', 0x2a3a7a, 0x5a7aff, '#0a0812'),
-  adv_14a: adventureInfo('화산 폭풍 1', 0x6a2a10, 0xff7a1a, '#1a0603'),
-  adv_14b: adventureInfo('화산 폭풍 2', 0x6a2a10, 0xff7a1a, '#1a0603'),
+  adv_1a: adventureInfo('어스름 들판', 0x86b048, 0x7fd36a, '#20301c'),
+  adv_1b: adventureInfo('덤불 샛길', 0x86b048, 0x7fd36a, '#20301c'),
+  adv_1r: adventureInfo('금빛 풀길', 0x86b048, 0x7fd36a, '#20301c'),
+  adv_1c: adventureInfo('괴수의 언덕', 0x86b048, 0x7fd36a, '#20301c'),
+  adv_2a: { ...adventureInfo('불길 어귀', 0x5a2418, 0xff4a2a, '#1a0508'), mood: { color: 0x1a0207, alpha: 0.5, background: '#1a0508' } },
+  adv_2l: { ...adventureInfo('용암 굴길', 0x5a2418, 0xff4a2a, '#1a0508'), mood: { color: 0x1a0207, alpha: 0.5, background: '#1a0508' } },
+  adv_2r: { ...adventureInfo('잿불 골짜기', 0x5a2418, 0xff4a2a, '#1a0508'), mood: { color: 0x1a0207, alpha: 0.5, background: '#1a0508' } },
+  adv_2b: { ...adventureInfo('불꽃 제단', 0x5a2418, 0xff4a2a, '#1a0508'), mood: { color: 0x1a0207, alpha: 0.5, background: '#1a0508' } },
+  adv_3a: adventureInfo('뿌리 어귀', 0x2f5a2a, 0x2f8a3a, '#0e1a10'),
+  adv_3l: adventureInfo('빈터 샛길', 0x2f5a2a, 0x2f8a3a, '#0e1a10'),
+  adv_3r: adventureInfo('가시 덤불길', 0x2f5a2a, 0x2f8a3a, '#0e1a10'),
+  adv_3: adventureInfo('고목의 뜰', 0x2f5a2a, 0x2f8a3a, '#0e1a10'),
+  adv_4a: adventureInfo('벼랑 어귀', 0x6a6a72, 0x9a9aa6, '#0c0f16'),
+  adv_4l: adventureInfo('바위 난간길', 0x6a6a72, 0x9a9aa6, '#0c0f16'),
+  adv_4r: adventureInfo('바람 벼랑길', 0x6a6a72, 0x9a9aa6, '#0c0f16'),
+  adv_4: adventureInfo('낭떠러지 끝', 0x6a6a72, 0x9a9aa6, '#0c0f16'),
+  adv_5a: adventureInfo('무지개 어귀', 0x8a8a96, 0xffffff, '#14141c'),
+  adv_5l: adventureInfo('빛살 들판', 0x8a8a96, 0xffffff, '#14141c'),
+  adv_5r: adventureInfo('빛무리 들판', 0x8a8a96, 0xffffff, '#14141c'),
+  adv_5: adventureInfo('일곱 빛 제단', 0x8a8a96, 0xffffff, '#14141c'),
+  adv_6a: adventureInfo('구름 계단', 0x8fd0ea, 0x8fd0ff, '#86bfe6'),
+  adv_6l: adventureInfo('떠 있는 섬', 0x8fd0ea, 0x8fd0ff, '#86bfe6'),
+  adv_6r: adventureInfo('구름 다리', 0x8fd0ea, 0x8fd0ff, '#86bfe6'),
+  adv_6b: adventureInfo('하늘 정원', 0x8fd0ea, 0x8fd0ff, '#86bfe6'),
+  adv_7a: adventureInfo('별빛 어귀', 0x3a4a8a, 0x6a5cff, '#0a0f2c'),
+  adv_7l: adventureInfo('은하 길', 0x3a4a8a, 0x6a5cff, '#0a0f2c'),
+  adv_7r: adventureInfo('별똥 언덕', 0x3a4a8a, 0x6a5cff, '#0a0f2c'),
+  adv_7: adventureInfo('두 별의 뜰', 0x3a4a8a, 0x6a5cff, '#0a0f2c'),
+  adv_8a: adventureInfo('어둠 굴 입구', 0x3a2a4a, 0x7a3aa8, '#060509'),
+  adv_8l: adventureInfo('보랏빛 굴길', 0x3a2a4a, 0x7a3aa8, '#060509'),
+  adv_8r: adventureInfo('메아리 굴길', 0x3a2a4a, 0x7a3aa8, '#060509'),
+  adv_8: adventureInfo('가장 깊은 그늘', 0x3a2a4a, 0x7a3aa8, '#060509'),
+  adv_9a: adventureInfo('심연 가장자리', 0x1f5a5a, 0x2fc8c0, '#04101a'),
+  adv_9l: adventureInfo('물안개 동굴', 0x1f5a5a, 0x2fc8c0, '#04101a'),
+  adv_9r: adventureInfo('가라앉은 폐허', 0x1f5a5a, 0x2fc8c0, '#04101a'),
+  adv_9b: adventureInfo('심연 밑바닥', 0x1f5a5a, 0x2fc8c0, '#04101a'),
+  adv_10a: adventureInfo('안개 늪 어귀', 0x3a6a30, 0x6fbf5a, '#0b1610'),
+  adv_10l: adventureInfo('외딴 섬길', 0x3a6a30, 0x6fbf5a, '#0b1610'),
+  adv_10r: adventureInfo('검은 웅덩이', 0x3a6a30, 0x6fbf5a, '#0b1610'),
+  adv_10b: adventureInfo('망령의 늪', 0x3a6a30, 0x6fbf5a, '#0b1610'),
+  adv_11a: adventureInfo('모래 언덕', 0x8a7a50, 0xe8d29a, '#1f1a10'),
+  adv_11l: adventureInfo('해골 구덩이', 0x8a7a50, 0xe8d29a, '#1f1a10'),
+  adv_11r: adventureInfo('모래 무덤', 0x8a7a50, 0xe8d29a, '#1f1a10'),
+  adv_11b: adventureInfo('백골 평원', 0x8a7a50, 0xe8d29a, '#1f1a10'),
+  adv_12a: adventureInfo('무너진 성문', 0x4a3a6a, 0x9a6ad8, '#100d18'),
+  adv_12l: adventureInfo('망루 회랑', 0x4a3a6a, 0x9a6ad8, '#100d18'),
+  adv_12r: adventureInfo('버려진 예배당', 0x4a3a6a, 0x9a6ad8, '#100d18'),
+  adv_12b: adventureInfo('저주받은 왕좌', 0x4a3a6a, 0x9a6ad8, '#100d18'),
+  adv_13a: adventureInfo('얼음 계곡', 0x2a3a7a, 0x5a7aff, '#0a1422'),
+  adv_13l: adventureInfo('서리 동굴', 0x2a3a7a, 0x5a7aff, '#0a1422'),
+  adv_13r: adventureInfo('용의 굴', 0x2a3a7a, 0x5a7aff, '#0a1422'),
+  adv_13b: adventureInfo('용의 둥지', 0x2a3a7a, 0x5a7aff, '#0a1422'),
+  adv_14a: adventureInfo('잿빛 분화구', 0x6a2a10, 0xff7a1a, '#1a0603'),
+  adv_14l: adventureInfo('검은 바위길', 0x6a2a10, 0xff7a1a, '#1a0603'),
+  adv_14r: adventureInfo('불벼락 능선', 0x6a2a10, 0xff7a1a, '#1a0603'),
+  adv_14b: adventureInfo('폭풍의 화구', 0x6a2a10, 0xff7a1a, '#1a0603'),
 };
 
 function adventureInfo(name: string, color: Color, accent: Color, background: string): MapInfo {
@@ -569,7 +640,7 @@ export interface Portal {
    * 입구 맵 포탈('zone', 평원 1로 하나), 같은 지역 다음 맵('next_map')·앞 맵('prev_map'), 지역 첫 맵의 앞 지역 포탈('prev_zone')은 늘 열려 있다.
    * 평원 1의 높은 지역 포탈('jump', 화산 폭풍 1로, 한쪽으로만)은 이번 판에 그 칸의 수문장을 이겼을 때 선다(2026-11-19 사용자). 'gate'(화산 폭풍 1 → 입구)는 2026-11-19 뺐다.
    */
-  adventure?: 'zone' | 'next' | 'next_map' | 'prev_map' | 'prev_zone' | 'jump' | 'gate';
+  adventure?: 'zone' | 'link' | 'next' | 'next_map' | 'prev_map' | 'prev_zone' | 'jump' | 'gate';
   /** 이 포탈 근처에서 플레이어가 서는 칸 */
   landing: { x: number; y: number };
 }
@@ -583,15 +654,22 @@ function portalAt(corner: Corner, to: MapId): Portal {
  * 모험 맵 포탈 자리 전부(맵 자료). 보일지는 GameScene이 서버 값으로 고른다(열린 지역, 잡은 보스).
  * 모험 맵에서는 나와서 서는 칸이 늘 그 맵 입구라 landing은 포탈 칸 그대로 둔다.
  */
+/**
+ * v5 포탈(2026-11-21, 디자인 adventure-maps-v5.md 6절)의 화면 종류: link는 need로 나눈다. boss는 예전 '다음 지역'(next, 이번 판 지역 보스를 잡으면 보임, 빨강),
+ * gate는 예전 '높은 지역'(jump, 이번 판 수문장을 이기면 보임), 비우면 늘 보이는 'link'(가는 맵 색). 서버 adventure_move도 같은 need를 본다.
+ */
+function portalKind(p: AdvPortalSpot): NonNullable<Portal['adventure']> {
+  if (p.kind !== 'link') return p.kind;
+  return p.need === 'boss' ? 'next' : p.need === 'gate' ? 'jump' : 'link';
+}
+
 function adventurePortals(id: AdventureMapId): Portal[] {
   return (advMap(id)?.portals ?? []).flatMap((p): Portal[] => {
     if (!isMapId(p.to)) return [];
-    // 이름표: 다음 지역 "→ 심연 골짜기 1 가는 길", 높은 지역 포탈 "→ 화산 폭풍"(지역 이름만, 디자인 adventure-maps-v4.md)
-    const label =
-      p.kind === 'next' ? { color: NEXT_PORTAL_COLOR, label: `${MAPS[p.to].name} 가는 길` }
-      : p.kind === 'jump' ? { label: advMap(p.to)?.zoneName ?? MAPS[p.to].name }
-      : {};
-    return [{ x: p.x, y: p.y, to: p.to, landing: { x: p.x, y: p.y }, adventure: p.kind, ...label }];
+    const kind = portalKind(p);
+    // 글씨는 '→ 가는 맵 이름'만(v5, 디자인 확인 도구 view.js와 같음). 다음 지역 포탈만 빨강.
+    const color = kind === 'next' ? { color: NEXT_PORTAL_COLOR } : {};
+    return [{ x: p.x, y: p.y, to: p.to, landing: { x: p.x, y: p.y }, adventure: kind, ...color }];
   });
 }
 

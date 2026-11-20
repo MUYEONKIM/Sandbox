@@ -109,6 +109,8 @@ export class AdventureField {
   /** 칸 번호 → 그 칸에 선 몬스터 */
   private readonly onTile = new Map<number, number>();
   private readonly resets = new Set<number>();
+  /** 맵 한 변 칸 수(v5 맵 자료 size, 64·46). 칸 번호 = x + y × size */
+  private readonly size: number;
   private readonly timer: Phaser.Time.TimerEvent;
   private readonly offChange: () => void;
   private near = -1;
@@ -150,7 +152,9 @@ export class AdventureField {
     this.sheet.hidden = true;
     this.gear = element('adv-gearwin', this.sheet);
     this.panel = element('adv-stat-panel', this.sheet);
-    for (const r of map.data.resets) this.resets.add(r.x + r.y * MAP_SIZE);
+    this.size = map.data.size ?? MAP_SIZE;
+    // 되돌림 칸(예전 얽힌 숲 미로)은 v5 자료에 없다(2026-11-21). 자료에 생기면 다시 듣는다.
+    for (const r of map.data.resets ?? []) this.resets.add(r.x + r.y * this.size);
     if (map.zone) this.placeMonsters();
     this.timer = scene.time.addEvent({ delay: BOB_TICK_MS, loop: true, callback: () => this.bobTick() });
     this.offChange = adventure.onChange(() => {
@@ -202,14 +206,14 @@ export class AdventureField {
       const tag = scene.add.image(c.x, baseY - frame.h * k - 2, '__DEFAULT').setOrigin(0.5, 1).setScale(1 / TAG_RES).setDepth(this.labelDepth);
       const index = this.floats.length;
       this.floats.push({ m, frame, image, tag, baseY, bob: role.bob, phase: i * BOB_PHASE, shownBob: 0, shown: true, gone: false, tagKey: '', cx: c.x, top: baseY - frame.h * k - 30, bottom: c.y + 8 });
-      this.onTile.set(m.x + m.y * MAP_SIZE, index);
+      this.onTile.set(m.x + m.y * this.size, index);
       // 둘레 8칸: 이름 줄을 보이는 칸. 둘이 겹치면 더 가까운 몬스터(몬스터끼리 5칸 넘게 떨어져 있어 거의 없음).
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           const x = m.x + dx;
           const y = m.y + dy;
-          if (x < 0 || y < 0 || x >= MAP_SIZE || y >= MAP_SIZE) continue;
-          const key = x + y * MAP_SIZE;
+          if (x < 0 || y < 0 || x >= this.size || y >= this.size) continue;
+          const key = x + y * this.size;
           const d = Math.abs(dx) + Math.abs(dy);
           if (best.has(key) && best.get(key)! <= d) continue;
           best.set(key, d);
@@ -244,7 +248,7 @@ export class AdventureField {
   /** 들어온 칸에서 시작한다(맵에 들어올 때, 되돌림 칸으로 옮겼을 때). */
   enter(tile: Tile) {
     this.here = { ...tile };
-    this.setNear(this.nearAt.get(tile.x + tile.y * MAP_SIZE) ?? -1);
+    this.setNear(this.nearAt.get(tile.x + tile.y * this.size) ?? -1);
     this.paint();
     this.bobTick();
   }
@@ -253,7 +257,7 @@ export class AdventureField {
   step(tile: Tile) {
     if (this.here && this.here.x === tile.x && this.here.y === tile.y) return;
     this.here = { ...tile };
-    const key = tile.x + tile.y * MAP_SIZE;
+    const key = tile.x + tile.y * this.size;
     if (this.resets.has(key)) {
       this.hooks.reset();
       return;
@@ -264,7 +268,7 @@ export class AdventureField {
 
   /** 이 칸에 선 몬스터 */
   monsterAt(tile: Tile): FieldMonster | null {
-    const f = this.floats[this.onTile.get(tile.x + tile.y * MAP_SIZE) ?? -1];
+    const f = this.floats[this.onTile.get(tile.x + tile.y * this.size) ?? -1];
     return f && !f.gone ? f.m : null;
   }
 

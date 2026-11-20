@@ -230,6 +230,11 @@ const DEPTH_INTERIOR = 0.5;
 const DEPTH_DECAL = 0.6;
 /** 시간대 색과 전쟁터 어둠은 모든 월드 그림 위에 덮는다(이름표, 창 같은 화면 UI는 그 위의 HTML이라 덮이지 않는다). */
 const DEPTH_DAYLIGHT = 50_000;
+/**
+ * 모험 맵 바닥 그림은 최근 들어간 셋만 남긴다(2026-11-21 맵 v5 56장, 에이전트가 정함). 64칸 한 장이 GPU 8.7MB에 CPU도 같은 만큼이라,
+ * 들어간 맵을 모두 남기면 56장에 수백 MB가 된다. 처음 그리기는 화면이 어두운 맵 전환 때 약 0.13초(이 PC), 남아 있으면 바로 쓴다.
+ */
+const ADV_GROUND_KEEP = 3;
 const DEPTH_DARKNESS = 50_001;
 /** 시간대 색을 맵 바깥 여백까지 넉넉히 덮는 폭 (월드 픽셀) */
 const DAYLIGHT_PAD = 2000;
@@ -335,6 +340,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private mapId: MapId;
   /** 모험 필드에 있을 때의 조우 게이지·띠 표시(2026-11-17) */
   private advField: AdventureField | null = null;
+  /** 남겨 둔 모험 바닥 그림 키(최근 것이 앞, keepAdventureGround) */
+  private advGrounds: string[] = [];
   /** 모험 전투를 서버에 묻거나 전투 화면을 보이는 중 */
   private advBusy = false;
   /** 마지막으로 모험 전투를 서버에 물은 시각(performance.now). 서버 2.5초 간격을 지키려고 */
@@ -653,6 +660,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 모험 맵 자료를 아직 못 읽었으면(읽기 실패) 빈 바닥을 따로 둔다. 읽은 뒤에 들어가면 제대로 그린다.
     // 그 맵 몬스터 그림(새 지역의 두 번째 그림)을 못 읽었을 때도 따로 둔다(몬스터 그림자가 빠진 바닥).
     const key = isAdventure(id) && !adventureMapsReady(id) ? `ground-${id}-empty` : `ground-${id}`;
+    if (isAdventure(id)) this.keepAdventureGround(key);
     if (!this.textures.exists(key)) {
       const map = generateMap(id);
       // 농장도 길·둑·풀밭을 칠한 바닥이다(2026-11-16 농장 꾸밈, workGround.ts).
@@ -669,6 +677,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.textures.addCanvas(key, canvas);
     }
     return key;
+  }
+
+  /** 모험 바닥 그림: 이번 것을 맨 앞에 두고 ADV_GROUND_KEEP을 넘는 오래된 것은 지운다(지금 바닥 그림이 쓰는 앞 맵 것은 둘째라 남음). */
+  private keepAdventureGround(key: string) {
+    this.advGrounds = [key, ...this.advGrounds.filter((k) => k !== key)];
+    for (const old of this.advGrounds.splice(ADV_GROUND_KEEP)) if (this.textures.exists(old)) this.textures.remove(old);
   }
 
   /** Infernus 조각 묶음 그림(2026-11-18). 고해상도 그림을 반으로 줄인 것이라 이 텍스처만 부드럽게 늘린다(PM 제안). */

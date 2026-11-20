@@ -19,6 +19,9 @@ import type { Tile } from './world';
  *   맵 자료 deco(아틀라스 이름), decoFloor(칸마다 tiles 번호), decoProps(서 있는 조각), decoFloors(바닥 조각). 그 맵에 들어가기 전에만 읽고,
  *   한 번에 하나만 둔다(다른 지역으로 가면 앞 것은 버림, GameScene이 Phaser 텍스처도 지움).
  * - 맵 자료 version 4(2026-11-19, 디자인 노트 adventure-maps-v4.md): 맵 스물다섯 장, 지역 열넷, 맵마다 전투 배경 battleBg, 높은 지역 포탈 jump·gate.
+ * - 맵 자료 version 5(2026-11-21, 디자인 노트 adventure-maps-v5.md, B안): 지역마다 맵 넷(들머리, 왼길, 오른길, 보스 마당) 56장 + 입구, 한 변 size(64·46).
+ *   포탈은 입구 맵 'zone' 말고 모두 'link' + need(null 늘, 'boss' 이번 판 지역 보스, 'gate' 이번 판 수문장, 서버 adventure_links와 같은 줄).
+ *   back·zoneBack·되돌림 칸은 없고 arrivals는 읽지 않는다(포탈 at에 들어 있음). 일곱 빛 lights는 일곱 빛 들판 넷, 별 stars는 별 하늘 넷.
  * 서버 몬스터 표(adventure_spots)와 맵 → 지역 표(adventure_maps)는 monster-spots.json(version 2)과 이 자료로 만든다
  * (공유 노트 code-adventure-tools/monster-rows.cjs). 맵·몬스터를 바꾸면 SQL 행도 다시 만든다.
  * 모험 창에서 들어가거나 모험 맵에서 새로고침할 때 한 번 읽는다(게임 시작 때는 모험 맵에 있을 때만). 맵을 만들기 전에 읽혀 있어야 한다.
@@ -37,13 +40,16 @@ export interface AdvBossSpot extends AdvSpot {
   side?: string;
 }
 export interface AdvPortalSpot extends Tile {
-  /** 입구 맵 포탈(평원 1로 하나), 다음 지역(이번 판에 이 지역 보스를 잡으면 열림), 같은 지역 다음 맵, 앞 맵, 앞 지역(늘 열림),
-   * 평원 1의 높은 지역 포탈(화산 폭풍 1로, 늘 열림), 화산 폭풍 1의 입구로 가는 포탈(늘 열림) */
-  kind: 'zone' | 'next' | 'next_map' | 'prev_map' | 'prev_zone' | 'jump' | 'gate';
+  /**
+   * v5(2026-11-21): 입구 맵의 'zone'(평원 1로 하나) 말고는 모두 'link'다. 열리는 조건은 need: null 늘, 'boss' 이번 판에 이 맵 지역 보스를 잡음,
+   * 'gate' 이번 판에 이 맵 수문장을 이김(서버 adventure_links와 같음). 예전 v4 종류(next, next_map, prev_map, prev_zone, jump, gate)는 자료에 없다.
+   */
+  kind: 'zone' | 'link' | 'next' | 'next_map' | 'prev_map' | 'prev_zone' | 'jump' | 'gate';
+  need?: 'boss' | 'gate' | null;
   /** 입구 맵 지역 포탈의 지역 번호(1~8) */
   zone?: number;
   to: string;
-  /** 타고 가면 서는 칸(다음 맵·지역은 그 맵 입구, 앞 맵은 그 맵의 돌아오는 자리 back, 앞 지역은 그 지역 마지막 맵의 zoneBack) */
+  /** 타고 가면 서는 칸(상대 맵에서 돌아가는 포탈 옆, v5) */
   at: Tile;
   /** 'either': 보스 둘 가운데 하나만 잡아도 열린다(별 하늘) */
   opensBy?: 'either';
@@ -84,16 +90,18 @@ export interface AdvMapData {
   zoneName?: string;
   /** 이 맵 전투 배경 이름(public/sprites/adventure/adv-bg-<이름>.webp). 입구 맵은 없음 */
   battleBg?: string;
-  /** 지역 안 몇째 맵 / 몇 장 */
+  /** 지역 안 몇째 맵 / 몇 장(v5: 들머리 1, 왼길 2, 오른길 3, 보스 마당 4) */
   part?: number;
   parts?: number;
+  /** 한 변 칸 수(v5: 들머리·왼길·오른길 64, 보스 마당·입구 46). 없으면 MAP_SIZE */
+  size?: number;
   /** 앞 맵 포탈로 이 맵에 돌아올 때 서는 칸 */
   back?: Tile;
   /** 지역 마지막 맵: 다음 지역의 앞 지역 포탈로 돌아올 때 서는 칸(보스방 옆). 그 포탈의 at과 같다. */
   zoneBack?: Tile;
   monsters: AdvMonsterSpot[];
   background: string;
-  /** 46줄 × 46글자: '.' 땅, '~' 물, ' ' 빈 땅 */
+  /** size줄 × size글자: '.' 땅, '~' 물, ' ' 빈 땅 */
   rows: string[];
   /** 칸마다 tiles.png 번호(36진수 두 글자, '--'는 바닥 없음) */
   floor: string[];
@@ -111,7 +119,7 @@ export interface AdvMapData {
   stars?: { x: number; y: number; s: number; a: number }[];
   /** 새 바닥·꾸밈 아틀라스 이름(deco-<이름>.png/.json, 2026-11-20) */
   deco?: string;
-  /** 46줄, 칸마다 아틀라스 tiles 차례 번호(36진수 두 글자, '--'는 물·빈 땅) */
+  /** size줄, 칸마다 아틀라스 tiles 차례 번호(36진수 두 글자, '--'는 물·빈 땅) */
   decoFloor?: string[];
   /** 서 있는 조각(아틀라스 props[id]). (x, y)가 맨 앞 칸이고 fp × fp 칸을 막는다(fp 0은 막지 않음) */
   decoProps?: { id: string; x: number; y: number }[];
@@ -340,10 +348,16 @@ export function infernus() {
   return loaded;
 }
 
+/** 맵 한 변 칸 수(v5 맵 자료 size, 2026-11-21). 자료가 없으면 MAP_SIZE */
+export function advSize(id: string) {
+  return advMap(id)?.size ?? MAP_SIZE;
+}
+
 /** 입구 칸. 자료가 없으면 맵 가운데. */
 export function advEntry(id: string): Tile {
   const e = advMap(id)?.entry;
-  return e ? { x: e.x, y: e.y } : { x: Math.floor(MAP_SIZE / 2), y: Math.floor(MAP_SIZE / 2) };
+  const half = Math.floor(advSize(id) / 2);
+  return e ? { x: e.x, y: e.y } : { x: half, y: half };
 }
 
 /** from 맵에서 to 맵으로 가는 포탈의 도착 칸(앞 맵 포탈이면 to 맵의 돌아오는 자리). 없으면 undefined */
