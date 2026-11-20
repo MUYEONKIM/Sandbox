@@ -69,3 +69,8 @@
     font-size: 13px;
   }
 }
+
+/* 모험 맵에서는 마을 인벤토리를 쓰지 않는다(2026-11-21 사용자 "인벤토리는 모험에서 어차피 안쓰니깐 p 대신 i 로 통일한다"). 스텟 판은 위 HUD [스텟]으로 연다. */
+#hud.in-adventure .bag-button {
+  display: none;
+}

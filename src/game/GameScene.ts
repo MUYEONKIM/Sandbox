@@ -892,6 +892,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (isAdventure(id)) void this.startAdventureField(id);
     // 모험 맵에서는 이름표 아래 필드 HP 막대를 빼고(CSS), 정보 칸·내 이름표를 판 레벨로 바꾼다. 마을로 돌아오면 마을 것.
     document.getElementById('hud')?.classList.toggle('in-adventure', isAdventure(id));
+    // 마을 인벤토리는 모험에서 열지 않는다(I는 스텟 판, 휴대폰 [인벤토리] 버튼은 숨김): 열어 둔 채 들어오면 닫는다.
+    if (isAdventure(id)) this.hud.close();
     this.refreshRunLevel();
     if (id === DEFAULT_MAP) {
       for (const post of GUIDEPOSTS) {
@@ -2045,11 +2047,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
-  /** 모험 맵에서 P: 스텟 판을 열고 닫는다. 모험 맵이 아니면 false. */
+  /** 모험 맵(입구 맵 포함)인지. 그 맵에서는 I가 마을 인벤토리 대신 스텟 판과 장비창을 연다. */
+  get inAdventure() {
+    return isAdventure(this.mapId);
+  }
+
+  /** 모험 맵에서 I: 스텟 판과 장비창을 열고 닫는다(2026-11-21 P에서 I로). 모험 맵이 아니면 false. */
   adventureStatsKey() {
     if (!this.advField || anyModalOpen()) return false;
     this.advField.toggleStats();
     return true;
+  }
+
+  /** Esc: 모험 스텟 판과 장비창을 함께 닫는다(레벨 업 창은 제 키로 닫음). */
+  closeAdventureStats() {
+    this.advField?.closeStats();
   }
 
   /** 판 결과 화면. 모험 맵에서 끝난 판이면(BP 0, 귀환) [마을로]로 시작마을 모험하기 포탈 앞에 간다. */

@@ -2,8 +2,10 @@ import Phaser from 'phaser';
 import { MAP_SIZE } from '../config';
 import { depthOf, tileCenter } from '../iso';
 import type { AdvZone } from '../net/adventure';
+import { adventureArt, loadAdventureArt } from '../art/adventureArt';
 import { element } from '../ui/dom';
-import { equipBlock, statRows, type EquipUi } from '../ui/adventure';
+import { statRows } from '../ui/adventure';
+import { gearKey, gearWindow, type GearUi } from '../ui/adventureGear';
 import { bigOf, COUNT, countUp, type Counting } from '../ui/countUp';
 import { bigText, type Adventure } from './adventure';
 import { bpDots } from './adventureBattle';
@@ -17,9 +19,11 @@ import type { Tile } from './world';
  * 몬스터 칸은 막혀 있고(World.setMonsterTiles), 그 쪽으로 방향 키를 누르거나 몬스터를 누르면 싸운다(GameScene이 bump를 부름).
  * 머리 위 이름표 "Lv. 350"은 한 색이다(회색 이름표는 없앰, 2026-11-19, 경험치 줄어듦을 없애서(사용자 "레벨의 2배가 되더라도, 경험치 못얻거나, 아이템 못얻는건 없다. 무조건 얻는다")). 옆 칸에 서면 이름 줄이 더해진다.
  * 이길 확률과 하는 법 안내는 보이지 않는다(2026-11-18 사용자 "이길 확률 같은건 없애라… 플레이어가 게임하면서 자연스럽게 알아가진다").
- * 위 가운데 HUD: BP 점 20개, [스텟 (P)], [귀환](판이 없으면 [귀환]만) / (일곱 빛 들판) 선 구역의 빛. 판 레벨은 아래 정보 칸에 있다(Hud.setRun).
+ * 위 가운데 HUD: BP 점 20개, [스텟 (I)], [귀환](판이 없으면 [귀환]만) / (일곱 빛 들판) 선 구역의 빛. 판 레벨은 아래 정보 칸에 있다(Hud.setRun).
  * 얽힌 숲 되돌림 칸을 밟으면 hooks.reset.
  * 레벨이 오르면 결과 줄과 함께 스텟 판이 레벨 업 창으로 뜬다(openLevelUp). 떠 있는 동안 필드는 입력을 받지 않는다(GameScene canAct).
+ * I(HUD [스텟])는 스텟 판과 화면 가운데 장비창(ui/adventureGear.ts)을 함께 열고 닫는다(2026-11-21, 디자인 adventure-ui.md 23절). 둘은 .adv-sheet 하나에 담고,
+ * Esc 한 번에 둘 다 닫힌다(closeStats). 레벨 업 창은 스텟 판만 띄운다.
  *
  * 성능(기획 13장): 몬스터 그림과 이름표는 맵에 들어올 때 한 번 놓고, 그림자는 바닥 그림에 있다. 0.1초마다 화면 안 몬스터만 흔들림을 셈해
  * 정수 픽셀이 바뀔 때만 y를 바꾸고, 화면 밖 몬스터는 숨긴다(깊이는 그대로라 다시 정렬하지 않음). 이름표 그림은 글·색이 바뀐 것만 바꾼다.
@@ -95,6 +99,9 @@ export class AdventureField {
   private readonly hud: HTMLElement;
   private readonly row1: HTMLElement;
   private readonly lightRow: HTMLElement;
+  /** 스텟 판과 장비창을 담는 묶음(.adv-sheet). 휴대폰에서는 둘을 위아래로 이어 한 번에 스크롤한다. */
+  private readonly sheet: HTMLElement;
+  private readonly gear: HTMLElement;
   private readonly panel: HTMLElement;
   private readonly floats: Floating[] = [];
   /** 칸 번호 → 그 칸 둘레의 몬스터(이름 줄을 보일 몬스터, 가까운 쪽) */
@@ -118,8 +125,12 @@ export class AdventureField {
   private goldTimer = 0;
   private shownLight = '';
   private panelVersion = -1;
-  /** 스텟 판 맨 위 장착 칸의 화면 상태(목록 열림, 거르기, 고른 무기). 판을 다시 그려도 남긴다. */
-  private readonly equipUi: EquipUi = { open: false, filter: null, sel: null, scroll: 0 };
+  /** 장비창의 화면 상태(스텟 탭, 고른 무기). 창을 다시 그려도 남기고, 닫으면 처음으로 돌린다. */
+  private readonly gearUi: GearUi = { tab: null, sel: null };
+  /** 장비창을 그린 값(gearKey). 같으면 다시 그리지 않는다. */
+  private gearShown = '';
+  /** 잰 값(성능 확인용): 장비창을 통째로 그린 횟수와 시간(ms) */
+  readonly gearStats = { draws: 0, ms: 0 };
   /** 잰 값(성능 확인용): 흔들림 계산 횟수·시간·y를 바꾼 수·보인 몬스터 수 */
   readonly bobStats = { ticks: 0, ms: 0, moved: 0, visible: 0 };
 
@@ -135,15 +146,20 @@ export class AdventureField {
     this.row1 = element('adv-hud-row', this.hud);
     this.lightRow = element('adv-light', this.hud);
     this.lightRow.hidden = true;
-    this.panel = element('adv-stat-panel', root);
-    this.panel.hidden = true;
+    this.sheet = element('adv-sheet', root);
+    this.sheet.hidden = true;
+    this.gear = element('adv-gearwin', this.sheet);
+    this.panel = element('adv-stat-panel', this.sheet);
     for (const r of map.data.resets) this.resets.add(r.x + r.y * MAP_SIZE);
     if (map.zone) this.placeMonsters();
     this.timer = scene.time.addEvent({ delay: BOB_TICK_MS, loop: true, callback: () => this.bobTick() });
     this.offChange = adventure.onChange(() => {
       this.repaintTags();
       this.paint();
-      if (!this.panel.hidden) this.paintPanel();
+      if (!this.sheet.hidden) {
+        this.paintPanel();
+        this.paintGear();
+      }
     });
   }
 
@@ -281,20 +297,41 @@ export class AdventureField {
     return { x: f.cx, y: f.baseY - f.image.displayHeight / 2 };
   }
 
-  /** 스텟 판(P)을 열고 닫는다. 레벨 업 창으로 떠 있으면 P로는 닫지 않는다. */
+  /** 스텟 판과 장비창을 함께 열고 닫는다(I, HUD [스텟]). 레벨 업 창으로 떠 있으면 I로는 닫지 않는다. */
   toggleStats() {
     if (this.levelUp) return;
-    this.panel.hidden = !this.panel.hidden;
-    // 판을 닫으면 장착 무기 목록도 닫는다.
-    if (this.panel.hidden) Object.assign(this.equipUi, { open: false, sel: null, scroll: 0 });
-    if (!this.panel.hidden) {
-      this.panelVersion = -1;
-      this.paintPanel();
+    if (!this.sheet.hidden) {
+      this.closeStats();
+      return;
     }
+    this.sheet.hidden = false;
+    this.panelVersion = -1;
+    this.gearShown = '';
+    this.paintPanel();
+    this.paintGear();
+    if (!adventureArt) void loadAdventureArt().then(() => this.paintGear());
+  }
+
+  /**
+   * 스텟 판과 장비창을 함께 닫는다(I, HUD [스텟], Esc 한 번, 2026-11-21 사용자 "켜지면 esc로 창을 닫을 수 있도록 해라.").
+   * 레벨 업 창은 제 키(Enter·Esc)로 닫으므로 여기서는 닫지 않는다. 닫았으면 true.
+   */
+  closeStats() {
+    if (this.levelUp || this.sheet.hidden) return false;
+    this.sheet.hidden = true;
+    this.clearGear();
+    return true;
+  }
+
+  /** 장비창을 비우고 탭·고른 무기를 처음으로(다음에 열면 낀 무기의 스텟 탭) */
+  private clearGear() {
+    this.gear.replaceChildren();
+    this.gearShown = '';
+    Object.assign(this.gearUi, { tab: null, sel: null });
   }
 
   get statsOpen() {
-    return !this.panel.hidden;
+    return !this.sheet.hidden;
   }
 
   /** 레벨 업 창이 떠 있는지(떠 있는 동안 필드는 입력을 받지 않는다) */
@@ -320,8 +357,12 @@ export class AdventureField {
     };
     this.levelUp = { from, to, gained, onKey, recommend: null };
     window.addEventListener('keydown', onKey, true);
+    // 레벨 업 창은 스텟 판만(디자인 23절 5번): 장비창은 숨기고, 묶음은 예전 판 자리 그대로(CSS .adv-sheet.levelup)
+    this.clearGear();
+    this.gear.hidden = true;
+    this.sheet.classList.add('levelup');
     this.panel.classList.add('levelup');
-    this.panel.hidden = false;
+    this.sheet.hidden = false;
     this.panelVersion = -1;
     this.paintPanel();
   }
@@ -334,9 +375,10 @@ export class AdventureField {
     window.removeEventListener('keydown', up.onKey, true);
     if (assign && up.recommend && !up.recommend.disabled) up.recommend.click();
     this.panel.classList.remove('levelup');
-    this.panel.hidden = true;
+    this.sheet.classList.remove('levelup');
+    this.sheet.hidden = true;
+    this.gear.hidden = false;
     this.panel.replaceChildren();
-    Object.assign(this.equipUi, { open: false, sel: null, scroll: 0 });
     this.panelVersion = -1;
   }
 
@@ -351,7 +393,7 @@ export class AdventureField {
     this.offChange();
     this.timer.remove();
     this.hud.remove();
-    this.panel.remove();
+    this.sheet.remove();
     for (const f of this.floats) {
       f.image.destroy();
       f.tag.destroy();
@@ -447,7 +489,8 @@ export class AdventureField {
         this.goldEl.textContent = formatNumber(this.goldShown ?? 0n);
         const stats = element('adv-hud-button', r, 'button') as HTMLButtonElement;
         stats.type = 'button';
-        stats.textContent = '스텟 (P)';
+        // 키는 P → I(2026-11-21 사용자 "인벤토리는 모험에서 어차피 안쓰니깐 p 대신 i 로 통일한다")
+        stats.textContent = '스텟 (I)';
         stats.addEventListener('click', () => this.toggleStats());
         if (points !== '0') element('adv-badge', stats, 'span').textContent = bigText(points);
       }
@@ -522,11 +565,7 @@ export class AdventureField {
       element('', rest, 'em').textContent = `+${bigText(up.gained)}`;
     }
     const say = element('adv-message', document.createElement('div'));
-    // 맨 위 장착 칸(디자인 adventure-ui.md 17절 1번, 레벨 업 창도 같은 판). 목록 열기·고르기는 판만 다시 그린다.
-    equipBlock(this.panel, this.adventure, view, this.equipUi, (text) => (say.textContent = text), () => {
-      this.panelVersion = -1;
-      this.paintPanel();
-    });
+    // 장착 칸과 무기 목록은 장비창으로 옮겼다(2026-11-21 디자인 23절). 판에는 스텟 줄만 남는다.
     const recommend = statRows(this.panel, this.adventure, view, true, (text) => (say.textContent = text));
     this.panel.append(say);
     if (up) {
@@ -541,6 +580,24 @@ export class AdventureField {
       close.textContent = '닫기 (Esc)';
       close.addEventListener('click', () => this.closeLevelUp(false));
     }
+  }
+
+  /** 장비창. 낀 무기·가진 무기·낀 장신구·그림이 바뀔 때만 통째로 다시 그리고, 스크롤 자리는 남긴다. */
+  private paintGear() {
+    const view = this.adventure.view;
+    if (!view || this.levelUp || this.sheet.hidden) return;
+    const key = gearKey(this.adventure, view);
+    if (key === this.gearShown) return;
+    this.gearShown = key;
+    const t0 = performance.now();
+    const top = this.gear.scrollTop;
+    const sheetTop = this.sheet.scrollTop;
+    this.gear.replaceChildren();
+    gearWindow(this.gear, this.adventure, view, this.gearUi);
+    if (top) this.gear.scrollTop = top;
+    if (sheetTop) this.sheet.scrollTop = sheetTop;
+    this.gearStats.draws++;
+    this.gearStats.ms += performance.now() - t0;
   }
 }
 

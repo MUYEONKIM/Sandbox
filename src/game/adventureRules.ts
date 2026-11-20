@@ -77,7 +77,7 @@ export const expOf = (L: number) => 10 * (L + 3) ** 2;
 /** 레벨 n까지 쌓인 경험치는 50n(n − 1)이다. */
 export const levelFromExp = (e: number) => Math.floor((1 + Math.sqrt(1 + (8 * e) / 100)) / 2);
 export const lucGold = (luc: number, L: number) => 1 + (3 * luc) / (luc + 4 * L);
-/** 보통 몬스터 무기 드랍(0.02 → 0.002, 2026-11-18 사용자 "전반적으로 드롭률이 너무 높다. 파격적으로 줄여줘.", 서버 adventure_battle). 잡은 보스를 다시 잡을 때는 서버 0.02. */
+/** 보통 몬스터 무기 드랍(0.02 → 0.002, 2026-11-18 사용자 "전반적으로 드롭률이 너무 높다. 파격적으로 줄여줘.", 서버 adventure_battle). 보스·중간 보스 무기도 같은 식이다(2026-11-21 사용자 "안 2: 일반 몹과 같은 식 (추천)", 처음 잡을 때 반드시 주던 것 없앰). */
 export const dropChance = (luc: number, L: number) => 0.002 * (1 + luc / (luc + 4 * L));
 /**
  * 무기 고정 수치(2026-11-19 사용자 "이대로 (추천)", 기획 10장 '고정 수치'): 고정 포인트 = 그 몫의 % × 2 × 무기 지역의 보스 레벨(무기마다 버림).

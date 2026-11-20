@@ -298,7 +298,8 @@ function enterGame(
   const keys = new Keys({
     onScoreboard: (open) => (open ? void killBoard.show() : killBoard.hide()),
     onSlot: (index) => inventory.select(index),
-    onInventory: () => hud.toggle(),
+    // 모험 맵에서는 I가 스텟 판과 장비창을 연다(2026-11-21 사용자 "인벤토리는 모험에서 어차피 안쓰니깐 p 대신 i 로 통일한다"). 마을 인벤토리는 모험에서 열지 않는다.
+    onInventory: () => (scene.inAdventure ? void scene.adventureStatsKey() : hud.toggle()),
     onHelp: () => hud.toggleHelp(),
     onRotate: () => scene.reloadOrRotate(),
     onEscape: () => {
@@ -310,6 +311,7 @@ function enterGame(
       office.close();
       dungeon.close();
       adventureWindow.close();
+      scene.closeAdventureStats();
       coop.close();
       shop.close();
       forge.close();
@@ -320,7 +322,6 @@ function enterGame(
       elevator.close();
       casino.close();
     },
-    onStats: () => void scene.adventureStatsKey(),
     onChat: () => {
       const windowOpen =
         hud.isOpen || office.isOpen || dungeon.isOpen || adventureWindow.isOpen || coop.isOpen || shop.isOpen || forge.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();

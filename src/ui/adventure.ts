@@ -13,7 +13,7 @@ import { Modal } from './modal';
  * 모험 창(2026-11-17, 기획 docs/balance/dungeon-rework.md 3장, 디자인 세션 시안 adventure-ui.md 4장).
  * 상태 칸(BP, 판, 금화, 베이스 레벨, 마을 골드)과 탭 다섯(들어가기, 스텟, 상점, 장신구, 컬렉션).
  * 창은 서버 값이 바뀌거나(Adventure.version) 탭을 바꾸거나 그림을 다 읽었을 때만 다시 쓴다.
- * 상점과 장신구는 시작마을에서, 판 중이 아닐 때만 된다(서버도 막음). 스텟 탭은 모험 맵에서도 열고, 필드의 스텟 판(P)도 같은 줄을 쓴다.
+ * 상점과 장신구는 시작마을에서, 판 중이 아닐 때만 된다(서버도 막음). 스텟 탭은 모험 맵에서도 열고, 필드의 스텟 판(I)도 같은 줄을 쓴다.
  * '들어가기' 탭은 큰 버튼 하나다(2026-11-18 모험 손보기): 판이 없으면 새 판으로 입구 맵에, 판 중이면 남긴 맵 입구에 선다.
  */
 
@@ -92,7 +92,7 @@ function line(cls: string, parent: HTMLElement, parts: (string | [string, string
   return el;
 }
 
-function button(cls: string, parent: HTMLElement, text: string, onClick: () => void, disabled = false) {
+export function button(cls: string, parent: HTMLElement, text: string, onClick: () => void, disabled = false) {
   const b = element(cls, parent, 'button') as HTMLButtonElement;
   b.type = 'button';
   b.textContent = text;
@@ -476,8 +476,8 @@ export class AdventureWindow {
 
   /**
    * 컬렉션 탭(디자인 adventure-ui.md 17절 2번): 지역마다 "평원 무기 22 / 27"과 격자(가진 것 밝게, 없는 것 그림자, 낀 무기 금빛 테와 E).
-   * 가진 무기를 누르면 고르고, 아래 고정 칸에 그 무기 카드와 [장착]을 보인다. 고른 것이 없으면 낀 무기 카드와 [빼기].
-   * 마우스를 올려도 카드를 띄우지 않는다(2026-11-18 사용자 "게임내에서의 무기들은 어차피 클릭하면 효과가 보이니깐, 마우스 호버시 무기 설명 뜨는건 안떠도 된다.").
+   * 가진 무기를 누르면 고르고, 아래 고정 칸에 그 무기 카드와 [장착]을 보인다. 같은 칸을 다시 누르면 고르기를 푼다. 고른 것이 없으면 낀 무기 카드와 [빼기].
+   * 마우스를 올리면 가진 무기 카드를 띄운다(2026-11-21 사용자 "무기도 띄워", 디자인 23절 2번: 장비창과 같게. 고른 무기에는 띄우지 않음).
    */
   private renderCollection(view: AdvView) {
     const adv = this.adventure;
@@ -487,6 +487,9 @@ export class AdventureWindow {
     }
     const wrap = element('adv-coll-wrap', this.body);
     const foot = element('adv-coll-foot', this.body);
+    const tip = floatTip(wrap, adv);
+    // 창에 보이는 칸의 아래 절반이면 카드를 칸 위에 띄운다(아래 고정 칸에 가리지 않게)
+    const above = (cell: HTMLElement) => cell.getBoundingClientRect().top - this.root.getBoundingClientRect().top > this.root.clientHeight / 2;
     // 누른 칸의 테와 아래 고정 칸만 바꾼다(창 전체를 다시 그리지 않음, 216칸이라 약 80ms 들던 것)
     let chosenCell: HTMLElement | null = null;
     const showFoot = () => {
@@ -516,11 +519,23 @@ export class AdventureWindow {
         if (w.id === this.chosenWeapon) chosenCell = slot;
         if (!copies) continue;
         slot.style.cursor = 'pointer';
+        slot.addEventListener('pointerenter', (e) => {
+          if (e.pointerType === 'mouse' && w.id !== this.chosenWeapon) tip.show(w, slot, above(slot));
+        });
+        slot.addEventListener('pointerleave', (e) => {
+          if (e.pointerType === 'mouse') tip.hide();
+        });
         slot.addEventListener('click', () => {
+          tip.hide();
           chosenCell?.classList.remove('chosen');
-          slot.classList.add('chosen');
-          chosenCell = slot;
-          this.chosenWeapon = w.id;
+          if (this.chosenWeapon === w.id) {
+            chosenCell = null;
+            this.chosenWeapon = null;
+          } else {
+            slot.classList.add('chosen');
+            chosenCell = slot;
+            this.chosenWeapon = w.id;
+          }
           this.shownKey = this.renderKey();
           showFoot();
         });
@@ -530,18 +545,6 @@ export class AdventureWindow {
     this.body.append(foot);
     showFoot();
   }
-}
-
-/** 장착 무기 칸·목록의 화면 상태. 판을 다시 그려도 남긴다(AdventureField가 가짐). */
-export interface EquipUi {
-  /** [바꾸기]로 가진 무기 목록을 열었는지 */
-  open: boolean;
-  /** 스텟 거르기(null이면 전체) */
-  filter: AdvStat | null;
-  /** 목록에서 누른 무기 */
-  sel: string | null;
-  /** 목록 격자 스크롤(다시 그려도 그 자리) */
-  scroll: number;
 }
 
 /** 소수 한 자리까지(26.25 → 26.3, 40 → 40) */
@@ -568,7 +571,7 @@ export function equipEffects(adv: Adventure, w: AdvWeapon, copies: number) {
 }
 
 /** 무기 그림 캔버스(adv-weapons.png 한 칸)를 size px로 */
-function weaponCanvas(art: string, size: number) {
+export function weaponCanvas(art: string, size: number) {
   const c = weaponIcon(art);
   c.style.width = `${size}px`;
   c.style.height = `${size}px`;
@@ -584,7 +587,7 @@ export function weaponInfoCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon
   return weaponCard(parent, adv, w, 'view', undefined, copies);
 }
 
-function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'equipped' | 'pick' | 'view', act?: () => void, copiesShown?: number) {
+export function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'equipped' | 'pick' | 'view', act?: () => void, copiesShown?: number) {
   const card = element(`adv-wcard${state === 'equipped' ? ' on' : ''}${state === 'view' ? ' view' : ''}`, parent);
   const copies = copiesShown ?? adv.copies(w.id);
   element('adv-wcard-icon', card).appendChild(weaponCanvas(w.art, 48));
@@ -605,91 +608,41 @@ function weaponCard(parent: HTMLElement, adv: Adventure, w: AdvWeapon, state: 'e
 }
 
 /**
- * 스텟 판(P, 레벨 업 창도 같은 판) 맨 위 장착 칸(디자인 17절 1번): 무기 그림(금빛 테 46px), 이름·별·단계, 효과 숫자, [바꾸기].
- * 낀 것이 없으면 "장검"과 "-". [바꾸기]를 누르면 판 안에 가진 무기 목록(거르기 칩, 36px 격자 별·단계 높은 것부터, 고른 무기 카드)이 열린다.
- * 목록은 열 때만 그린다. [장착]을 누르면 장착 칸이 바뀌고 목록이 닫힌다. rerender는 판을 다시 그린다.
+ * 마우스 올림 무기 카드 하나(2026-11-21 사용자 "무기도 띄워", 디자인 adventure-ui.md 23절 2번). 장비창과 컬렉션 탭이 같이 쓴다.
+ * 모양은 전투 결과 창 얻은 무기 카드(weaponInfoCard, 버튼 없음)와 같다. host(position: relative) 안에 하나를 두고,
+ * 다른 무기로 옮길 때만 카드를 다시 만든다. 칸 아래(above면 위)에 띄우고 왼쪽·오른쪽은 host 폭 안으로 맞춘다.
  */
-export function equipBlock(parent: HTMLElement, adv: Adventure, view: AdvView, ui: EquipUi, say: (text: string) => void, rerender: () => void) {
-  if (!adventureArt) void loadAdventureArt().then(rerender);
-  const box = element('adv-equip', parent);
-  const eq = view.mainWeapon && adv.copies(view.mainWeapon) ? adv.weapon(view.mainWeapon) : undefined;
-  const slot = element('adv-equip-slot', box);
-  const icon = element('adv-equip-icon', slot);
-  const info = element('adv-equip-info', slot);
-  const head = element('adv-equip-head', info);
-  if (eq) {
-    icon.appendChild(weaponCanvas(eq.art, 40));
-    element('adv-wcard-star', head, 'span').textContent = '★'.repeat(eq.star);
-    const copies = adv.copies(eq.id);
-    if (copies > 1) element('adv-wcard-plus', head, 'span').textContent = ` +${copies - 1}`;
-    const fx = element('adv-equip-fx', info);
-    fx.textContent = equipEffects(adv, eq, copies);
-  } else {
-    element('adv-equip-fx dim', info).textContent = '-';
-  }
-  button(ui.open ? 'adv-btn gold' : 'adv-btn', slot, ui.open ? '닫기' : '바꾸기', () => {
-    ui.open = !ui.open;
-    ui.sel = null;
-    ui.scroll = 0;
-    rerender();
-  });
-  if (!ui.open) return box;
-  const pick = element('adv-equip-pick', box);
-  const filters = element('adv-equip-filter', pick);
-  for (const k of [null, ...ADV_STATS] as (AdvStat | null)[]) {
-    const chip = button(`adv-chip${ui.filter === k ? ' on' : ''}`, filters, k ? STAT_NAME[k] : '전체', () => {
-      ui.filter = k;
-      ui.scroll = 0;
-      rerender();
-    });
-    chip.type = 'button';
-  }
-  const grid = element('adv-equip-grid', pick);
-  const selHost = element('adv-equip-sel', pick);
-  let chosenCell: HTMLElement | null = null;
-  // 고른 무기 카드(누르면 이것만 바꾼다. 판 전체를 다시 그리지 않음, 216칸이라 약 30ms 들던 것).
-  // reveal이면 판이 스크롤될 때 카드가 판 안에 보이게 판을 민다(레벨 업 창은 아래 버튼 줄만큼 띄움, CSS scroll-padding).
-  const showSel = (reveal = false) => {
-    selHost.replaceChildren();
-    const sel = ui.sel ? adv.weapon(ui.sel) : undefined;
-    selHost.hidden = !sel;
-    if (!sel) return;
-    const on = sel.id === view.mainWeapon;
-    weaponCard(selHost, adv, sel, on ? 'equipped' : 'pick', () => {
-      void adventureCall(adv, () => adventureEquipWeapon(on ? null : sel.id), say).then((ok) => {
-        if (!ok) return;
-        ui.open = false;
-        ui.sel = null;
-        ui.scroll = 0;
-        rerender();
-      });
-    });
-    if (reveal) selHost.scrollIntoView({ block: 'nearest' });
+export function floatTip(host: HTMLElement, adv: Adventure) {
+  const tip = element('adv-wtip', host);
+  tip.hidden = true;
+  let shown: string | null = null;
+  return {
+    show(w: AdvWeapon, cell: HTMLElement, above: boolean) {
+      if (shown !== w.id) {
+        tip.replaceChildren();
+        weaponCard(tip, adv, w, 'view');
+        shown = w.id;
+      }
+      tip.hidden = false;
+      // host가 스크롤되거나 칸이 다른 스크롤 상자 안에 있어도 맞게 화면 좌표로 잰다(칸을 넘을 때 한 번).
+      const h = host.getBoundingClientRect();
+      const c = cell.getBoundingClientRect();
+      const x = c.left - h.left - host.clientLeft + host.scrollLeft + c.width / 2 - tip.offsetWidth / 2;
+      const y = c.top - h.top - host.clientTop + host.scrollTop;
+      tip.style.left = `${Math.max(0, Math.min(host.clientWidth - tip.offsetWidth, x))}px`;
+      tip.style.top = `${above ? y - tip.offsetHeight - 6 : y + c.height + 6}px`;
+    },
+    hide() {
+      tip.hidden = true;
+    },
+    get open() {
+      return !tip.hidden;
+    },
   };
-  const mine = adv.weapons.filter((w) => adv.copies(w.id) > 0 && (!ui.filter || w.stat === ui.filter));
-  mine.sort((a, b) => b.star - a.star || adv.copies(b.id) - adv.copies(a.id) || Number(a.art) - Number(b.art));
-  for (const w of mine) {
-    const copies = adv.copies(w.id);
-    const cell = weaponSlot(grid, w, { plus: copies > 1 ? copies - 1 : 0, chosen: w.id === ui.sel, equipped: w.id === view.mainWeapon });
-    if (w.id === ui.sel) chosenCell = cell;
-    cell.style.cursor = 'pointer';
-    cell.addEventListener('click', () => {
-      chosenCell?.classList.remove('chosen');
-      cell.classList.add('chosen');
-      chosenCell = cell;
-      ui.sel = w.id;
-      showSel(true);
-    });
-  }
-  pick.append(selHost);
-  grid.scrollTop = ui.scroll;
-  grid.addEventListener('scroll', () => (ui.scroll = grid.scrollTop), { passive: true });
-  showSel();
-  return box;
 }
 
 /** 무기 칸 하나(36px): 별 수, 단계, 낀 무기면 금빛 테와 E(디자인 17절) */
-function weaponSlot(parent: HTMLElement, w: AdvWeapon, opts: { isNew?: boolean; unknown?: boolean; chosen?: boolean; plus?: number; equipped?: boolean }) {
+export function weaponSlot(parent: HTMLElement, w: AdvWeapon, opts: { isNew?: boolean; unknown?: boolean; chosen?: boolean; plus?: number; equipped?: boolean }) {
   const box = element(`adv-weapon${opts.isNew ? ' new' : ''}${opts.unknown ? ' unknown' : ''}${opts.chosen ? ' chosen' : ''}${opts.equipped ? ' equipped' : ''}`, parent);
   box.appendChild(weaponIcon(w.art));
   if (!opts.unknown) element('adv-weapon-star', box).textContent = `${w.star}★`;
