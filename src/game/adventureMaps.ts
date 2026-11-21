@@ -22,6 +22,8 @@ import type { Tile } from './world';
  * - 맵 자료 version 5(2026-11-21, 디자인 노트 adventure-maps-v5.md, B안): 지역마다 맵 넷(들머리, 왼길, 오른길, 보스 마당) 56장 + 입구, 한 변 size(64·46).
  *   포탈은 입구 맵 'zone' 말고 모두 'link' + need(null 늘, 'boss' 이번 판 지역 보스, 'gate' 이번 판 수문장, 서버 adventure_links와 같은 줄).
  *   back·zoneBack·되돌림 칸은 없고 arrivals는 읽지 않는다(포탈 at에 들어 있음). 일곱 빛 lights는 일곱 빛 들판 넷, 별 stars는 별 하늘 넷.
+ * - 맵 자료 version 6(2026-11-21, 디자인 노트 adventure-maps-v6.md): 지역마다 다른 길 구조, 한 변 56~84칸. 맵 id·이어짐·몬스터 값은 v5와 같고 몬스터 칸만 바뀜.
+ *   theme은 읽지 않는다(용의 둥지 4만 'lair').
  * 서버 몬스터 표(adventure_spots)와 맵 → 지역 표(adventure_maps)는 monster-spots.json(version 2)과 이 자료로 만든다
  * (공유 노트 code-adventure-tools/monster-rows.cjs). 맵·몬스터를 바꾸면 SQL 행도 다시 만든다.
  * 모험 창에서 들어가거나 모험 맵에서 새로고침할 때 한 번 읽는다(게임 시작 때는 모험 맵에 있을 때만). 맵을 만들기 전에 읽혀 있어야 한다.
