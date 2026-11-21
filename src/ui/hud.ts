@@ -320,6 +320,7 @@ export class Hud {
     this.expCount?.finish();
     this.expCount = null;
     // 같은 레벨에서 경험치가 늘면(일·노동) EXP 글도 450ms 동안 오른다(PM 2026-11-18 "마을 일·노동으로 얻는 골드·경험치에도 같은 오르기").
+    this.expText.style.fontSize = expFontSize(expText(BigInt(exp)));
     if (grew) this.expCount = countUp([{ el: this.expText, from: BigInt(fromExp), to: BigInt(exp), fmt: expText }], COUNT.gold);
     else this.expText.textContent = expText(BigInt(exp));
     return this.showBar('town', level, Math.min(exp / need, 1), leveled, options);
@@ -354,11 +355,13 @@ export class Hud {
       this.labelFor('none');
       this.bar.set(0);
       this.expText.textContent = '';
+      this.expText.style.fontSize = '';
       this.hpFill.style.width = '0%';
       this.hpText.textContent = '';
       return false;
     }
     this.expText.textContent = `EXP ${run.exp} / ${run.need}`;
+    this.expText.style.fontSize = expFontSize(this.expText.textContent);
     this.hpFill.style.width = '100%';
     this.hpText.textContent = `HP ${run.hp}`;
     let level = 1n;
@@ -391,6 +394,7 @@ export class Hud {
     this.shownBar = { level, ratio };
     this.bar.finish();
     this.labelFor(mode);
+    this.levelText.style.fontSize = levelFontSize(formatNumber(level));
     if (leveled && before && level > before.level) {
       this.bar.play(before.level, level, before.ratio, ratio, { label: this.levelNum, fmt: formatNumber }, options);
       return true;
@@ -404,6 +408,7 @@ export class Hud {
   private labelFor(mode: 'town' | 'run' | 'none') {
     if (this.labelMode === mode) return;
     this.labelMode = mode;
+    this.levelText.style.fontSize = '';
     this.levelText.replaceChildren();
     this.levelText.classList.toggle('empty', mode === 'none');
     if (mode !== 'town') {
@@ -732,4 +737,20 @@ export class Hud {
     this.ammo = text;
     this.showPickedName();
   }
+}
+
+/**
+ * 정보 칸(190px)의 EXP 글과 레벨 글은 숫자를 줄여 쓰지 않아(2026-11-18 사용자 "Lv. 15,000 이렇게 표기로") 모험 레벨 B안(2026-11-21, 판 레벨 120억대)에서
+ * 한 줄을 넘는다. 글자 수로 글씨를 줄여 한 줄에 넣는다(제가 정한 것). 글이 바뀔 때만 부른다.
+ * - EXP: 12px에서 8px까지. tabular-nums 굵은 12px 글에서 잰 한 글자 폭 약 0.52em로, 막대 안 186px에 들어가는 크기(37자 9px, 41자 8px).
+ * - 레벨: CSS 19px 그대로 11자(999,999,999)까지, 13자 17px, 15자 15px, 그보다 길면 14px("모험" 표와 "Lv. "를 더해 190px 안).
+ */
+const EXP_FIT = 354;
+function expFontSize(text: string) {
+  const size = Math.max(8, Math.min(12, Math.floor(EXP_FIT / Math.max(1, text.length))));
+  return size === 12 ? '' : `${size}px`;
+}
+function levelFontSize(num: string) {
+  const n = num.length;
+  return n <= 11 ? '' : n <= 13 ? '17px' : n <= 15 ? '15px' : '14px';
 }

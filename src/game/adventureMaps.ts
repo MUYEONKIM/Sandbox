@@ -24,6 +24,9 @@ import type { Tile } from './world';
  *   back·zoneBack·되돌림 칸은 없고 arrivals는 읽지 않는다(포탈 at에 들어 있음). 일곱 빛 lights는 일곱 빛 들판 넷, 별 stars는 별 하늘 넷.
  * - 맵 자료 version 6(2026-11-21, 디자인 노트 adventure-maps-v6.md): 지역마다 다른 길 구조, 한 변 56~84칸. 맵 id·이어짐·몬스터 값은 v5와 같고 몬스터 칸만 바뀜.
  *   theme은 읽지 않는다(용의 둥지 4만 'lair').
+ * - 맵 자료 version 7(2026-11-21, 디자인 노트 adventure-maps-v7.md, 기획 planning-monster-levels-1121.md B안): 길 맵에 넓은 터를 섞음, 한 변 56~84칸.
+ *   몬스터는 들머리·왼길·오른길 10, 보스 마당 6(모두 543), 레벨·그림은 기획 B-10 표. 보스·중간 보스 줄에 key(서버 run_bosses 키)가 있다
+ *   (디자인 자료에 코드 세션 도구 make-v7.cjs가 붙임, 지역 zones의 first·boss도 새 값으로). 이번 판에 이긴 보스·중간 보스·수문장은 화면에서 치운다(FieldMonster.once).
  * 서버 몬스터 표(adventure_spots)와 맵 → 지역 표(adventure_maps)는 monster-spots.json(version 2)과 이 자료로 만든다
  * (공유 노트 code-adventure-tools/monster-rows.cjs). 맵·몬스터를 바꾸면 SQL 행도 다시 만든다.
  * 모험 창에서 들어가거나 모험 맵에서 새로고침할 때 한 번 읽는다(게임 시작 때는 모험 맵에 있을 때만). 맵을 만들기 전에 읽혀 있어야 한다.
@@ -77,6 +80,8 @@ export interface AdvMonsterSpot extends Tile {
   sheet?: string;
   /** 수문장: 이번 판에 이기면 서버 run_bosses에 붙는 키('gate:adv_1a') */
   gate?: string;
+  /** 보스·중간 보스: 이번 판에 이기면 서버 run_bosses에 붙는 키(보스 'adv_N', 중간 보스 'adv_N#idx', v7) */
+  key?: string;
   name: string | null;
   /** 일곱 빛 들판 빛 번호(lights.legend) */
   light?: number | null;
@@ -211,6 +216,11 @@ export interface FieldMonster extends Tile {
   bonus: string | null;
   /** 수문장이면 그 키('gate:adv_1a'), 아니면 null */
   gate: string | null;
+  /**
+   * 판마다 한 번 이기는 몬스터의 서버 run_bosses 키(수문장 'gate:adv_1a', 보스 'adv_N', 중간 보스 'adv_N#idx'), 일반 몬스터는 null.
+   * 이번 판에 이기면 화면에서 치우고 칸을 연다(2026-11-21 사용자 "중간보스, 보스 는 게임 한판 당 한번씩만 잡을수있게"). 새 판이면 다시 선다.
+   */
+  once: string | null;
 }
 
 interface Loaded {
@@ -386,7 +396,7 @@ export function monstersOf(id: string): FieldMonster[] {
     .filter((m) => monsterArt(m.art))
     .map((m): FieldMonster => {
       const bonus = m.light !== undefined && m.light !== null ? (legend[m.light]?.key ?? null) : m.exp === 3 ? 'exp3' : null;
-      return { x: m.x, y: m.y, art: m.art, kind: m.role === 'mid' ? 'mini' : m.role, level: m.level, slot: m.role === 'mid' ? m.slot : '', bonus, gate: m.gate ?? null };
+      return { x: m.x, y: m.y, art: m.art, kind: m.role === 'mid' ? 'mini' : m.role, level: m.level, slot: m.role === 'mid' ? m.slot : '', bonus, gate: m.gate ?? null, once: m.gate ?? m.key ?? null };
     });
   if (!missing) monsterCache.set(id, out);
   return out;

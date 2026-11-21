@@ -1000,8 +1000,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 서버 값이 바뀌면(이번 판에 지역 보스를 잡음, 새 판) 모험 맵 포탈을 맞춘다. 바뀐 것이 없으면 아무것도 하지 않는다. */
   private syncAdventurePortals() {
     if (!isAdventure(this.mapId) || this.traveling || !this.world) return;
-    // 수문장을 이겼으면 그 칸을 연다(몬스터 칸을 다시 막음, 바뀔 때만)
-    if (this.advField?.syncGates()) this.world.setMonsterTiles(this.advField.monsters);
+    // 이번 판에 이긴 수문장·보스·중간 보스는 치우고 그 칸을 연다(몬스터 칸을 다시 막음, 바뀔 때만)
+    if (this.advField?.syncBeaten()) this.world.setMonsterTiles(this.advField.monsters);
     const want = this.visiblePortals(this.mapId);
     const key = (p: Portal) => `${p.x},${p.y},${p.to}`;
     const have = new Set(this.world.portals.map(key));
@@ -2002,6 +2002,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.keys.releaseDirections();
       this.advBusy = false;
       this.advField?.settle();
+      // 이번 판에 이미 이긴 보스·중간 보스·수문장(다른 탭·예전 화면에서 이김): 안내 없이 서버 값을 다시 받아 맞춘다(그 몬스터가 사라짐, 화면 안내 문구 금지).
+      if (battle === 'already won') {
+        const result = await this.adventure.refresh();
+        if (result && typeof result !== 'string') this.showAdventureResult(result);
+        return;
+      }
       this.hud.toast('싸우지 못했습니다', failText(battle));
       return;
     }

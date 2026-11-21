@@ -25,7 +25,11 @@ import type { Tile } from './world';
  * I(HUD [스텟])는 스텟 판과 화면 가운데 장비창(ui/adventureGear.ts)을 함께 열고 닫는다(2026-11-21, 디자인 adventure-ui.md 23절). 둘은 .adv-sheet 하나에 담고,
  * Esc 한 번에 둘 다 닫힌다(closeStats). 레벨 업 창은 스텟 판만 띄운다.
  *
- * 성능(기획 13장): 몬스터 그림과 이름표는 맵에 들어올 때 한 번 놓고, 그림자는 바닥 그림에 있다. 0.1초마다 화면 안 몬스터만 흔들림을 셈해
+ * 수문장·보스·중간 보스는 판마다 한 번이다(2026-11-21 사용자 "중간보스, 보스 는 게임 한판 당 한번씩만 잡을수있게"): 이번 판에 이기면(서버 runBosses에 그 키)
+ * 그림·이름표·그림자를 숨기고 칸을 연다(syncBeaten). 새 판이면 다시 선다.
+ *
+ * 성능(기획 13장): 몬스터 그림과 이름표는 맵에 들어올 때 한 번 놓고, 그림자는 바닥 그림에 있다(판마다 한 번 이기는 몬스터만 따로 그린 그림자, 맵에 많아야 넷).
+ * 이름표는 맵에 들어올 때 그 맵 것을 한 장에 모아 텍스처 하나로 올리고(buildTagAtlas) 맵을 떠날 때 지운다. 0.1초마다 화면 안 몬스터만 흔들림을 셈해
  * 정수 픽셀이 바뀔 때만 y를 바꾸고, 화면 밖 몬스터는 숨긴다(깊이는 그대로라 다시 정렬하지 않음). 이름표 그림은 글·색이 바뀐 것만 바꾼다.
  * HUD(DOM)는 글이 바뀔 때만 고친다.
  */
@@ -78,8 +82,10 @@ interface Floating {
   shown: boolean;
   /** 이름표 그림 키(바뀔 때만 다시 그림) */
   tagKey: string;
-  /** 이번 판에 이긴 수문장(숨김, 칸이 열림) */
+  /** 이번 판에 이긴 수문장·보스·중간 보스(숨김, 칸이 열림) */
   gone: boolean;
+  /** 판마다 한 번 이기는 몬스터의 발밑 그림자(함께 숨김). 일반 몬스터는 바닥 그림에 구워 null */
+  shadow: Phaser.GameObjects.Graphics | null;
   /** 보이는지 볼 때 쓰는 월드 자리 */
   cx: number;
   top: number;
@@ -126,6 +132,8 @@ export class AdventureField {
   private goldCount: Counting | null = null;
   private goldTimer = 0;
   private shownLight = '';
+  /** 이 맵 이름표를 모은 텍스처 키(buildTagAtlas). 맵을 떠날 때 지운다. */
+  private tagAtlas = '';
   private panelVersion = -1;
   /** 장비창의 화면 상태(스텟 탭, 고른 무기). 창을 다시 그려도 남기고, 닫으면 처음으로 돌린다. */
   private readonly gearUi: GearUi = { tab: null, sel: null };
@@ -204,8 +212,9 @@ export class AdventureField {
         .setScale(k)
         .setDepth(depthOf(m.x, m.y) + 0.5);
       const tag = scene.add.image(c.x, baseY - frame.h * k - 2, '__DEFAULT').setOrigin(0.5, 1).setScale(1 / TAG_RES).setDepth(this.labelDepth);
+      const shadow = m.once ? onceShadow(scene, c, frame.w * k) : null;
       const index = this.floats.length;
-      this.floats.push({ m, frame, image, tag, baseY, bob: role.bob, phase: i * BOB_PHASE, shownBob: 0, shown: true, gone: false, tagKey: '', cx: c.x, top: baseY - frame.h * k - 30, bottom: c.y + 8 });
+      this.floats.push({ m, frame, image, tag, baseY, bob: role.bob, phase: i * BOB_PHASE, shownBob: 0, shown: true, gone: false, shadow, tagKey: '', cx: c.x, top: baseY - frame.h * k - 30, bottom: c.y + 8 });
       this.onTile.set(m.x + m.y * this.size, index);
       // 둘레 8칸: 이름 줄을 보이는 칸. 둘이 겹치면 더 가까운 몬스터(몬스터끼리 5칸 넘게 떨어져 있어 거의 없음).
       for (let dy = -1; dy <= 1; dy++) {
@@ -221,25 +230,28 @@ export class AdventureField {
         }
       }
     });
+    this.buildTagAtlas();
     for (const f of this.floats) this.paintTag(f);
-    this.syncGates();
+    this.syncBeaten();
   }
 
   /**
-   * 수문장(평원 1, 2026-11-19 사용자 "통로에 길을 막고 있는 화산폭풍의 일반몹 수문장"): 이번 판에 이겼으면(서버 runBosses에 그 키) 그림과 이름표를 숨기고
-   * 칸을 연다(monsters에서 빠짐). 새 판이면 다시 선다. 바뀌었으면 true(GameScene이 몬스터 칸을 다시 막음).
+   * 판마다 한 번 이기는 몬스터: 수문장(평원 1, 2026-11-19 사용자 "통로에 길을 막고 있는 화산폭풍의 일반몹 수문장"), 보스·중간 보스(2026-11-21 사용자
+   * "중간보스, 보스 는 게임 한판 당 한번씩만 잡을수있게"). 이번 판에 이겼으면(서버 runBosses에 그 키) 그림·이름표·그림자를 숨기고 칸을 연다(monsters에서 빠짐).
+   * 별 하늘 보스 둘은 키가 하나라 함께 사라진다. 새 판이면 다시 선다. 바뀌었으면 true(GameScene이 몬스터 칸을 다시 막음).
    */
-  syncGates() {
+  syncBeaten() {
     const done = this.adventure.view?.runBosses ?? [];
     let changed = false;
     for (const f of this.floats) {
-      if (!f.m.gate) continue;
-      const gone = done.includes(f.m.gate);
+      if (!f.m.once) continue;
+      const gone = done.includes(f.m.once);
       if (gone === f.gone) continue;
       f.gone = gone;
       f.shown = !gone;
       f.image.setVisible(!gone);
       f.tag.setVisible(!gone);
+      f.shadow?.setVisible(!gone);
       changed = true;
     }
     return changed;
@@ -401,8 +413,12 @@ export class AdventureField {
     for (const f of this.floats) {
       f.image.destroy();
       f.tag.destroy();
+      f.shadow?.destroy();
     }
     this.floats.length = 0;
+    // 이 맵 이름표 텍스처(맵마다 레벨이 모두 달라 다음 맵에서 다시 쓰지 않음). 맵을 많이 돌아도 GPU에 쌓이지 않게 지운다.
+    if (this.tagAtlas && this.scene.textures.exists(this.tagAtlas)) this.scene.textures.remove(this.tagAtlas);
+    this.tagAtlas = '';
   }
 
   /**
@@ -445,20 +461,49 @@ export class AdventureField {
   }
 
   /**
-   * 이름표(디자인 세션 adventure-monsters.md 7절 4): "Lv. 350"(일반), "중간 보스 Lv. 2,222", "보스 Lv. 15,000"(줄이지 않은 숫자, 2026-11-18 사용자).
-   * 이름 줄은 없다(2026-11-19). 그림은 글과 색이 같으면 다시 쓴다.
+   * 이 맵 이름표를 한 장(세로로 쌓음, 사이 2px)에 그려 텍스처 하나로 올린다. 맵에 들어올 때 한 번.
+   * 모험 레벨 B안(2026-11-21)부터 한 맵의 몬스터 레벨이 모두 달라 이름표도 모두 다르다. 이름표마다 텍스처를 올리면 하나에 약 2ms(맵 하나 11개 약 25ms)라
+   * 한 번에 올린다(제가 정한 것). 이름표가 한 텍스처라 그릴 때도 함께 묶인다.
    */
+  private buildTagAtlas() {
+    const pieces = new Map<string, HTMLCanvasElement>();
+    for (const f of this.floats) {
+      const key = tagFrame(f.m);
+      if (!pieces.has(key)) pieces.set(key, tagCanvas('', tagText(f.m), TAG_COLOR, f.m.kind));
+    }
+    if (!pieces.size) return;
+    const gap = 2;
+    let w = 0;
+    let h = gap;
+    for (const c of pieces.values()) {
+      w = Math.max(w, c.width);
+      h += c.height + gap;
+    }
+    const atlas = document.createElement('canvas');
+    atlas.width = w;
+    atlas.height = h;
+    // CPU 캔버스(willReadFrequently): GPU 캔버스는 텍스처로 올릴 때 GPU에서 다시 읽어 와 6~10ms, CPU 캔버스는 0.5ms 안쪽(이 PC에서 잼)
+    const g = atlas.getContext('2d', CPU_CANVAS)!;
+    const at = new Map<string, number>();
+    let y = gap;
+    for (const [key, c] of pieces) {
+      g.drawImage(c, 0, y);
+      at.set(key, y);
+      y += c.height + gap;
+    }
+    const name = `adv-tags-${++tagAtlasCount}`;
+    const texture = this.scene.textures.addCanvas(name, atlas);
+    if (!texture) return;
+    for (const [key, c] of pieces) texture.add(key, 0, 0, at.get(key)!, c.width, c.height);
+    this.tagAtlas = name;
+  }
+
+  /** 이름표 그림을 몬스터에 붙인다(이 맵 이름표 텍스처의 그 칸). 글은 레벨과 종류로만 정해져 맵에 있는 동안 바뀌지 않는다. */
   private paintTag(f: Floating) {
-    const L = f.m.level;
-    const lv = `Lv. ${formatNumber(L)}`;
-    const text = f.m.kind === 'boss' ? `보스 ${lv}` : f.m.kind === 'mini' ? `중간 보스 ${lv}` : lv;
-    // 이름 줄은 뺐다(2026-11-19 사용자 "몬스터 이름, 장비이름 굳이 없어도 된다."): 레벨 줄 하나
-    const name = '';
-    const texKey = `adv-tag|${f.m.kind}|${name}|${text}`;
-    if (texKey === f.tagKey) return;
-    f.tagKey = texKey;
-    if (!this.scene.textures.exists(texKey)) this.scene.textures.addCanvas(texKey, tagCanvas(name, text, TAG_COLOR, f.m.kind));
-    f.tag.setTexture(texKey);
+    const key = tagFrame(f.m);
+    if (key === f.tagKey || !this.tagAtlas) return;
+    f.tagKey = key;
+    f.tag.setTexture(this.tagAtlas, key);
   }
 
   /** 가까이 선 몬스터가 바뀌면 앞뒤 둘의 이름표만 다시 그린다. */
@@ -606,6 +651,38 @@ export class AdventureField {
 }
 
 /**
+ * 이름표 글(디자인 세션 adventure-monsters.md 7절 4): "Lv. 350"(일반), "중간 보스 Lv. 2,222", "보스 Lv. 15,000"(줄이지 않은 숫자, 2026-11-18 사용자).
+ * 이름 줄은 없다(2026-11-19 사용자 "몬스터 이름, 장비이름 굳이 없어도 된다.").
+ */
+function tagText(m: FieldMonster) {
+  const lv = `Lv. ${formatNumber(m.level)}`;
+  return m.kind === 'boss' ? `보스 ${lv}` : m.kind === 'mini' ? `중간 보스 ${lv}` : lv;
+}
+/** 이름표 텍스처 안 칸 이름(종류와 글이 같으면 같은 칸) */
+const tagFrame = (m: FieldMonster) => `${m.kind}|${tagText(m)}`;
+/** 이름표 텍스처 키 번호(맵에 들어올 때마다 새 키, 앞 맵 것은 떠날 때 지움) */
+let tagAtlasCount = 0;
+/** 이름표 캔버스는 CPU 캔버스로 그린다(텍스처로 올리기가 빠름, buildTagAtlas) */
+const CPU_CANVAS: CanvasRenderingContext2DSettings = { willReadFrequently: true };
+
+/**
+ * 판마다 한 번 이기는 몬스터(수문장·보스·중간 보스)의 발밑 그림자. 바닥 그림의 그림자(adventureGround)와 같은 두 단계 타원
+ * (그림 폭의 30%, 최소 9, 알파 0.22 둘)이고, 몬스터와 함께 숨기려고 따로 그린다. 깊이는 바닥(0)과 바닥 위 표시(경로 점, 1) 사이라
+ * 꾸밈·캐릭터는 모두 그 위에 그려진다(바닥에 구운 것과 같은 차례).
+ */
+const SHADOW_DEPTH = 0.5;
+function onceShadow(scene: Phaser.Scene, c: { x: number; y: number }, width: number) {
+  const rx = Math.max(9, Math.round(width * 0.3));
+  const ry = Math.round(rx / 2);
+  const g = scene.add.graphics().setDepth(SHADOW_DEPTH);
+  for (const k of [1, 0.66]) {
+    g.fillStyle(0x000000, 0.22);
+    g.fillEllipse(Math.round(c.x), Math.round(c.y), rx * k * 2, ry * k * 2);
+  }
+  return g;
+}
+
+/**
  * 몬스터 이름표 그림(디자인 세션 확인 도구 view.js nameTags와 같은 모양): 검은 반투명 판, 보스 빨강·중간 보스 주황 테두리.
  * name이 있으면(가까이 선 몬스터) 위에 흰 이름 한 줄을 더한다. 화면 2배에서 또렷하게 TAG_RES배로 그린다.
  */
@@ -613,7 +690,7 @@ function tagCanvas(name: string, text: string, color: string, kind: FieldMonster
   const R = TAG_RES;
   const font = `bold ${TAG_FONT * R}px sans-serif`;
   const nameFont = `bold ${NAME_FONT * R}px sans-serif`;
-  const measure = document.createElement('canvas').getContext('2d')!;
+  const measure = document.createElement('canvas').getContext('2d', CPU_CANVAS)!;
   measure.font = font;
   let textW = measure.measureText(text).width;
   if (name) {
@@ -626,7 +703,7 @@ function tagCanvas(name: string, text: string, color: string, kind: FieldMonster
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
-  const g = c.getContext('2d')!;
+  const g = c.getContext('2d', CPU_CANVAS)!;
   g.fillStyle = 'rgba(0,0,0,0.62)';
   g.fillRect(0, 0, w, h);
   if (kind !== 'normal') {
