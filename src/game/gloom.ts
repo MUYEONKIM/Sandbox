@@ -58,10 +58,15 @@ export class Gloom {
     if (!scene.textures.exists('gloom-ember')) scene.textures.addCanvas('gloom-ember', emberTexture());
   }
 
-  /** 분위기가 있는 맵에 들어갈 때 부른다. lava는 불빛을 둘 용암 칸이다. 불똥은 track으로 정한 대상 둘레에서 핀다. */
-  show(lava: Tile[]) {
+  /**
+   * 분위기가 있는 맵에 들어갈 때 부른다. lava는 불빛을 둘 용암 칸이다. 불똥은 track으로 정한 대상 둘레에서 핀다.
+   * soft면 가장자리 어둠을 약하게 한다(#game.gloom.soft, 2026-11-22 모험 지옥 밝기).
+   */
+  show(lava: Tile[], soft = false) {
     this.clear();
-    document.getElementById('game')?.classList.add('gloom');
+    const game = document.getElementById('game');
+    game?.classList.add('gloom');
+    game?.classList.toggle('soft', soft);
     for (const { x, y } of lava) {
       const c = tileCenter(x, y);
       this.glows.push(this.scene.add.image(c.x, c.y - 6, 'gloom-glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(this.depth).setAlpha(GLOW_ALPHA.from));
@@ -102,7 +107,7 @@ export class Gloom {
   }
 
   clear() {
-    document.getElementById('game')?.classList.remove('gloom');
+    document.getElementById('game')?.classList.remove('gloom', 'soft');
     this.scene.tweens.killTweensOf(this.glows);
     for (const glow of this.glows) glow.destroy();
     this.glows = [];

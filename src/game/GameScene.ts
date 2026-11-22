@@ -670,7 +670,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         ? paintWorkGround(map, id as WorkId)
         : id === 'farm'
           ? paintWorkGround(map, 'farm')
-          : paintGround(map, deco ? { image: deco.image, tiles: deco.meta.tiles } : undefined);
+          : paintGround(map, deco ? { image: deco.image, tiles: deco.meta.tiles, water: deco.water } : undefined);
       // 모험 맵: 바닥 조각, 일곱 빛, 별, 보스 고리, 떠 있는 몬스터 그림자를 같은 바닥 그림에 한 번 그린다.
       const data = isAdventure(id) ? advMap(id) : undefined;
       if (data) paintAdventureGround(canvas, data, map, monstersOf(id));
@@ -716,6 +716,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    * 모험 맵 새 꾸밈 조각(2026-11-20, 디자인 세션 adventure-deco.md). 지역 아틀라스를 텍스처 하나(deco-<지역>)로 올리고 조각마다 그림 하나를 세운다.
    * 도트 그림이라 기본(NEAREST) 필터. 다른 지역 아틀라스 텍스처는 지운다(한 번에 하나, GPU 많아야 383KB). 움직이지 않아 매 프레임 일은 없고,
    * 블록처럼 덩어리(BlockChunks)에 넣어 화면 밖 조각은 표시 목록에서 뺀다(얽힌 숲 미로 벽 369개). 막는 조각은 내 캐릭터를 가리면 반투명.
+   * 밝기를 구운 아틀라스(2026-11-22, canvas)는 addCanvas로, 숫자가 없는 지역(원본 그림)은 addImage로 올린다.
    */
   private showDecoPieces(map: GameMap) {
     const art = isAdventure(this.mapId) ? decoArt(this.mapId) : null;
@@ -724,7 +725,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     if (!art || !map.decoPieces.length) return;
     if (!this.textures.exists(art.key)) {
-      const texture = this.textures.addImage(art.key, art.image)!;
+      const texture =
+        art.image instanceof HTMLCanvasElement ? this.textures.addCanvas(art.key, art.image)! : this.textures.addImage(art.key, art.image)!;
       for (const [id, f] of Object.entries(art.meta.props)) texture.add(id, 0, f.x, f.y, f.w, f.h);
     }
     for (const { id, x, y } of map.decoPieces) {
@@ -891,9 +893,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
               : WORLD_BACKGROUND,
     );
     // 바깥 맵은 KST 시간대 색을 덮고, 전쟁터는 늘 어둡고 손전등 빛만 보인다(2026-11-13 사용자 요청).
+    // 모험 맵은 시간대 색을 덮지 않는다(2026-11-22 사용자 "모험에서 전체적으로 너무 안보인다", 밤 덮개 "없앰 (추천)"). 지옥 분위기 색(mood)은 그대로 덮는다.
     this.flashlight.setActive(info.dark === true, this.world.map.size);
     this.daylight.setMap(
-      !isTower(id) && !info.dark,
+      !isTower(id) && !info.dark && !isAdventure(id),
       rect.left - DAYLIGHT_PAD,
       -DAYLIGHT_PAD,
       rect.width + DAYLIGHT_PAD * 2,
@@ -915,7 +918,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         this.addSign(post.text, c.x, c.y - 40);
       }
     }
-    if (info.mood) this.gloom.show(this.world.map.walls.filter((wall) => wall.id === 'lava'));
+    // 모험 지옥은 가장자리 어둠을 약하게(2026-11-22 밝기, 옛 지옥 던전은 그대로).
+    if (info.mood) this.gloom.show(this.world.map.walls.filter((wall) => wall.id === 'lava'), isAdventure(id));
     else this.gloom.clear();
     this.chimneySmoke = [];
     for (const building of this.world.map.buildings) {

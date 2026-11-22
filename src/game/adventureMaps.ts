@@ -1,3 +1,5 @@
+import { AREA_BRIGHT, bake } from '../art/advBright';
+import { sprite } from '../art/sprites';
 import { assetUrl } from '../assetUrl';
 import { MAP_SIZE } from '../config';
 import type { Tile } from './world';
@@ -153,11 +155,15 @@ export interface DecoMeta {
   props: Record<string, DecoPiece>;
   floors: Record<string, DecoRect>;
 }
-/** 읽어 둔 아틀라스(이름, 자료, 그림, Phaser 텍스처 키) */
+/**
+ * 읽어 둔 아틀라스(이름, 자료, 그림, Phaser 텍스처 키). image는 지역 밝기(advBright.ts AREA_BRIGHT)를 구운 canvas이고, 그 지역 숫자가 없으면 원본 그림이다.
+ * water는 그 지역 물 밝기를 구운 tiles.png 사본(물 칸이 있는 평원·심연·유령 늪만).
+ */
 export interface DecoArt {
   name: string;
   meta: DecoMeta;
-  image: HTMLImageElement;
+  image: HTMLImageElement | HTMLCanvasElement;
+  water?: HTMLCanvasElement;
   key: string;
 }
 export interface InfernusPiece {
@@ -276,13 +282,19 @@ export async function loadAdventureMaps(map?: string) {
   return base;
 }
 
-/** 지역 아틀라스 하나를 읽는다. 같은 이름이면 다시 읽지 않고, 다른 이름이면 앞 것을 버린다(한 번에 하나). */
+/**
+ * 지역 아틀라스 하나를 읽는다. 같은 이름이면 다시 읽지 않고, 다른 이름이면 앞 것을 버린다(한 번에 하나).
+ * 읽은 뒤 그 지역 밝기를 한 번 굽는다(2026-11-22, 아틀라스 약 0.4~0.9ms, 물 tiles.png 약 1.3ms). 지역을 옮길 때만 하고, 같은 지역 맵 사이에서는 다시 하지 않는다.
+ */
 function loadDeco(name: string): Promise<DecoArt> {
   if (deco?.name === name) return Promise.resolve(deco);
   if (decoLoading?.name === name) return decoLoading.promise;
   const promise = json<DecoMeta>(`deco-${name}.json`).then(async (meta) => {
-    const image = await imageFile(meta.image ?? `deco-${name}.png`);
-    deco = { name, meta, image, key: `deco-${name}` };
+    const file = await imageFile(meta.image ?? `deco-${name}.png`);
+    const bright = AREA_BRIGHT[name];
+    const image = bake(file, bright?.ground);
+    const water = bright?.water ? (bake(sprite('tiles'), bright.water) as HTMLCanvasElement) : undefined;
+    deco = { name, meta, image, water, key: `deco-${name}` };
     return deco;
   });
   decoLoading = { name, promise };

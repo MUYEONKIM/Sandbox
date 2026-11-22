@@ -3228,6 +3228,11 @@ canvas {
   background: radial-gradient(ellipse at center, rgb(0 0 0 / 0%) 45%, rgb(20 0 4 / 45%) 75%, rgb(8 0 2 / 80%) 100%);
 }
 
+/* 모험 지옥: 가장자리 어둠을 약하게(2026-11-22 밝기, 디자인 adventure-brightness.md 4절). 옛 지옥 던전은 위 값 그대로다. */
+#game.gloom.soft::after {
+  background: radial-gradient(ellipse at center, rgb(0 0 0 / 0%) 55%, rgb(20 0 4 / 30%) 80%, rgb(8 0 2 / 55%) 100%);
+}
+
 /* 포션으로 찬 체력 */
 .float-text.heal {
   color: #8ff0a0;

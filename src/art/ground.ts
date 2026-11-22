@@ -35,8 +35,12 @@ function pick(tiles: number[], x: number, y: number) {
 /**
  * deco: 모험 맵 새 바닥 아틀라스(2026-11-20). 땅 칸에 decoTiles 번호가 있으면 아틀라스 그 칸(32 × 32, tiles.png와 같은 모양)을 같은 자리에 그린다.
  * 물 칸과 번호 없는 칸은 지금처럼 tiles.png. 뒤 칸부터 한 번에 그리는 차례는 그대로다(앞 칸이 뒤 칸 옆면을 덮음).
+ * deco.water가 있으면 물 칸은 그 그림(그 지역 밝기를 구운 tiles.png 사본, 2026-11-22)에서 같은 타일 번호로 그린다.
  */
-export function paintGround(map: GameMap, deco?: { image: CanvasImageSource; tiles: { x: number; y: number }[] }): HTMLCanvasElement {
+export function paintGround(
+  map: GameMap,
+  deco?: { image: CanvasImageSource; tiles: { x: number; y: number }[]; water?: CanvasImageSource },
+): HTMLCanvasElement {
   const { size } = map;
   const rect = worldRect(size);
   const canvas = document.createElement('canvas');
@@ -44,11 +48,12 @@ export function paintGround(map: GameMap, deco?: { image: CanvasImageSource; til
   canvas.height = rect.height;
   const context = canvas.getContext('2d')!;
   const sheet = sprite('tiles');
+  const waterSheet = deco?.water ?? sheet;
 
-  const draw = (tile: number, left: number, top: number) => {
+  const draw = (tile: number, left: number, top: number, from: CanvasImageSource = sheet) => {
     const sx = (tile % COLUMNS) * TILE_CELL;
     const sy = Math.floor(tile / COLUMNS) * TILE_CELL;
-    context.drawImage(sheet, sx, sy, TILE_CELL, TILE_CELL, left, top, TILE_CELL, TILE_CELL);
+    context.drawImage(from, sx, sy, TILE_CELL, TILE_CELL, left, top, TILE_CELL, TILE_CELL);
   };
 
   for (let y = 0; y < size; y++) {
@@ -67,7 +72,7 @@ export function paintGround(map: GameMap, deco?: { image: CanvasImageSource; til
       }
       // 건물 안처럼 바닥 타일이 없는 맵은 바닥을 따로 그린다.
       const tile = map.floorTiles.get(index) ?? pick(water ? WATER_TILES : map.floor, x, y);
-      if (tile !== undefined) draw(tile, left, top);
+      if (tile !== undefined) draw(tile, left, top, water ? waterSheet : sheet);
       const decal = map.decals.get(index);
       if (decal !== undefined) draw(decal, left, top - DECOR_LIFT);
     }
