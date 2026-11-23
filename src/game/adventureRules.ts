@@ -69,18 +69,23 @@ export const NO_FX: AdvFx = { comboAdd: 0, comboMax: COMBO_MAX, critMul: CRIT_MU
 /** 몬스터 체력 × 2, 공격 × 1.5(2026-11-20 사용자 "공격 1.5, 체력 *2 로", 서버 adventure_battle, 지역 세기는 그대로) */
 export const MON_HP_X = 2;
 export const MON_ATK_X = 1.5;
+/** 그 위에 몬스터 세기 × 0.8(2026-11-23 사용자 "몬스터들의 세기를 지금보다 20% 약하게 만든다.", 서버 adventure_battle, 표의 세기 값은 그대로) */
+export const FOE_X = 0.8;
 // 곱하는 차례는 계산기(dungeon-run.js monster)와 같게 둔다(소수 끝자리까지 같게).
-export const monster = (L: number, d: number) => ({ hp: MON_HP_X * d * (30 + 10 * L), atk: MON_ATK_X * d * (5 + 1.5 * L) });
+export const monster = (L: number, d: number) => ({ hp: MON_HP_X * FOE_X * d * (30 + 10 * L), atk: MON_ATK_X * FOE_X * d * (5 + 1.5 * L) });
 /** 한 번 이긴 판 경험치(40 → 20 → 10, 2026-11-19·2026-11-20 사용자 "…다시 50% 줄여라", 서버 adventure_battle) */
 export const expOf = (L: number) => 10 * (L + 3) ** 2;
 // 경험치 줄어듦(예전 expFalloff)은 없앴다: 판 레벨과 상관없이 몬스터 경험치를 다 준다(2026-11-18 사용자 "레벨의 2배가 되더라도, 경험치 못얻거나, 아이템 못얻는건 없다. 무조건 얻는다").
 /** 레벨 n까지 쌓인 경험치는 50n(n − 1)이다. */
 export const levelFromExp = (e: number) => Math.floor((1 + Math.sqrt(1 + (8 * e) / 100)) / 2);
 export const lucGold = (luc: number, L: number) => 1 + (3 * luc) / (luc + 4 * L);
-/** 보통 몬스터 무기 드랍(0.02 → 0.002, 2026-11-18 사용자 "전반적으로 드롭률이 너무 높다. 파격적으로 줄여줘.", 서버 adventure_battle). */
-export const dropChance = (luc: number, L: number) => 0.002 * (1 + luc / (luc + 4 * L));
 /**
- * 보스·중간 보스 무기 드랍: 보통 식에서 0.002만 0.15(2026-11-21 사용자 "보스 한판당 한번이니깐 드롭률을 15% 정도로 올려라.", "LUC, 장착무기의 드랍효과는 적용되야한다.",
+ * 보통 몬스터 무기 드랍(0.02 → 0.002, 2026-11-18 사용자 "전반적으로 드롭률이 너무 높다. 파격적으로 줄여줘." → 0.08, 2026-11-23 사용자 "일반 몬스터 무기 드랍 비율을
+ * 지금의 10배로 올린다." 뒤 "일반 몬스터 무기 드롭률 8%로 올리자.", 서버 20261123000000_adventure_drop8_weaker.sql adventure_battle).
+ */
+export const dropChance = (luc: number, L: number) => 0.08 * (1 + luc / (luc + 4 * L));
+/**
+ * 보스·중간 보스 무기 드랍: 보통 식(그때 0.002)에서 그 자리만 0.15(2026-11-21 사용자 "보스 한판당 한번이니깐 드롭률을 15% 정도로 올려라.", "LUC, 장착무기의 드랍효과는 적용되야한다.",
  * 서버 20261121300000_adventure_maps_v7.sql). 장착 무기 드랍 효과는 보통 식처럼 밖에서 곱한다. 화면에 확률은 보이지 않는다(계산기·견주기용).
  */
 export const bossDropChance = (luc: number, L: number) => 0.15 * (1 + luc / (luc + 4 * L));

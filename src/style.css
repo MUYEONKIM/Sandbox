@@ -1460,6 +1460,14 @@ canvas {
   border: 1px solid var(--panel-edge);
 }
 
+/* 모험 보스 칸: 미니맵 점처럼 마름모(모험 맵에서만 보임) */
+.minimap-key.boss::before {
+  width: 7px;
+  height: 7px;
+  margin: 0 6px 0 2px;
+  transform: rotate(45deg);
+}
+
 .portal-name {
   color: #5fe3ff;
 }

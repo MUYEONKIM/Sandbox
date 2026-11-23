@@ -56,6 +56,8 @@ interface Turn {
   combo?: number;
   heal?: number;
   endure?: boolean;
+  /** 내 차례 뒤 몬스터 남은 체력(서버가 올림한 정수, 이기면 0) */
+  foeLeft?: number;
 }
 interface Timed extends Turn {
   start: number;
@@ -69,11 +71,11 @@ export function toTurns(battle: AdvBattle): Turn[] {
   // 서버는 체력을 올림한 정수로 보낸다. 처음 값도 올림해야 흡혈이 없을 때 0이 아닌 회복이 생기지 않는다.
   let prevMy = Math.ceil(battle.me.hp);
   let combo = 0;
-  for (const [who, damage, crit, my] of battle.turns) {
+  for (const [who, damage, crit, my, mon] of battle.turns) {
     if (who === 0) {
       combo++;
       const heal = my - prevMy;
-      out.push({ by: 'hero', damage, crit: crit === 1, combo: combo > 1 ? combo : undefined, heal: heal >= 1 ? heal : undefined });
+      out.push({ by: 'hero', damage, crit: crit === 1, combo: combo > 1 ? combo : undefined, heal: heal >= 1 ? heal : undefined, foeLeft: mon });
     } else if (who === 1) {
       combo = 0;
       out.push({ by: 'foe', damage });
@@ -95,6 +97,7 @@ function compact(turns: Turn[]) {
       last.damage += t.damage;
       last.combo = t.combo;
       last.crit = last.crit || t.crit;
+      last.foeLeft = t.foeLeft;
       if (t.heal) last.heal = (last.heal ?? 0) + t.heal;
     } else out.push({ ...t });
   }
@@ -180,7 +183,8 @@ class Stage {
     let foeHp = fight.foeHp;
     for (const e of plan.events) {
       if (e.hit > t) break;
-      if (e.by === 'hero') foeHp -= e.damage;
+      // 몬스터 칸은 서버가 준 남은 체력을 쓴다. 반올림한 피해를 빼면 체력이 소수일 때(세기 × 0.8 등) 이겨도 1이 남아 보인다.
+      if (e.by === 'hero') foeHp = e.foeLeft ?? foeHp - e.damage;
       else heroHp = e.endure ? 1 : heroHp - e.damage;
       if (e.heal) heroHp = Math.min(fight.heroHp, heroHp + e.heal);
     }

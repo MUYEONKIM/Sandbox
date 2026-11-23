@@ -877,7 +877,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       rect.width + CAMERA_PAD_X * 2,
       rect.height + CAMERA_PAD_Y * 2,
     );
-    this.minimap.setMap(info.name, info.color, this.world.map.bounds);
+    this.minimap.setMap(info.name, info.color, this.world.map.bounds, isAdventure(id));
     this.minimapEpoch++;
     this.cameras.main.setBackgroundColor(
       info.mood
@@ -2426,6 +2426,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     see(this.hideoutShown ? 1 : 0);
     see(this.me.tile.x);
     see(this.me.tile.y);
+    // 모험 보스 점: 목록이 바뀔 때(맵에 놓을 때, 이긴 뒤, 새 판)만 번호가 바뀐다. 모험 맵이 아니면 -1.
+    see(this.advField?.bossDotsVersion ?? -1);
     for (const { x, y } of others) {
       see(x);
       see(y);
@@ -2441,6 +2443,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       others,
       blocks: [...this.world.blockTiles(), ...this.world.map.walls, ...this.world.map.partitions],
       portals: this.world.portals,
+      bosses: this.advField?.bossDots ?? [],
     });
   }
 

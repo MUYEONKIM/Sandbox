@@ -4,6 +4,7 @@ import { depthOf, tileCenter } from '../iso';
 import type { AdvZone } from '../net/adventure';
 import { adventureArt, loadAdventureArt } from '../art/adventureArt';
 import { element } from '../ui/dom';
+import type { BossDot } from '../ui/minimap';
 import { statRows } from '../ui/adventure';
 import { gearKey, gearWindow, type GearUi } from '../ui/adventureGear';
 import { bigOf, COUNT, countUp, type Counting } from '../ui/countUp';
@@ -101,6 +102,9 @@ interface LevelUp {
   recommend: HTMLButtonElement | null;
 }
 
+/** 미니맵 보스 점 목록 번호(모든 필드가 함께 센다) */
+let bossDotSerial = 0;
+
 export class AdventureField {
   private readonly hud: HTMLElement;
   private readonly row1: HTMLElement;
@@ -143,6 +147,12 @@ export class AdventureField {
   readonly gearStats = { draws: 0, ms: 0 };
   /** 잰 값(성능 확인용): 흔들림 계산 횟수·시간·y를 바꾼 수·보인 몬스터 수 */
   readonly bobStats = { ticks: 0, ms: 0, moved: 0, visible: 0 };
+  /**
+   * 미니맵에 그릴 보스·중간 보스·수문장(이번 판에 이긴 것은 빠짐)과 그 목록 번호. 맵에 놓을 때와 이긴 뒤·새 판(syncBeaten이 바꿨을 때)에만 새로 만든다.
+   * 번호는 모든 필드가 함께 세어 맵이 바뀌어도 겹치지 않는다. GameScene 미니맵은 번호가 바뀌었을 때만 다시 그린다.
+   */
+  bossDots: BossDot[] = [];
+  bossDotsVersion = 0;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -232,7 +242,15 @@ export class AdventureField {
     });
     this.buildTagAtlas();
     for (const f of this.floats) this.paintTag(f);
-    this.syncBeaten();
+    if (!this.syncBeaten()) this.refreshBossDots();
+  }
+
+  /** 미니맵 보스 점 목록을 다시 만든다. 수문장은 중간 보스와 같은 점(제가 정한 것). */
+  private refreshBossDots() {
+    this.bossDots = this.floats
+      .filter((f) => f.m.once && !f.gone)
+      .map((f): BossDot => ({ x: f.m.x, y: f.m.y, kind: f.m.kind === 'boss' ? 'boss' : 'mini' }));
+    this.bossDotsVersion = ++bossDotSerial;
   }
 
   /**
@@ -254,6 +272,7 @@ export class AdventureField {
       f.shadow?.setVisible(!gone);
       changed = true;
     }
+    if (changed) this.refreshBossDots();
     return changed;
   }
 
