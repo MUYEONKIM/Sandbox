@@ -171,6 +171,21 @@ async function call<T>(name: string, args?: Record<string, unknown>): Promise<T 
 }
 
 export const adventureState = () => call<AdvView>('adventure_state');
+
+/**
+ * 모험 숫자 설정 표(adventure_tuning, SQL 20261123100000_adventure_tuning.sql, 2026-11-23 사용자 "옮겨"). key → value.
+ * 전투는 서버가 이 표로 센다. 화면은 일곱 빛 들판 구역 글의 배수(bonus_*)만 쓴다. 읽지 못하면 null.
+ */
+export async function adventureTuning(): Promise<Record<string, number> | null> {
+  const { data, error } = await supabase.from('adventure_tuning').select('key, value');
+  if (error || !data) return null;
+  const out: Record<string, number> = {};
+  for (const row of data as { key: string; value: number | string }[]) {
+    const v = Number(row.value);
+    if (Number.isFinite(v)) out[row.key] = v;
+  }
+  return out;
+}
 /** 맵 위 몬스터(칸 x, y)와 싸운다. 레벨과 구역 보너스는 서버가 그 자리로 정한다. */
 /** 들어가기 탭의 최고 레벨 순위: 위 10명과 내 순위(기록이 없으면 null), 내 닉네임 */
 export interface AdvRanking {

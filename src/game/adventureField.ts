@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { MAP_SIZE } from '../config';
 import { depthOf, tileCenter } from '../iso';
-import type { AdvZone } from '../net/adventure';
+import { adventureTuning, type AdvZone } from '../net/adventure';
 import { adventureArt, loadAdventureArt } from '../art/adventureArt';
 import { element } from '../ui/dom';
 import type { BossDot } from '../ui/minimap';
@@ -105,6 +105,21 @@ interface LevelUp {
 /** 미니맵 보스 점 목록 번호(모든 필드가 함께 센다) */
 let bossDotSerial = 0;
 
+/**
+ * 일곱 빛 구역 글의 배수: 맵 자료 legend.key → 서버 설정 표 key(adventure_tuning bonus_*, 2026-11-23 사용자 "옮겨").
+ * 표는 일곱 빛 맵에 들어올 때마다 한 번 읽고(14줄), 받기 전에는 앞서 받은 값, 처음에는 맵 자료 글(처음 값과 같음)을 보인다.
+ */
+const BONUS_TUNING: Record<string, string> = {
+  exp3: 'bonus_exp3', exp2: 'bonus_exp2', exp15: 'bonus_exp15', drop3: 'bonus_drop3', drop2: 'bonus_drop2', foeHp: 'bonus_foe_hp', foeAtk: 'bonus_foe_atk',
+};
+let tuning: Record<string, number> | null = null;
+/** 맵 자료 글("exp x 3", "enemy hp x 0.5")의 끝 숫자를 표 값으로 바꾼다. */
+const lightText = (legend: { key: string; bonus: string; hud?: string }) => {
+  const text = legend.hud ?? legend.bonus;
+  const v = tuning?.[BONUS_TUNING[legend.key] ?? ''];
+  return v === undefined ? text : text.replace(/[\d.]+$/, String(v));
+};
+
 export class AdventureField {
   private readonly hud: HTMLElement;
   private readonly row1: HTMLElement;
@@ -136,6 +151,8 @@ export class AdventureField {
   private goldCount: Counting | null = null;
   private goldTimer = 0;
   private shownLight = '';
+  /** destroy 뒤면 true(늦게 온 설정 표 답을 버린다) */
+  private dead = false;
   /** 이 맵 이름표를 모은 텍스처 키(buildTagAtlas). 맵을 떠날 때 지운다. */
   private tagAtlas = '';
   private panelVersion = -1;
@@ -174,6 +191,14 @@ export class AdventureField {
     // 되돌림 칸(예전 얽힌 숲 미로)은 v5 자료에 없다(2026-11-21). 자료에 생기면 다시 듣는다.
     for (const r of map.data.resets ?? []) this.resets.add(r.x + r.y * this.size);
     if (map.zone) this.placeMonsters();
+    // 일곱 빛 맵이면 설정 표를 한 번 읽어 구역 글의 배수를 맞춘다. 받은 뒤 글이 바뀔 때만 다시 그린다(paint가 shownLight와 견줌).
+    if (map.data.lights) {
+      void adventureTuning().then((t) => {
+        if (!t || this.dead) return;
+        tuning = t;
+        this.paint();
+      });
+    }
     this.timer = scene.time.addEvent({ delay: BOB_TICK_MS, loop: true, callback: () => this.bobTick() });
     this.offChange = adventure.onChange(() => {
       this.repaintTags();
@@ -423,6 +448,7 @@ export class AdventureField {
   }
 
   destroy() {
+    this.dead = true;
     this.finishGold();
     this.closeLevelUp(false);
     this.offChange();
@@ -573,7 +599,8 @@ export class AdventureField {
     const li = this.here ? lightAt(lights, this.here.x, this.here.y) : -1;
     const legend = li >= 0 ? lights?.legend[li] : undefined;
     // 글은 맵 자료 legend.hud("exp x 3" 등, 2026-11-18 사용자 "\"이 구역: 경험치 ×3\" 대신 exp x 3 로 쓴다"). 앞말 없이 빛 색 네모와 함께.
-    const text = legend ? (legend.hud ?? legend.bonus) : '';
+    // 끝 숫자는 서버 설정 표 값(lightText, 2026-11-23 사용자 "옮겨").
+    const text = legend ? lightText(legend) : '';
     const light = legend ? `${legend.color}|${text}` : '';
     if (light !== this.shownLight) {
       this.shownLight = light;

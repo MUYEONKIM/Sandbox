@@ -4,6 +4,9 @@
  * 숫자와 식은 docs/balance/tools/dungeon-run.js 위쪽 값과 같다(fightOnce, expOf, levelFromExp, dropChance, monster, PER_POINT, START, 무기 고정 수치 flatOf).
  * 바꾸면 그 파일, 서버 SQL(adventure_battle, adventure_power, adventure_buy_slot, adventure_set_auto), 이 파일을 함께 고친다.
  * 몬스터 레벨은 몬스터마다 자료에 있다(adventureMaps.ts, 서버 몬스터 표).
+ * 2026-11-23부터 서버 전투의 드랍 0.08·0.15, 경험치 10·보스 3, 몬스터 체력 2·공격 1.5·세기 0.8, 구역 보너스 배수는 설정 표 adventure_tuning 값이다
+ * (SQL 20261123100000_adventure_tuning.sql, 사용자가 실제 DB에서 바로 고침). 아래 같은 이름의 상수와 식(monster, expOf, dropChance, bossDropChance)은
+ * 그 처음 값이고 게임 화면은 쓰지 않는다. 화면에서 표를 읽는 곳은 일곱 빛 구역 글(adventureField lightText)뿐이다.
  */
 
 export type AdvStat = 'hp' | 'atk' | 'def' | 'agi' | 'luc';
