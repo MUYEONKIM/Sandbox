@@ -114,8 +114,9 @@ const BONUS_TUNING: Record<string, string> = {
 };
 let tuning: Record<string, number> | null = null;
 /** 맵 자료 글("exp x 3", "enemy hp x 0.5")의 끝 숫자를 표 값으로 바꾼다. */
-const lightText = (legend: { key: string; bonus: string; hud?: string }) => {
-  const text = legend.hud ?? legend.bonus;
+const lightText = (legend: { key?: string; bonus?: string; hud?: string }) => {
+  const text = legend.hud ?? legend.bonus ?? '';
+  if (!legend.key || !text) return text;
   const v = tuning?.[BONUS_TUNING[legend.key] ?? ''];
   return v === undefined ? text : text.replace(/[\d.]+$/, String(v));
 };
@@ -600,13 +601,14 @@ export class AdventureField {
     const legend = li >= 0 ? lights?.legend[li] : undefined;
     // 글은 맵 자료 legend.hud("exp x 3" 등, 2026-11-18 사용자 "\"이 구역: 경험치 ×3\" 대신 exp x 3 로 쓴다"). 앞말 없이 빛 색 네모와 함께.
     // 끝 숫자는 서버 설정 표 값(lightText, 2026-11-23 사용자 "옮겨").
+    // 글이 없는 빛(노랑, 보너스 없음)은 줄을 숨긴다(제가 정한 것).
     const text = legend ? lightText(legend) : '';
-    const light = legend ? `${legend.color}|${text}` : '';
+    const light = legend && text ? `${legend.color}|${text}` : '';
     if (light !== this.shownLight) {
       this.shownLight = light;
       this.lightRow.replaceChildren();
-      this.lightRow.hidden = !legend;
-      if (legend) {
+      this.lightRow.hidden = !light;
+      if (legend && light) {
         element('adv-light-dot', this.lightRow, 'span').style.background = legend.color;
         this.lightRow.append(text);
       }

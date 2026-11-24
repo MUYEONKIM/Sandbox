@@ -67,8 +67,11 @@ export interface AdvLights {
   n: number;
   /** n줄, 줄마다 n글자(빛 번호) */
   rows: string[];
-  /** hud: 화면 위 짧은 글("exp x 3" 등, 디자인 세션 자료) */
-  legend: { name: string; color: string; bonus: string; key: string; hud?: string }[];
+  /**
+   * hud: 화면 위 짧은 글("exp x 2" 등, 디자인 세션 자료). key·bonus·hud가 없는 빛은 바닥 색만 있고 보너스와 글이 없다
+   * (노랑, 2026-11-25 사용자 "7색의 땅인가 거기서 exp 3배는 없애라", 서버 20261125000000_adventure_rainbow_no_exp3.sql).
+   */
+  legend: { name: string; color: string; bonus?: string; key?: string; hud?: string }[];
 }
 /** 맵 위 몬스터 한 마리(맵 자료 monsters, 서버 몬스터 표 한 줄과 같은 칸) */
 export interface AdvMonsterSpot extends Tile {
