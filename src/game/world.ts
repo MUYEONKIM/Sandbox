@@ -1,11 +1,16 @@
-import { BLOCKS, footprintOf, isCube, isLarge, type BlockId } from '../blocks';
-import { BUILD_RANGE, MAX_STACK, PLACE_RANGE } from '../config';
+import { BLOCKS, canStackOn, footprintOf, isFlat, isFloorTile, isLarge, isOnTop, isPlacedWall, topOf, type BlockId } from '../blocks';
+import { BLOCK_HEIGHT, BUILD_RANGE, MAX_STACK, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
 import { isInside, type Area, type Portal } from './maps';
 
 export interface Tile {
   x: number;
   y: number;
+}
+
+/** 칸 하나의 한 높이 */
+export interface Level extends Tile {
+  z: number;
 }
 
 /** 캐릭터 손이 닿는 칸인지 판단한다. 대각선을 포함한 8방위로 PLACE_RANGE칸까지 닿는다. */
@@ -28,10 +33,13 @@ export class World {
   /** 건물 층 안의 벽 칸 */
   private readonly partitions = new Set<number>();
   /**
-   * 여러 칸을 차지하는 막힌 가구(침대, 탁자 등)가 덮은 칸 → 가구를 놓은 칸. 놓은 칸 자체는 blocks에 있다.
+   * 여러 칸을 차지하는 막힌 가구(침대, 탁자 등)가 덮은 칸 → 가구를 놓은 칸과 높이. 놓은 칸 자체는 blocks에 있다.
    * 카펫처럼 지나갈 수 있는 가구는 바닥 그림일 뿐이라 덮은 칸을 막지 않는다(그 위에 다른 가구를 놓을 수 있다).
+   * 가구는 바닥이나 바닥 타일·얇은 깔개(윗면 0) 위에 놓였을 때만 칸을 덮는다(2026-11-24). 덮은 칸에는 가구 윗면에 올린 소품이 놓인다.
    */
-  private readonly covered = new Map<number, number>();
+  private readonly covered = new Map<number, { owner: number; z: number }>();
+  /** covered를 거꾸로 찾는 표: "놓은 칸 키:z" → 덮은 칸 키들 */
+  private readonly coverIndex = new Map<string, number[]>();
   /** 블록을 놓거나 치울 때마다 1씩 는다. 전쟁터 손전등이 막힌 칸이 바뀐 것을 알아챌 때 쓴다. */
   version = 0;
   /** 울타리가 막는 변(농장만). 키는 fenceKey. */
@@ -55,9 +63,57 @@ export class World {
     return x >= 0 && y >= 0 && x < this.map.size && y < this.map.size;
   }
 
-  /** 바닥에 놓인 블록. 지나갈 수 있는지와 총알이 막히는지는 이 블록으로 정한다. */
+  /** 바닥에 놓인 블록(z 0) */
   blockAt(x: number, y: number) {
     return this.blocks.get(this.key(x, y))?.[0];
+  }
+
+  /** 칸에 쌓인 것 중 하나라도 막히는지(2026-11-24: 방석 위 꽃병, 바닥 타일 위 상자도 막는다) */
+  private solidStack(x: number, y: number) {
+    const stack = this.blocks.get(this.key(x, y));
+    return !!stack && stack.some((id) => id !== undefined && BLOCKS[id].solid);
+  }
+
+  /** 칸에 쌓인 것이 모두 납작한지(바닥 타일·얇은 깔개). 빈 칸도 그렇다. 이런 칸은 바닥처럼 그 위에 무엇이든 놓는다. */
+  isFlatStack(x: number, y: number) {
+    const stack = this.blocks.get(this.key(x, y));
+    return !stack || stack.every((id) => id === undefined || isFlat(id));
+  }
+
+  /** 블록이 있거나 큰 가구가 덮은 칸 */
+  isOccupied(x: number, y: number) {
+    const key = this.key(x, y);
+    return this.blocks.has(key) || this.covered.has(key);
+  }
+
+  /**
+   * 칸 (x, y)의 높이 z에 놓인(놓일) 것이 서는 높이(아트 px)와 받치는 것.
+   * 높이는 아래 것들의 윗면 높이 합이다(상자 18, 탁자 18, 의자 11, 방석 5, 바닥 타일 0 등). 윗면을 모르는 옛 블록은 상자 높이로 센다.
+   * 큰 가구가 덮은 칸에서는 납작한 것(바닥 타일·깔개)이 아닌 것이 그 가구 윗면에 선다. flat은 놓이는 것이 납작한지다.
+   */
+  supportOf(x: number, y: number, z: number, flat = false): { lift: number; on: Level | null } {
+    const stack = this.blocks.get(this.key(x, y));
+    let lift = 0;
+    let on: Level | null = null;
+    for (let i = 0; i < z; i++) {
+      const id = stack?.[i];
+      if (id === undefined) continue;
+      const top = topOf(id) ?? BLOCK_HEIGHT;
+      lift += top;
+      if (top > 0) on = { x, y, z: i };
+    }
+    if (on || flat) return { lift, on };
+    const cover = this.covered.get(this.key(x, y));
+    if (!cover) return { lift, on };
+    const owner = this.tileOf(cover.owner);
+    const id = this.blockAtLevel(owner.x, owner.y, cover.z);
+    if (!id) return { lift, on };
+    const base = this.supportOf(owner.x, owner.y, cover.z);
+    return { lift: Math.max(lift, base.lift + (topOf(id) ?? 0)), on: { ...owner, z: cover.z } };
+  }
+
+  private tileOf(key: number): Tile {
+    return { x: key % this.map.size, y: Math.floor(key / this.map.size) };
   }
 
   /** 높이 z에 놓인 블록 */
@@ -65,10 +121,15 @@ export class World {
     return this.blocks.get(this.key(x, y))?.[z];
   }
 
-  /** 큰 가구가 덮은 칸이면 그 가구를 놓은 칸 */
-  ownerOf(x: number, y: number): Tile | undefined {
-    const key = this.covered.get(this.key(x, y));
-    return key === undefined ? undefined : { x: key % this.map.size, y: Math.floor(key / this.map.size) };
+  /** 큰 가구가 덮은 칸이면 그 가구를 놓은 칸과 높이 */
+  ownerOf(x: number, y: number): Level | undefined {
+    const cover = this.covered.get(this.key(x, y));
+    return cover === undefined ? undefined : { ...this.tileOf(cover.owner), z: cover.z };
+  }
+
+  /** 놓은 칸 (x, y)의 높이 z 가구가 덮은 칸들(놓은 칸은 뺌) */
+  coveredBy(x: number, y: number, z: number): Tile[] {
+    return (this.coverIndex.get(`${this.key(x, y)}:${z}`) ?? []).map((key) => this.tileOf(key));
   }
 
   /** 칸에 쌓인 블록 수 */
@@ -84,10 +145,9 @@ export class World {
     return { id: stack[z], z };
   }
 
-  /** 설치된 블록이 있는 칸 목록 */
+  /** 설치된 블록이 있는 바닥 칸 목록(벽지·벽걸이를 붙인 벽 칸은 뺀다) */
   blockTiles(): Tile[] {
-    const { size } = this.map;
-    return [...this.blocks.keys()].map((key) => ({ x: key % size, y: Math.floor(key / size) }));
+    return [...this.blocks.keys()].map((key) => this.tileOf(key)).filter(({ x, y }) => this.isOpenGround(x, y));
   }
 
   /** 캐릭터 주변 8칸 안에 있는 자원 칸을 찾는다. */
@@ -125,19 +185,29 @@ export class World {
     if (!this.isOpenGround(x, y)) return false;
     if (this.covered.has(this.key(x, y))) return false;
     if (this.monsterTiles.has(this.key(x, y))) return false;
-    const block = this.blockAt(x, y);
-    return !block || !BLOCKS[block].solid;
+    return !this.solidStack(x, y);
   }
 
-  /** 점프로 넘을 수 없는 칸: 두 개 이상 쌓은 블록과 건물 층 안의 벽, 모험 맵 몬스터 칸 */
+  /**
+   * 점프로 넘을 수 없는 칸: 두 개 이상 쌓은 블록(바닥 타일·얇은 깔개는 세지 않음), 놓는 벽, 건물 층 안의 벽, 모험 맵 몬스터 칸.
+   * 방석 위 컵처럼 둘을 쌓은 것도 넘지 못한다(2026-11-24 코드 세션이 정함).
+   */
   blocksJump(x: number, y: number) {
-    return this.heightAt(x, y) >= 2 || this.partitions.has(this.key(x, y)) || this.monsterTiles.has(this.key(x, y));
+    if (this.partitions.has(this.key(x, y)) || this.monsterTiles.has(this.key(x, y))) return true;
+    const stack = this.blocks.get(this.key(x, y));
+    if (!stack) return false;
+    let raised = 0;
+    for (const id of stack) {
+      if (id === undefined) continue;
+      if (isPlacedWall(id)) return true;
+      if (!isFlat(id)) raised++;
+    }
+    return raised >= 2;
   }
 
-  /** 총알과 칼을 막는 칸: 건물이나 자원 같은 고정 장애물과 지나갈 수 없는 블록이다. 물과 꽃은 넘어간다. */
+  /** 총알과 칼을 막는 칸: 건물이나 자원 같은 고정 장애물과 지나갈 수 없는 블록이다(쌓인 것 중 하나라도). 물과 꽃은 넘어간다. */
   blocksShots(x: number, y: number) {
-    const block = this.blockAt(x, y);
-    return this.map.solid[this.key(x, y)] === 1 || this.covered.has(this.key(x, y)) || (block !== undefined && BLOCKS[block].solid);
+    return this.map.solid[this.key(x, y)] === 1 || this.covered.has(this.key(x, y)) || this.solidStack(x, y);
   }
 
   /**
@@ -189,7 +259,28 @@ export class World {
    */
   canPlace(target: Tile, player: Tile, id: BlockId) {
     if (!inBuildReach(player, target)) return false;
+    // 바닥 타일·얇은 깔개(윗면 0)만 깔린 칸은 빈 바닥으로 보고 그 위(쌓인 수 높이)에 놓는다(2026-11-24). 바닥 타일은 빈 칸에만.
+    const height = this.heightAt(target.x, target.y);
+    if (height >= MAX_STACK) return false;
+    if (height > 0) {
+      const top = this.topAt(target.x, target.y)!;
+      if (isFloorTile(id) || !canStackOn(top.id, id)) return false;
+    }
     return this.placeTiles(target, id).every((tile) => this.isFreeForBlock(tile, player));
+  }
+
+  /**
+   * 큰 가구가 덮은 칸 target에 작은 소품을 그 가구 윗면에 올릴 수 있는지(2026-11-24). 서버는 가구 크기를 모르므로 소품은 그 칸의
+   * 쌓인 수 높이(바닥 타일이 있으면 그 위)로 저장하고, 화면이 가구 윗면 높이에 그린다.
+   */
+  canPlaceOnCover(target: Tile, player: Tile, id: BlockId) {
+    const owner = this.ownerOf(target.x, target.y);
+    if (!owner || !isOnTop(id) || !inBuildReach(player, target)) return false;
+    const furniture = this.blockAtLevel(owner.x, owner.y, owner.z);
+    if (!furniture || !topOf(furniture)) return false;
+    if (!this.isFlatStack(target.x, target.y) || this.heightAt(target.x, target.y) >= MAX_STACK) return false;
+    if (this.buildFilter && !this.buildFilter(target.x, target.y)) return false;
+    return this.map.buildZones.some((zone) => isInside(zone, target.x, target.y));
   }
 
   /** 놓을 때 비어 있어야 하는 칸들 */
@@ -211,17 +302,22 @@ export class World {
     if (this.isPortalArea(target.x, target.y)) return false;
     if (this.map.reserved.some(({ x, y }) => x === target.x && y === target.y)) return false;
     if (this.covered.has(this.key(target.x, target.y))) return false;
-    return this.isOpenGround(target.x, target.y) && !this.heightAt(target.x, target.y);
+    return this.isOpenGround(target.x, target.y) && this.isFlatStack(target.x, target.y);
   }
 
-  /** 칸의 블록 위에 하나 더 쌓을 수 있는지. 기본 블록(상자) 위에만, MAX_STACK개까지 쌓는다. 큰 가구는 쌓지 않는다. */
+  /**
+   * 칸의 블록 위에 하나 더 쌓을 수 있는지(맨 위가 납작하지 않은 칸). MAX_STACK개까지 쌓는다. 큰 가구는 쌓지 않는다.
+   * 상자 위에는 한 칸짜리 무엇이든, 탁자·의자·방석 같은 윗면 위에는 작은 소품만 올린다(blocks.ts canStackOn).
+   */
   canStack(target: Tile, player: Tile, id?: BlockId) {
     if (id && isLarge(id)) return false;
     if (!inBuildReach(player, target)) return false;
     if (!this.map.buildZones.some((zone) => isInside(zone, target.x, target.y))) return false;
     if (this.buildFilter && !this.buildFilter(target.x, target.y)) return false;
     const top = this.topAt(target.x, target.y);
-    return top !== undefined && top.z + 1 < MAX_STACK && isCube(top.id);
+    // 납작한 것만 깔린 칸은 빈 바닥과 같이 canPlace로 본다(큰 가구가 차지할 칸을 함께 봐야 함).
+    if (top === undefined || top.z + 1 >= MAX_STACK || this.isFlatStack(target.x, target.y)) return false;
+    return id ? canStackOn(top.id, id) : topOf(top.id) !== null;
   }
 
   /** 숨은 방처럼 나중에 드러나는 바닥을 걸을 수 있게 한다. solid는 가구가 있어 막는 칸이다. */
@@ -251,12 +347,17 @@ export class World {
     this.version++;
     const key = this.key(x, y);
     const stack = this.blocks.get(key) ?? [];
+    const onFloor = stack.slice(0, z).every((below) => below === undefined || isFlat(below));
     stack[z] = id;
     this.blocks.set(key, stack);
-    if (z === 0 && BLOCKS[id].solid) {
+    if (onFloor && BLOCKS[id].solid) {
+      const keys: number[] = [];
       for (const tile of this.placeTiles({ x, y }, id)) {
-        if (this.inBounds(tile.x, tile.y) && (tile.x !== x || tile.y !== y)) this.covered.set(this.key(tile.x, tile.y), key);
+        if (!this.inBounds(tile.x, tile.y) || (tile.x === x && tile.y === y)) continue;
+        this.covered.set(this.key(tile.x, tile.y), { owner: key, z });
+        keys.push(this.key(tile.x, tile.y));
       }
+      if (keys.length) this.coverIndex.set(`${key}:${z}`, keys);
     }
   }
 
@@ -265,8 +366,13 @@ export class World {
     const key = this.key(x, y);
     const stack = this.blocks.get(key);
     if (!stack) return;
-    if (z === 0) {
-      for (const [tile, owner] of this.covered) if (owner === key) this.covered.delete(tile);
+    const covers = this.coverIndex.get(`${key}:${z}`);
+    if (covers) {
+      for (const tile of covers) {
+        const cover = this.covered.get(tile);
+        if (cover && cover.owner === key && cover.z === z) this.covered.delete(tile);
+      }
+      this.coverIndex.delete(`${key}:${z}`);
     }
     delete stack[z];
     // 맨 위가 빠지면 비어 있는 꼭대기를 걷어 낸다.

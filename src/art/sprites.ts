@@ -154,6 +154,17 @@ const NAMES = [
   'farm-shed-x',
   'farm-fence',
   'farm-fence-x',
+  // 횃불(2026-11-24, 디자인 세션 art-source/torch, 공유 노트 torch.md): 아이콘 20 × 20, 들고 있는 그림 7 × 22 불꽃 4장 × 2방향
+  'torch/torch-icon',
+  'torch/torch-held',
+  // 방 꾸미기 장식품(2026-11-24, 디자인 세션 3·5, src/roomDecor.ts). 장식품 두 장, 놓는 벽, 바닥 타일, 벽지 두 장, 바깥용 장식품
+  'room/room-decor',
+  'room/room-decor-more',
+  'room/room-walls',
+  'room/room-tiles',
+  'room/wall-textures',
+  'room/wall-textures-more',
+  'room/outdoor-decor',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

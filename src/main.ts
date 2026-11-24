@@ -63,7 +63,9 @@ function enterGame(
   const root = document.getElementById('hud')!;
   const session = new GameSession(profile);
   const inventory = new Inventory(profile.inventory, forgeData.gear);
-  inventory.onChange(() => session.saveLater({ inventory: inventory.slots }));
+  inventory.onChange(() => session.saveLater({ inventory: inventory.saved() }));
+  // 횃불을 9번 칸에 한 번 넣었거나 처음 가입이면 바로 저장해 둔다(표시가 남아 다음에 다시 넣지 않는다).
+  if (inventory.needsSave) session.saveLater({ inventory: inventory.saved() });
 
   const side = element('side', root);
   const hud = new Hud(root, side, inventory, profile.nickname, async () => {

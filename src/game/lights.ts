@@ -2,8 +2,9 @@ import Phaser from 'phaser';
 import { BLOCK_HEIGHT, TILE_W } from '../config';
 import { groundPoint, sprite } from '../art/sprites';
 import { BLOCKS } from '../blocks';
-import { ensureGlowTexture, FIXED_LIGHTS, GLOW_LOOKS, GLOW_TEXTURE, LIGHT_BLOCKS, type GlowLook, type GlowLookId } from '../art/glow';
+import { ensureGlowTexture, ensureLookTexture, FIXED_LIGHTS, GLOW_LOOKS, GLOW_TEXTURE, LIGHT_BLOCKS, type GlowLook, type GlowLookId } from '../art/glow';
 import { gridToWorld, keepDepth, tileCenter } from '../iso';
+import { ROOM_LIGHTS } from '../roomDecor';
 import type { DayPhase } from './daylight';
 
 /**
@@ -41,6 +42,8 @@ interface Lit {
   poolAlpha: number;
   /** 지난번 깜빡임 계단(0~3). 바뀔 때만 알파를 고친다. */
   level: number;
+  /** 늘 같은 진하기(모험 맵 등불). 없으면 시간대 진하기를 따른다. */
+  fixedStrength?: number;
 }
 
 interface PlayerLight {
@@ -63,9 +66,8 @@ interface PlayerLight {
  * 맵 소품 그림을 블록으로 놓은 것(가로등)은 블록이 그림 발끝을 칸 가운데에 두고(GameScene.dressBlock) 소품은 그림 아래를 칸 앞
  * 꼭짓점에 두어(showBuilding) 자리가 다르므로, 소품으로 놓을 때의 빛 자리와 그림 발끝의 차이를 그대로 써서 등 머리에 맞춘다.
  */
-function lightSpot(id: string, look: GlowLook, x: number, y: number, z: number) {
+function lightSpot(id: string, look: GlowLook, x: number, y: number, lift: number) {
   const c = tileCenter(x, y);
-  const lift = z * BLOCK_HEIGHT;
   const art = (BLOCKS as Record<string, { art: { kind: string; sprite?: string } }>)[id]?.art;
   const fixed = art?.kind === 'sprite' && art.sprite ? FIXED_LIGHTS[art.sprite]?.[0] : undefined;
   if (!fixed || !art?.sprite) return { px: c.x, py: c.y, hx: c.x, hy: c.y - lift - look.head };
@@ -95,6 +97,11 @@ export class Lights {
   private drawnStrength = -1;
   private fade: Phaser.Tweens.Tween | null = null;
   private readonly fixed: Lit[] = [];
+  /**
+   * 모험 맵 등불 빛(2026-11-24, 디자인 adv-lights.md 8절 4번): 진하기가 지역마다 늘 같고(시간대를 따르지 않아 아침에도 켬),
+   * 지옥(분위기 색) 맵에서도 켠다. enter의 enabled와 상관없다. 깜빡임은 같은 타이머가 한다.
+   */
+  private readonly adventure: Lit[] = [];
   private readonly blocks = new Map<string, PlayerLight>();
   /** 플레이어 조명용으로 만들어 둔 이미지(최대 30쌍). key는 지금 맡은 조명, poolOn은 웅덩이를 둘지 */
   private readonly slots: Slot[] = [];
@@ -137,13 +144,40 @@ export class Lights {
     this.refresh();
   }
 
+  /**
+   * 모험 맵 등불 빛을 놓는다(맵에 들어올 때 enter 뒤에). key는 그 지역 빛 텍스처 이름, look은 빛 값, spots는 칸 [x, y, 뒤집기],
+   * pool·halo는 칸 가운데에서 웅덩이·빛무리까지(뒤집으면 x 부호를 바꿈), haloDepth는 빛무리 깊이. 만든 이미지와 칸을 돌려준다(화면 밖 덩어리에 넣음).
+   */
+  addAdventureLamps(
+    key: string,
+    look: { color: number; pool: number; halo: number; flicker: number; fire: boolean; strength: number },
+    spots: readonly (readonly [number, number, number])[],
+    at: { px: number; py: number; hx: number; hy: number },
+    haloDepth: number,
+  ) {
+    ensureLookTexture(this.scene, key, look);
+    const glow: GlowLook = { color: look.color, pool: look.pool, halo: look.halo, head: 0, flicker: look.flicker, fire: look.fire };
+    const made: { image: Phaser.GameObjects.Image; x: number; y: number }[] = [];
+    for (const [x, y, flip] of spots) {
+      const c = tileCenter(x, y);
+      const sign = flip ? -1 : 1;
+      const pool = this.scene.add.image(c.x + sign * at.px, c.y + at.py, key, 'pool').setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_POOL);
+      const halo = this.scene.add.image(c.x + sign * at.hx, c.y + at.hy, key, 'halo').setBlendMode(Phaser.BlendModes.ADD).setDepth(haloDepth);
+      this.adventure.push({ look: glow, phase: phaseOf(x, y, 0), pool, halo, poolAlpha: 1, level: -1, fixedStrength: look.strength });
+      made.push({ image: pool, x, y }, { image: halo, x, y });
+    }
+    this.refresh();
+    return made;
+  }
+
   /** 맵을 떠날 때. 고정 등 이미지는 지우고 플레이어 조명 이미지는 숨겨 두었다가 다시 쓴다. */
   clear() {
-    for (const lit of this.fixed) {
+    for (const lit of [...this.fixed, ...this.adventure]) {
       lit.pool?.destroy();
       lit.halo.destroy();
     }
     this.fixed.length = 0;
+    this.adventure.length = 0;
     this.blocks.clear();
     for (const slot of this.slots) {
       slot.key = null;
@@ -181,12 +215,17 @@ export class Lights {
     this.refresh();
   }
 
-  /** 빛 블록이 놓였다. 빛 블록이 아니면 아무것도 하지 않는다. depth는 그 블록 그림의 깊이다. */
-  addBlock(id: string, x: number, y: number, z: number, depth: number) {
-    const look = LIGHT_BLOCKS[id];
+  /**
+   * 빛 블록이 놓였다. 빛 블록이 아니면 아무것도 하지 않는다. depth는 그 블록 그림의 깊이, lift는 그 블록이 선 높이(아트 px,
+   * 아래 것들의 윗면 합, 2026-11-24 장식품 위 장식품)다. 방 꾸미기 조명은 그림마다 빛무리 높이가 따로 있다(ROOM_LIGHTS).
+   */
+  addBlock(id: string, x: number, y: number, z: number, depth: number, lift = z * BLOCK_HEIGHT) {
+    const room = ROOM_LIGHTS[id];
+    const look = (room?.look as GlowLookId | undefined) ?? LIGHT_BLOCKS[id];
     if (!look || !this.enabled) return;
     const key = `${x},${y},${z}`;
-    this.blocks.set(key, { key, look, x, y, z, depth, ...lightSpot(id, GLOW_LOOKS[look], x, y, z) });
+    const shape = room ? { ...GLOW_LOOKS[look], head: room.head } : GLOW_LOOKS[look];
+    this.blocks.set(key, { key, look, x, y, z, depth, ...lightSpot(id, shape, x, y, lift) });
     this.queueChoose();
   }
 
@@ -199,6 +238,11 @@ export class Lights {
     this.view.setTo(view.x, view.y, view.width, view.height);
     this.hasView = true;
     if (this.blocks.size || this.slots.some((slot) => slot.key)) this.choose();
+  }
+
+  /** 지금 등 빛 진하기(켜지 않는 맵이면 0). 횃불 빛(torches.ts)이 같은 진하기를 쓴다. */
+  get glow() {
+    return this.enabled ? this.strength : 0;
   }
 
   /** 지금 켠 플레이어 조명 수(확인용) */
@@ -305,9 +349,10 @@ export class Lights {
       slot.pool?.setVisible(shown && slot.poolOn);
     }
     const any = this.fixed.length > 0 || this.slots.some((slot) => slot.key);
-    this.timer.paused = !(on && any);
+    const adventure = this.adventure.length > 0;
+    this.timer.paused = !((on && any) || adventure);
     this.drawnStrength = -1;
-    if (on && any) this.tick();
+    if ((on && any) || adventure) this.tick();
   }
 
   /** 0.1초마다: 빛마다 깜빡임 계단을 셈해 바뀐 것만 알파를 고친다. 진하기가 바뀌는 동안은 모두 고친다. */
@@ -322,11 +367,12 @@ export class Lights {
       const level = Math.round(s * 3);
       if (!all && level === lit.level) return;
       lit.level = level;
-      const k = this.strength * (1 - (lit.look.flicker * level) / 3);
+      const k = (lit.fixedStrength ?? this.strength) * (1 - (lit.look.flicker * level) / 3);
       lit.halo.setAlpha(k);
       lit.pool?.setAlpha(k * lit.poolAlpha);
     };
-    for (const lit of this.fixed) update(lit);
-    for (const slot of this.slots) if (slot.key) update(slot);
+    if (this.enabled) for (const lit of this.fixed) update(lit);
+    for (const lit of this.adventure) update(lit);
+    if (this.enabled) for (const slot of this.slots) if (slot.key) update(slot);
   }
 }

@@ -3,7 +3,7 @@ import { BLOCK_IDS } from '../blocks';
 import { HOTBAR_SIZE, MEMO_SLOT, TABS, type Inventory, type TabId } from '../game/inventory';
 import { formatNumber, levelNeed } from '../game/level';
 import { goldText, type Gold } from '../game/gold';
-import { isPotion, isSeed, paintItem, POTION_IDS, SEED_IDS, WEAPON_IDS, type GearRef, type ItemId, type PotionId, type SeedId } from '../items';
+import { isPotion, isSeed, paintItem, POTION_IDS, SEED_IDS, TORCH, WEAPON_IDS, type GearRef, type ItemId, type PotionId, type SeedId } from '../items';
 import { element } from './dom';
 import { foldButton } from './fold';
 import type { MyStatus } from './info';
@@ -13,7 +13,7 @@ import './touch.css';
 
 /** 이미지를 읽은 뒤에 그릴 수 있어서 Hud를 만들 때 준비한다. */
 function paintIcons() {
-  return Object.fromEntries([...BLOCK_IDS, ...WEAPON_IDS, ...POTION_IDS, ...SEED_IDS].map((id) => [id, paintItem(id).toDataURL()])) as Record<
+  return Object.fromEntries([...BLOCK_IDS, ...WEAPON_IDS, ...POTION_IDS, ...SEED_IDS, TORCH].map((id) => [id, paintItem(id).toDataURL()])) as Record<
     Exclude<ItemId, GearRef>,
     string
   >;
@@ -38,9 +38,20 @@ const HELP_ROWS: [string, string[], string?][] = [
 /** 조작 안내를 닫아 두었는지 브라우저에 남기는 이름(2026-11-13 사용자 요청 "단축키 화면은 H로 여닫기") */
 const HELP_CLOSED_KEY = 'help-closed';
 
-/** 인벤토리 창의 탭: 블록과 무기 탭(inventory.ts의 TABS) 뒤에 주운 메모 탭 */
+/** 인벤토리 창의 작은 탭: 블록과 무기 탭(inventory.ts의 TABS)과 주운 메모 탭 */
 type BagTab = TabId | 'memo';
 const BAG_TABS: Record<BagTab, string> = { ...TABS, memo: '메모' };
+/**
+ * 큰 탭과 그 안의 작은 탭(2026-11-25 사용자 "꾸미기 탭, 전투(무기, 포션) 탭, 농사 탭, 메모 탭 이렇게 나뉘면 괜찮다").
+ * 꾸미기 안 차례(타일·장식품·가구·벽)와 전투 안 차례(무기·포션)는 PM이 정했다. 작은 탭이 하나뿐인 큰 탭은 작은 탭 줄을 숨긴다.
+ */
+type BagGroup = 'build' | 'battle' | 'farm' | 'memo';
+const BAG_GROUPS: { id: BagGroup; label: string; tabs: BagTab[] }[] = [
+  { id: 'build', label: '꾸미기', tabs: ['tile', 'decor', 'furniture', 'wall'] },
+  { id: 'battle', label: '전투', tabs: ['weapon', 'potion'] },
+  { id: 'farm', label: '농사', tabs: ['seed'] },
+  { id: 'memo', label: '메모', tabs: ['memo'] },
+];
 
 /** 끌고 있는 것: 단축키 칸에서 집었으면 칸 번호, 인벤토리 목록에서 집었으면 그 물건 */
 type Drag = { from: number } | { item: ItemId };
@@ -110,7 +121,12 @@ export class Hud {
   private renderMemos: ((pane: HTMLElement) => void) | null = null;
   private readonly bagGold: HTMLElement;
   private readonly tabButtons = new Map<BagTab, HTMLButtonElement>();
+  private readonly groupButtons = new Map<BagGroup, HTMLButtonElement>();
+  private readonly subTabs: HTMLElement;
   private tab: BagTab = 'tile';
+  private group: BagGroup = 'build';
+  /** 큰 탭마다 마지막에 본 작은 탭(이번 접속 동안, PM이 정함) */
+  private readonly lastTab = new Map<BagGroup, BagTab>();
   private readonly icons = paintIcons();
   /** 가진 포션 개수(main에서 economy로 이음) */
   potionCount: (id: PotionId) => number = () => 0;
@@ -219,16 +235,31 @@ export class Hud {
     dropGold.type = 'button';
     dropGold.textContent = '버리기';
     dropGold.addEventListener('click', () => this.onDropGold?.());
-    const tabs = element('bag-tabs', this.bagPane);
-    for (const [id, label] of Object.entries(BAG_TABS) as [BagTab, string][]) {
-      const button = element('bag-tab', tabs, 'button') as HTMLButtonElement;
+    const groups = element('bag-tabs bag-groups', this.bagPane);
+    for (const { id, label, tabs } of BAG_GROUPS) {
+      const button = element('bag-tab bag-group', groups, 'button') as HTMLButtonElement;
       button.type = 'button';
       button.textContent = label;
       button.addEventListener('click', () => {
-        this.tab = id;
+        this.group = id;
+        this.tab = this.lastTab.get(id) ?? tabs[0];
         this.render();
       });
-      this.tabButtons.set(id, button);
+      this.groupButtons.set(id, button);
+    }
+    this.subTabs = element('bag-tabs bag-subtabs', this.bagPane);
+    for (const { id: group, tabs } of BAG_GROUPS) {
+      for (const id of tabs) {
+        const button = element('bag-tab bag-subtab', this.subTabs, 'button') as HTMLButtonElement;
+        button.type = 'button';
+        button.textContent = BAG_TABS[id];
+        button.addEventListener('click', () => {
+          this.tab = id;
+          this.lastTab.set(group, id);
+          this.render();
+        });
+        this.tabButtons.set(id, button);
+      }
     }
     this.bag = element('slots bag', this.bagPane);
     this.memoPane = element('memo-bag', this.bagPane);
@@ -662,7 +693,14 @@ export class Hud {
 
   /** 지금 탭의 목록. 단축키 칸에 들어 있는 것은 칸 번호를 붙인다. */
   private renderBag() {
-    for (const [id, button] of this.tabButtons) button.classList.toggle('chosen', id === this.tab);
+    const group = BAG_GROUPS.find((g) => g.id === this.group)!;
+    for (const [id, button] of this.groupButtons) button.classList.toggle('chosen', id === this.group);
+    // 지금 큰 탭의 작은 탭만 보이고, 작은 탭이 하나뿐이면 줄째 숨긴다.
+    for (const [id, button] of this.tabButtons) {
+      button.hidden = !group.tabs.includes(id);
+      button.classList.toggle('chosen', id === this.tab);
+    }
+    this.subTabs.hidden = group.tabs.length < 2;
     this.bag.replaceChildren();
     const memo = this.tab === 'memo';
     this.bag.hidden = memo;

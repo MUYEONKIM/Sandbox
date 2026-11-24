@@ -1,7 +1,7 @@
 import { CUBE_ORIGIN_X, CUBE_ORIGIN_Y } from '../art/cube';
 import { DECOR_LIFT, paintGround, TILE_CELL, worldRect } from '../art/ground';
-import { groundPoint, sprite } from '../art/sprites';
-import { blockArt, blockTile, footprintOf, paintBlock, type BlockId } from '../blocks';
+import { groundPoint, sprite, type SpriteName } from '../art/sprites';
+import { blockArt, blockTile, footprintOf, isFloorTile, isRug, outdoorFrame, paintBlock, topOf, wallAxisMask, wallFrame, type BlockId } from '../blocks';
 import { BLOCK_HEIGHT, MAP_SIZE } from '../config';
 import { CROP_ART, CROP_CELL } from '../game/cropArt';
 import { cropStateText, FARMLAND_TILES, FLOOR_TOP, isPlot, ownerWord, stageOf, votesText, type CropInfo, type CropId, type Plot } from '../game/farm';
@@ -466,7 +466,26 @@ export class LandMap {
         draw: () => ctx.drawImage(crops, sx, sy, CROP_CELL.width, CROP_CELL.height, c.x - RECT.left - art.anchorX, c.y - art.anchorY, CROP_CELL.width, CROP_CELL.height),
       });
     }
-    for (const block of blocks) items.push({ depth: block.x + block.y + block.z * 0.01 + 0.5, draw: () => this.drawBlock(ctx, block, drawTile) });
+    // 같은 칸에 쌓인 것: 높이는 아래 것들의 윗면 합(2026-11-24 장식품 위 장식품, 윗면을 모르는 옛 블록은 상자 높이)
+    const stacks = new Map<string, BlockId[]>();
+    for (const { x, y, z, id } of blocks) {
+      const key = `${x},${y}`;
+      const stack = stacks.get(key) ?? [];
+      stack[z] = id;
+      stacks.set(key, stack);
+    }
+    const liftOf = ({ x, y, z }: PlacedBlock) => {
+      const stack = stacks.get(`${x},${y}`) ?? [];
+      let lift = 0;
+      for (let i = 0; i < z; i++) if (stack[i]) lift += topOf(stack[i]) ?? BLOCK_HEIGHT;
+      return lift;
+    };
+    for (const block of blocks) {
+      const lift = liftOf(block);
+      // 바닥 타일과 바닥에 깔린 깔개는 먼저 그린다.
+      const flat = isFloorTile(block.id) ? -2 : isRug(block.id) && lift === 0 ? -1 : 0;
+      items.push({ depth: flat || block.x + block.y + block.z * 0.01 + 0.5, draw: () => this.drawBlock(ctx, block, drawTile, lift) });
+    }
     items.sort((a, b) => a.depth - b.depth);
     for (const item of items) item.draw();
 
@@ -497,10 +516,28 @@ export class LandMap {
     ctx: CanvasRenderingContext2D,
     { x, y, z, id }: PlacedBlock,
     drawTile: (tile: number, left: number, top: number) => void,
+    lift = z * BLOCK_HEIGHT,
   ) {
     const art = blockArt(id);
-    const lift = z * BLOCK_HEIGHT;
     const c = tileCenter(x, y);
+    // 방 꾸미기 그림(2026-11-24): 시트 한 자리를 기준점에 맞춘다. 놓는 벽은 제 방향 모양만 그린다(지도용).
+    const sheetFrame = (): [SpriteName, readonly number[], { x: number; y: number }] | null => {
+      if (art.kind === 'room') {
+        const { x0, y0, a, b } = footprintOf(id, x, y);
+        return [art.sheet, art.frame, gridToWorld(x0 + a / 2, y0 + b / 2)];
+      }
+      if (art.kind === 'outdoor') return ['room/outdoor-decor', outdoorFrame(id, x, y), c];
+      if (art.kind === 'ftile') return ['room/room-tiles', art.frame, c];
+      if (art.kind === 'pwall') return ['room/room-walls', wallFrame(art.style, wallAxisMask(art.axis)), c];
+      return null;
+    };
+    const sheet = sheetFrame();
+    if (sheet) {
+      const [name, [fx, fy, w, h, ax, ay], at] = sheet;
+      ctx.drawImage(sprite(name), fx, fy, w, h, at.x - RECT.left - ax, at.y - lift - ay, w, h);
+      return;
+    }
+    if (art.kind === 'paper' || art.kind === 'hang') return;
     if (art.kind === 'cube') {
       const image = cubeOf(id);
       ctx.drawImage(image, c.x - RECT.left - image.width * CUBE_ORIGIN_X, c.y - lift - image.height * CUBE_ORIGIN_Y);
@@ -519,6 +556,7 @@ export class LandMap {
       ctx.drawImage(sprite('furniture'), fx, fy, w, h, at.x - RECT.left - ax, at.y - lift - ay, w, h);
       return;
     }
+    if (art.kind !== 'tile') return;
     const corner = gridToWorld(x, y);
     drawTile(blockTile(art.tiles, x, y), corner.x - TILE_CELL / 2 - RECT.left, corner.y - FLOOR_TOP - DECOR_LIFT - lift);
   }

@@ -800,6 +800,17 @@ canvas {
   border-color: var(--panel-edge);
 }
 
+/* 큰 탭(꾸미기·전투·농사·메모) 아래 작은 탭(2026-11-25): 큰 탭보다 낮고 글자가 작다(에이전트가 정함). */
+.bag-subtabs {
+  margin-top: -2px;
+}
+
+.bag-tab.bag-subtab {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  font-size: 13px;
+}
+
 .bag-hint {
   max-width: calc(var(--slot-size) * 9 + 32px);
   margin-top: 6px;

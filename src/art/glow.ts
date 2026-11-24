@@ -108,6 +108,28 @@ function paint(data: ImageData, left: number, top: number, w: number, h: number,
   }
 }
 
+/**
+ * 빛 한 모양만 담은 작은 텍스처(프레임 'pool', 'halo')를 만든다. 모험 맵 등불(2026-11-24)은 지역에 들어갈 때 그 지역 것만 만든다
+ * (열다섯을 아틀라스에 다 넣으면 폭이 약 3,000px, 디자인 adv-lights.md 7절). 이미 있으면 그대로 둔다.
+ */
+export function ensureLookTexture(scene: Phaser.Scene, key: string, look: { color: number; pool: number; halo: number }) {
+  if (scene.textures.exists(key)) return;
+  const rx = look.pool;
+  const ry = Math.round(rx / 2);
+  const r = look.halo;
+  const canvas = document.createElement('canvas');
+  canvas.width = rx * 2 + 2 + r * 2;
+  canvas.height = Math.max(ry * 2, r * 2);
+  const ctx = canvas.getContext('2d')!;
+  const data = ctx.createImageData(canvas.width, canvas.height);
+  paint(data, 0, 0, rx * 2, ry * 2, look.color, 1.4, (x, y) => Math.hypot((x - rx) / rx, (y - ry) / ry));
+  paint(data, rx * 2 + 2, 0, r * 2, r * 2, look.color, 1.8, (x, y) => Math.hypot(x - r, y - r) / r);
+  ctx.putImageData(data, 0, 0);
+  const texture = scene.textures.addCanvas(key, canvas)!;
+  texture.add('pool', 0, 0, 0, rx * 2, ry * 2);
+  texture.add('halo', 0, rx * 2 + 2, 0, r * 2, r * 2);
+}
+
 /** 빛 아틀라스를 한 번 만들어 등록한다. 프레임 이름은 `pool:<모양>`, `halo:<모양>`이다. */
 export function ensureGlowTexture(scene: Phaser.Scene) {
   if (scene.textures.exists(GLOW_TEXTURE)) return;

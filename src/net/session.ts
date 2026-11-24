@@ -2,7 +2,6 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { isCropId, type CropId, type Grade, type Plot } from '../game/farm';
 import { BLOCKS, type BlockId } from '../blocks';
 import { BASE_HP, MAX_MAP_SIZE, MAX_STACK, TEAM_SIZE } from '../config';
-import type { Slot } from '../game/inventory';
 import { parseLevel } from '../game/level';
 import { parseGold, toGold, type Gold } from '../game/gold';
 import type { BetResult, GameId } from '../game/casino';
@@ -146,6 +145,8 @@ export interface PlayerMove {
   work: { x: number; y: number } | null;
   /** 모험 판 레벨(모험 맵에서 판이 있을 때만, 큰 수라 글자). 모험 맵 이름표에 쓴다. */
   run: string | null;
+  /** 횃불을 들었는지(2026-11-24). 옛 화면은 이 칸을 보내지 않아 false다. */
+  torch: boolean;
 }
 
 /** 다른 플레이어의 공격. 화면에 보여 주기만 하고 피해 판정은 공격한 쪽이 한다. */
@@ -257,6 +258,8 @@ export interface SessionEvents {
   currentLevel(): bigint;
   /** 모험 맵에서 판이 있으면 판 레벨(글자), 아니면 null */
   currentRun(): string | null;
+  /** 횃불을 들었는지(이동 알림과 접속 명단에 싣는다) */
+  currentTorch(): boolean;
   onMove(move: PlayerMove): void;
   onShot(shot: PlayerShot): void;
   /** 서버가 알려 주는 체력 변화. max는 그 사람의 최대 체력이고, 옛 서버 함수는 보내지 않아 null이다. */
@@ -299,7 +302,8 @@ interface ProfilePatch {
   map?: string;
   x?: number;
   y?: number;
-  inventory?: Slot[];
+  /** 단축키 9칸 + 횃불 표시(inventory.ts Inventory.saved) */
+  inventory?: unknown[];
 }
 
 const MAX_NAME = 12;
@@ -380,6 +384,7 @@ function parseMove(value: unknown): PlayerMove | null {
     skin: isSkin(m.skin) ? m.skin : null,
     work: work && isTileCoord(work.x) && isTileCoord(work.y) ? { x: work.x, y: work.y } : null,
     run: parseRun(m.run),
+    torch: (m as { torch?: unknown }).torch === true,
   };
 }
 
@@ -760,6 +765,7 @@ export class GameSession {
       skin,
       work: this.events.currentWork(),
       run: this.events.currentRun(),
+      torch: this.events.currentTorch(),
     };
   }
 

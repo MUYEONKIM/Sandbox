@@ -4,7 +4,7 @@ import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import { CASTLE, isAdventure, isDungeon, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
 import { layoutDungeon } from './dungeon';
-import { advMap, advSize, infernus, decoArt } from './adventureMaps';
+import { advLamps, advMap, advSize, infernus, decoArt } from './adventureMaps';
 import { FARM_ROAD_TILES, isPlot } from './farm';
 import {
   BULL,
@@ -388,6 +388,11 @@ function layoutAdventure(
         if (x >= 0 && y >= 0 && x < size && y < size) solid[x + y * size] = 1;
       }
     }
+  }
+  // 등불(2026-11-24, 디자인 adv-lights.md 8절): fp 1이면 그 칸을 막는다(마을 가로등 블록처럼 지나갈 수 없음). 서버는 칸을 보지 않는다.
+  const lamps = advLamps(id);
+  if (lamps?.frame.fp) {
+    for (const [x, y] of lamps.spots) if (x >= 0 && y >= 0 && x < size && y < size) solid[x + y * size] = 1;
   }
   return walls;
 }

@@ -393,7 +393,7 @@ function exchangeFloor(painter: Painter): FloorShader {
 const PLAIN_STONE = [0xebe6da, 0xe6e1d5];
 const PLAIN_GROUT = 0xcdc6b8;
 
-/** 빈방 바닥(이름 없는 방, 2026-11-24 에이전트가 정함): 한 칸에 한 장인 밝은 돌판과 가는 줄눈. 결이나 무늬는 넣지 않는다. */
+/** 빈방 바닥(이름 없는 방, 2026-11-24 에이전트가 정함): 한 칸에 한 장인 밝은 돌판과 가는 줄눈. 결이나 무늬는 넣지 않는다. 방 전체가 한 가지다. */
 function plainFloor(): FloorShader {
   return (gx, gy) => {
     if (frac(gx) < 0.04 || frac(gy) < 0.04) return PLAIN_GROUT;

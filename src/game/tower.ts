@@ -457,12 +457,14 @@ export const ROOM_PROPS: Partial<Record<TowerId, Prop[]>> = {
 export const LABOR_FURNITURE: Furniture[] = [{ sprite: 'plant', x: 15, y: 28 }];
 
 /**
- * 어디와도 이어지지 않은 16×16칸 빈방. 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
+ * 어디와도 이어지지 않은 빈방. 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
  * 나가는 포탈은 7층으로 가고, 7층에는 이 방으로 오는 포탈이 없어 엘리베이터 앞에 선다.
- * 소품 없이 무늬 없는 바닥과 벽만 있고 플레이어가 블록과 가구로 꾸민다(2026-11-24).
+ * 소품도 사이 벽도 없이 한 가지 밝은 돌 바닥과 뒤쪽 두 벽만 있고, 플레이어가 놓는 벽·가구·블록으로 꾸민다.
+ * 2026-11-24 16×16칸 빈방 → 2026-11-25 24×20칸으로 넓힘(뒤쪽 두 벽 자리는 그대로) → 같은 날 사용자가 사이 벽과 현관 바닥을 치우게 함
+ * ("벽도 다 치워라, 벽도 내가 알아서 다 세울 수 있지 않나", 고른 것 "사이 벽만 치움", "넓이는 두고 바닥은 한 가지로").
  */
-export const ANNEX: Area = [16, 16, 31, 31];
-const ANNEX_EXIT = { x: 24, y: ANNEX[3] };
+export const ANNEX: Area = [16, 16, 39, 35];
+const ANNEX_EXIT = { x: 36, y: ANNEX[3] };
 
 function wallPortal([x0, y0]: Area, { wall, at }: Doorway, to: Portal['to'], label?: string): Portal {
   return wall === 'right'

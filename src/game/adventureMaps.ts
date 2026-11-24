@@ -247,7 +247,46 @@ export interface MonsterSheet {
   key: string;
 }
 
+/** 모험 맵 등불 한 종류의 그림 자리(시트 안 x, y, w, h), 발 기준점(ax, ay), 빛무리·웅덩이 자리(칸 가운데에서, 뒤집으면 x 부호를 바꿈), 막는 칸(fp 1) */
+export interface AdvLampFrame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  ax: number;
+  ay: number;
+  hx: number;
+  hy: number;
+  px: number;
+  py: number;
+  fp: number;
+}
+
+/** 등불 빛 값: 색, 웅덩이 가로 반지름, 빛무리 반지름, 깜빡임 깊이, 불인지, 늘 같은 진하기(시간대를 따르지 않음) */
+export interface AdvLampLook {
+  color: number;
+  pool: number;
+  halo: number;
+  flicker: number;
+  fire: boolean;
+  strength: number;
+}
+
+/**
+ * 모험 맵 등불 자료(2026-11-24 사용자 "모험맵에도 디자인적인 요소를 위해 가로등을 통해서 맵 분위기 있게 밝히는 것도 좋다", 디자인 세션 4
+ * 공유 노트 adv-lights.md, 원본 art-source/adv-lights/out/game): 지역 아틀라스 이름 → 등불 종류, 맵 → 칸 [x, y, 뒤집기]. 서버는 이 칸을 보지 않는다.
+ */
+interface AdvLampsData {
+  image: string;
+  frames: Record<string, AdvLampFrame>;
+  looks: Record<string, AdvLampLook>;
+  zones: Record<string, string>;
+  maps: Record<string, [number, number, number][]>;
+}
+
 let loaded: Loaded | null = null;
+/** 등불 자료와 그림(맵 자료와 함께 한 번 읽음, 약 21KB). 못 읽으면 등불 없이 간다. */
+let lamps: { data: AdvLampsData; image: HTMLImageElement } | null = null;
 let loading: Promise<Loaded> | null = null;
 /** 두 번째 몬스터 그림(새 지역 여섯). 그 몬스터가 있는 맵에 처음 들어갈 때 읽는다. */
 let newSheet: MonsterSheet | null = null;
@@ -339,8 +378,12 @@ function loadBaseMaps() {
     imageFile('infernus-floor.png'),
     json<MonsterMeta>('monsters.json').then(async (m) => [m, await imageFile(m.image ?? 'monsters.png')] as const),
     json<MonsterMeta>('monsters-gate.json').then(async (meta): Promise<MonsterSheet> => ({ meta, image: await imageFile(meta.image ?? 'monsters-gate.webp'), key: 'adv-monsters-gate' })),
-  ]).then(([data, meta, pieces, floorPieces, [monsters, monsterSheet], gateSheet]) => {
+    json<AdvLampsData>('adv-lights.json')
+      .then(async (data) => ({ data, image: await imageFile(data.image) }))
+      .catch(() => null),
+  ]).then(([data, meta, pieces, floorPieces, [monsters, monsterSheet], gateSheet, lampData]) => {
     loaded = { maps: data.maps, meta, pieces, floorPieces, monsters, monsterSheet, gateSheet };
+    lamps = lampData;
     monsterCache.clear();
     return loaded;
   });
@@ -361,6 +404,24 @@ export function monsterArt(art: string): (MonsterSheet & { frame: MonsterFrame }
   if (gate) return { ...loaded.gateSheet, frame: gate };
   const next = newSheet?.meta.frames[art];
   return next && newSheet ? { ...newSheet, frame: next } : null;
+}
+
+/** 이 맵의 등불: 지역 등불 종류(id, 그림 자리, 빛 값)와 칸 [x, y, 뒤집기 0|1]. 자료를 못 읽었거나 등불이 없는 맵이면 null */
+export function advLamps(map: string) {
+  const area = loaded?.maps[map]?.deco;
+  const data = lamps?.data;
+  if (!area || !data) return null;
+  const id = data.zones[area];
+  const spots = data.maps[map];
+  const frame = id ? data.frames[id] : undefined;
+  const look = id ? data.looks[id] : undefined;
+  if (!id || !frame || !look || !spots?.length) return null;
+  return { id, frame, look, spots, image: lamps!.image };
+}
+
+/** 등불 시트 프레임 전부(텍스처를 한 번 만들 때) */
+export function advLampFrames() {
+  return lamps ? { frames: lamps.data.frames, image: lamps.image } : null;
 }
 
 /** 맵 자료. 아직 읽지 않았으면 undefined(맵을 올리기 전에 loadAdventureMaps를 기다린다). */

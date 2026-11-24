@@ -1,5 +1,5 @@
-import { BLOCK_IDS, isCube, isFurniture, rotatedBlock, type BlockId } from '../blocks';
-import { FURNITURE_KINDS } from '../furniture';
+import { BLOCK_IDS, blockArt, isCube, isFurniture, rotatedBlock, type BlockId } from '../blocks';
+import { ROOM_DECOR_TAB, ROOM_FURNITURE_TAB } from '../roomDecor';
 import {
   gearIdOf,
   gearRef,
@@ -7,10 +7,12 @@ import {
   isItem,
   isPotion,
   isSeed,
+  isTool,
   isWeapon,
   itemName,
   POTION_IDS,
   SEED_IDS,
+  TORCH,
   WEAPON_IDS,
   WEAPONS,
   type GearRef,
@@ -42,19 +44,34 @@ export interface Arm {
 }
 
 /**
- * 인벤토리 창의 탭(2026-11-12 사용자 요청 "타일, 장식품 탭 분류"). 타일은 상자 블록, 장식품은 나머지 블록이다.
- * 가구는 사용자가 준 실내 꾸미기 에셋으로 만든 장식품이고(2026-11-13), 종류가 많아 탭을 따로 둔다.
+ * 인벤토리 창의 작은 탭(2026-11-12 사용자 요청 "타일, 장식품 탭 분류"에서 시작). 큰 탭(꾸미기·전투·농사·메모)은 ui/hud.ts의 BAG_GROUPS.
+ * 2026-11-25 사용자 "꾸미는 블록은 무기·포션과 따로 탭으로", "벽은 따로 '벽'으로": 타일 = 상자 블록과 바닥 타일, 장식품 = 올리는 소품·벽지·벽걸이·바깥용,
+ * 가구 = 바닥 가구·깔개, 벽 = 놓는 벽(바닥 타일을 타일에 둔 것은 PM이 정함).
  */
-export const TABS = { tile: '타일', decor: '장식품', furniture: '가구', weapon: '무기', potion: '포션', seed: '씨앗' } as const;
+export const TABS = { tile: '타일', decor: '장식품', furniture: '가구', wall: '벽', weapon: '무기', potion: '포션', seed: '씨앗' } as const;
 export type TabId = keyof typeof TABS;
 
 export function tabOf(id: ItemId): TabId {
-  if (isWeapon(id) || isGearRef(id)) return 'weapon';
+  // 횃불은 손에 드는 것이라 무기 탭(기본 권총 바로 뒤)에 둔다(2026-11-24 PM이 정함).
+  if (isWeapon(id) || isGearRef(id) || isTool(id)) return 'weapon';
   if (isPotion(id)) return 'potion';
   if (isSeed(id)) return 'seed';
   if (isFurniture(id)) return 'furniture';
-  return isCube(id) ? 'tile' : 'decor';
+  if (isCube(id)) return 'tile';
+  const art = blockArt(id);
+  if (art.kind === 'pwall') return 'wall';
+  if (art.kind === 'ftile') return 'tile';
+  if (art.kind === 'room' && art.slot !== 'top') return 'furniture';
+  return 'decor';
 }
+
+/** 바깥용 장식품 21개(장식품 탭에서 방 꾸미기 것 뒤에 blocks.ts 차례로) */
+const OUTDOOR_IDS = BLOCK_IDS.filter((id) => blockArt(id).kind === 'outdoor');
+/** 방 꾸미기 가구 탭 목록(roomDecor.ts 차례: 바닥 타일 → 놓는 벽 → 바닥 가구·깔개)을 작은 탭마다 나눈 것 */
+const ROOM_LIST = ROOM_FURNITURE_TAB as readonly BlockId[];
+const FLOOR_TILE_IDS = ROOM_LIST.filter((id) => blockArt(id).kind === 'ftile');
+const PLACED_WALL_IDS = ROOM_LIST.filter((id) => blockArt(id).kind === 'pwall');
+const ROOM_FURNITURE_IDS = ROOM_LIST.filter((id) => blockArt(id).kind === 'room');
 
 function isSlot(value: unknown): value is Stack {
   const stack = value as Partial<Stack> | null;
@@ -63,8 +80,15 @@ function isSlot(value: unknown): value is Stack {
   );
 }
 
-/** 처음 단축키 칸에 놓는 블록. 무기는 그 뒤 빈칸에 들어간다. */
-const HOTBAR_BLOCKS: readonly BlockId[] = ['stone', 'brick', 'wood', 'hedge', 'glass', 'grass', 'pine', 'flower'];
+/** 처음 단축키 칸에 놓는 블록. 그 뒤 8번 칸에 기본 권총, 9번 칸에 횃불이 들어간다(2026-11-24 꽃을 빼고 횃불을 넣음, PM이 정함). */
+const HOTBAR_BLOCKS: readonly BlockId[] = ['stone', 'brick', 'wood', 'hedge', 'glass', 'grass', 'pine'];
+/** 횃불이 들어가는 단축키 칸(9번 키) */
+export const TORCH_SLOT = 8;
+/**
+ * 저장 목록의 단축키 9칸 뒤(10번째 자리)에 붙이는 '횃불 넣었음' 표시(2026-11-24 사용자 "이미 가입한 계정도 모두 9번 칸에 횃불").
+ * 이 표시가 없는 저장은 한 번만 9번 칸을 횃불로 바꾼다. 그 뒤에는 옮기거나 빼도 다시 넣지 않는다. 칸 모양이 아니라 칸으로 읽히지 않는다.
+ */
+const TORCH_MARK = 'torch1';
 
 /** 무기 탭과 대장간의 자루 순서: 종류 순서(items.ts), 같은 종류는 높은 단계부터 */
 export function sortGear(list: Gear[]) {
@@ -78,7 +102,7 @@ export function sortGear(list: Gear[]) {
  * 대장간 배포(2026-11-16) 전의 저장은 무기 종류('sword', 'machinegun')를 담고 있어서 그 종류의 첫 자루로 바꿔 읽는다.
  * 저장된 것이 없으면(처음 가입) 기본 블록과 기본 권총, 가진 자루로 채운다.
  */
-function readHotbar(saved: unknown, gear: ReadonlyMap<number, Gear>): Slot[] {
+function readHotbar(saved: unknown, gear: ReadonlyMap<number, Gear>): { hotbar: Slot[]; changed: boolean } {
   const hotbar: Slot[] = Array.from({ length: HOTBAR_SIZE }, () => null);
   if (Array.isArray(saved)) {
     const seen = new Set<ItemId>();
@@ -96,11 +120,13 @@ function readHotbar(saved: unknown, gear: ReadonlyMap<number, Gear>): Slot[] {
       hotbar[i] = { id, count: 1 };
       seen.add(id);
     });
-    return hotbar;
+    // 횃불을 한 번만 9번 칸에 넣는다. 원래 9번 칸의 것은 인벤토리 목록에 그대로 있다(블록·권총은 무제한, 자루는 무기 탭).
+    if (saved[HOTBAR_SIZE] === TORCH_MARK) return { hotbar, changed: false };
+    if (!seen.has(TORCH)) hotbar[TORCH_SLOT] = { id: TORCH, count: 1 };
+    return { hotbar, changed: true };
   }
-  const weapons: ItemId[] = ['pistol', ...sortGear([...gear.values()]).map((g) => gearRef(g.id))];
-  [...HOTBAR_BLOCKS, ...weapons].slice(0, HOTBAR_SIZE).forEach((id, i) => (hotbar[i] = { id, count: 1 }));
-  return hotbar;
+  [...HOTBAR_BLOCKS, 'pistol' as const, TORCH].slice(0, HOTBAR_SIZE).forEach((id, i) => (hotbar[i] = { id, count: 1 }));
+  return { hotbar, changed: true };
 }
 
 /**
@@ -115,9 +141,24 @@ export class Inventory {
   private readonly gear = new Map<number, Gear>();
   private readonly listeners: (() => void)[] = [];
 
+  /** 읽을 때 횃불을 넣었거나 처음 가입이라 바로 한 번 저장해야 하는지 */
+  readonly needsSave: boolean;
+
   constructor(saved: unknown, gear: readonly Gear[]) {
     for (const g of gear) this.gear.set(g.id, { ...g });
-    this.slots = readHotbar(saved, this.gear);
+    const { hotbar, changed } = readHotbar(saved, this.gear);
+    this.slots = hotbar;
+    this.needsSave = changed;
+  }
+
+  /** 서버 profiles.inventory에 저장할 목록: 단축키 9칸 + 횃불 표시 */
+  saved(): unknown[] {
+    return [...this.slots, TORCH_MARK];
+  }
+
+  /** 고른 칸에 횃불이 있는지(9번 칸이 아니어도 횃불을 고르면 든다) */
+  get torchSelected() {
+    return isTool(this.selectedStack?.id);
   }
 
   onChange(fn: () => void) {
@@ -172,12 +213,17 @@ export class Inventory {
 
   /** 탭에 보여 줄 것: 블록은 전부, 무기는 기본 권총과 가진 자루. 순서는 blocks.ts, items.ts의 순서다. */
   catalog(tab: TabId): ItemId[] {
-    if (tab === 'weapon') return ['pistol', ...this.gearList.map((g) => gearRef(g.id))];
+    if (tab === 'weapon') return ['pistol', TORCH, ...this.gearList.map((g) => gearRef(g.id))];
     // 포션은 가진 개수와 상관없이 다 보이고, 개수는 칸에 적는다(0개면 상점에서 산다).
     if (tab === 'potion') return POTION_IDS;
     if (tab === 'seed') return SEED_IDS;
     // 가구는 방향마다 블록이 따로 있어서 종류마다 첫 방향만 보이고, 단축키 칸에서 돌린다(rotateSelected).
-    if (tab === 'furniture') return FURNITURE_KINDS as BlockId[];
+    // 2026-11-24 방 꾸미기: 옛 가구(f_)는 탭에서 숨기고(놓인 것은 그대로 보이고 회수됨), 새 가구를 낸다. 놓는 벽은 벽 탭, 바닥 타일은 타일 탭.
+    if (tab === 'furniture') return ROOM_FURNITURE_IDS;
+    if (tab === 'wall') return PLACED_WALL_IDS;
+    if (tab === 'decor') return [...(ROOM_DECOR_TAB as readonly BlockId[]), ...OUTDOOR_IDS];
+    // 타일: 상자 블록 뒤에 바닥 타일
+    if (tab === 'tile') return [...BLOCK_IDS.filter((id) => isCube(id)), ...FLOOR_TILE_IDS];
     return BLOCK_IDS.filter((id) => tabOf(id) === tab);
   }
 
@@ -185,7 +231,7 @@ export class Inventory {
   rotateSelected() {
     const stack = this.selectedStack;
     const id = stack?.id;
-    const next = id && !isWeapon(id) && !isGearRef(id) && !isPotion(id) && !isSeed(id) ? rotatedBlock(id) : null;
+    const next = id && !isWeapon(id) && !isGearRef(id) && !isPotion(id) && !isSeed(id) && !isTool(id) ? rotatedBlock(id) : null;
     if (!next) return false;
     this.slots[this.selected] = { id: next, count: 1 };
     this.changed();

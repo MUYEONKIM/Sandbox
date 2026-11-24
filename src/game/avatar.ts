@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { BASE_HP, TEAM_SIZE } from '../config';
 import { depthOf, gridToWorld, keepDepth } from '../iso';
 import { WEAPONS, type WeaponId } from '../items';
+import { ensureTorchTexture, TORCH_FLAME, TORCH_FRAME_MS, TORCH_GRIP, TORCH_HAND, TORCH_ORDER, TORCH_TEXTURE } from '../art/torch';
 import type { Tile } from './world';
 
 /** 캐릭터 시트의 칸 크기와, 칸 안에서 발이 닿는 높이 */
@@ -59,6 +60,11 @@ export class Avatar {
   private readonly image: Phaser.GameObjects.Image;
   private readonly gun: Phaser.GameObjects.Image;
   private readonly shadow: Phaser.GameObjects.Image;
+  /** 손에 든 횃불(2026-11-24, 디자인 torch.md 2절). 처음 들 때 만든다. */
+  private torch: Phaser.GameObjects.Image | null = null;
+  private torchOn = false;
+  /** 불꽃 가운데(월드 좌표). 횃불이 보일 때만 맞는 값이다. */
+  readonly flame = { x: 0, y: 0 };
   private readonly firstFrame: number;
   /** 땅 위의 위치. 카메라가 따라가므로 점프나 밀려남에 흔들리지 않는다. */
   readonly anchor = { x: 0, y: 0 };
@@ -134,6 +140,23 @@ export class Avatar {
   /** 전쟁터 빛 밖이나 닫힌 숨은 방 안이라 숨겨 두었는지 */
   get isHidden() {
     return this.hidden;
+  }
+
+  /** 횃불을 든다(9번 칸 등 횃불 칸을 골랐을 때, 다른 사람은 이동 알림의 torch). 전쟁터에서는 부르는 쪽이 false를 준다. */
+  setTorch(on: boolean) {
+    if (on === this.torchOn) return;
+    this.torchOn = on;
+    if (on && !this.torch) {
+      ensureTorchTexture(this.scene);
+      this.torch = this.scene.add.image(0, 0, TORCH_TEXTURE, 'torch-l0').setOrigin(TORCH_GRIP.x / 7, TORCH_GRIP.y / 22);
+    }
+    if (!on) this.torch?.setVisible(false);
+    else this.sync();
+  }
+
+  /** 횃불이 보이는지(들었고, 쓰러지지 않았고, 숨기지 않음) */
+  get torchLit() {
+    return this.torchOn && !this.isDown && !this.hidden;
   }
 
   /** 전쟁터에서 빛 밖에 있거나 닫힌 숨은 방 안에 있으면 캐릭터와 그림자, 무기를 숨긴다. 바뀌었으면 true */
@@ -333,6 +356,24 @@ export class Avatar {
     keepDepth(this.image, depth);
     keepDepth(this.shadow.setPosition(pos.x, pos.y), depthOf(x, y));
 
+    if (this.torch) {
+      const lit = this.torchLit;
+      this.torch.setVisible(lit);
+      if (lit) {
+        // 손잡이 점을 손 자리에. 쉬는 그림 둘째 장은 손이 1px 내려간다(torch.md 2절). 걸을 때 뛰는 높이와 점프는 drawY에 들어 있다.
+        const hand = this.flip ? TORCH_HAND.right : TORCH_HAND.left;
+        const bob = !walking && idleFrame === 1 ? 1 : 0;
+        const tx = drawX + hand.dx;
+        const ty = drawY + hand.dy + bob;
+        const name = `torch-${this.flip ? 'r' : 'l'}${TORCH_ORDER[Math.floor(this.scene.time.now / TORCH_FRAME_MS) % TORCH_ORDER.length]}`;
+        if (this.torch.frame.name !== name) this.torch.setFrame(name);
+        if (this.torch.x !== tx || this.torch.y !== ty) this.torch.setPosition(tx, ty);
+        keepDepth(this.torch, depth + 0.5);
+        this.flame.x = tx - TORCH_GRIP.x + TORCH_FLAME.x;
+        this.flame.y = ty - TORCH_GRIP.y + TORCH_FLAME.y;
+      }
+    }
+
     const armed = this.aimAngle !== null && !this.isDown && !this.hidden;
     this.gun.setVisible(armed);
     if (armed) {
@@ -347,6 +388,7 @@ export class Avatar {
 
   destroy() {
     this.image.destroy();
+    this.torch?.destroy();
     this.gun.destroy();
     this.shadow.destroy();
   }

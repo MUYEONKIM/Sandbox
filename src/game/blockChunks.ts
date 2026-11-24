@@ -8,7 +8,8 @@ const STEP = 32;
 const MARGIN = 64;
 
 interface Chunk {
-  images: Set<Phaser.GameObjects.Image>;
+  /** 그림과 그 그림이 들어갈 표시 목록(바닥 타일은 따로 묶은 층, 그 밖에는 장면 목록이라 undefined) */
+  images: Map<Phaser.GameObjects.Image, Phaser.GameObjects.Layer | undefined>;
   /** 덩어리 그림들을 모두 덮는 월드 사각형. 그림이 늘 때 넓히고 줄 때는 그대로 둔다(넉넉한 쪽). */
   left: number;
   top: number;
@@ -31,14 +32,15 @@ export class BlockChunks {
   /** 화면 범위를 다시 볼 때 부른다(등 빛이 켤 플레이어 조명을 다시 고른다, lights.ts). */
   onView: ((view: Phaser.Geom.Rectangle) => void) | null = null;
 
-  add(image: Phaser.GameObjects.Image, x: number, y: number) {
+  /** layer: 그림이 장면 목록이 아닌 층(Layer)에 들어 있으면 그 층. 다시 보일 때 그 층에 넣는다. */
+  add(image: Phaser.GameObjects.Image, x: number, y: number, layer?: Phaser.GameObjects.Layer) {
     const key = Math.floor(x / CHUNK) * 1000 + Math.floor(y / CHUNK);
     let chunk = this.chunks.get(key);
     if (!chunk) {
-      chunk = { images: new Set(), left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity, shown: true };
+      chunk = { images: new Map(), left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity, shown: true };
       this.chunks.set(key, chunk);
     }
-    chunk.images.add(image);
+    chunk.images.set(image, layer);
     const b = image.getBounds(this.bounds);
     if (b.x < chunk.left || b.y < chunk.top || b.x + b.width > chunk.right || b.y + b.height > chunk.bottom) {
       chunk.left = Math.min(chunk.left, b.x);
@@ -75,10 +77,10 @@ export class BlockChunks {
       const show = chunk.right >= left && chunk.left <= right && chunk.bottom >= top && chunk.top <= bottom;
       if (show === chunk.shown) continue;
       chunk.shown = show;
-      for (const image of chunk.images) {
+      for (const [image, layer] of chunk.images) {
         if (show) {
-          image.addToDisplayList();
-          added = image;
+          image.addToDisplayList(layer);
+          if (!layer) added = image;
         } else image.removeFromDisplayList();
       }
     }

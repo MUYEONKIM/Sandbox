@@ -28,7 +28,17 @@ export type GearRef = `gear:${number}`;
 export type PotionId = 'potion_small' | 'potion_medium' | 'potion_large';
 /** 농장 씨앗(2026-11-15). 심을 작물 id 앞에 seed_를 붙인다. 가진 개수는 서버 farm_stock이 센다. */
 export type SeedId = `seed_${CropId}`;
-export type ItemId = BlockId | WeaponId | GearRef | PotionId | SeedId;
+/**
+ * 손에 드는 도구(2026-11-24 횃불, 사용자 "횃불도 추가해서 밤 같은 경우 자기 반경 어느정도 범위로 아침처럼 밝게 보이도록 하는 아이템을 추가한다").
+ * 무기도 블록도 아니라 눌러도 놓거나 쏘지 않는다. 누구나 하나 가지며 서버에 저장하지 않는다(단축키 칸에만 들어감).
+ */
+export type ToolId = 'torch';
+export const TORCH: ToolId = 'torch';
+export type ItemId = BlockId | WeaponId | GearRef | PotionId | SeedId | ToolId;
+
+export function isTool(id: unknown): id is ToolId {
+  return id === TORCH;
+}
 
 export const SEED_IDS = CROP_IDS.map((crop) => `seed_${crop}` as SeedId);
 const SEED_NAMES: Record<CropId, string> = { carrot: '당근', potato: '감자', onion: '양파', tomato: '토마토', eggplant: '가지', corn: '옥수수' };
@@ -68,7 +78,7 @@ export function gearIdOf(ref: GearRef) {
 
 /** 바닥에 놓는 것(블록, 꾸미기, 가구)인지 */
 export function isBlockItem(id: ItemId): id is BlockId {
-  return !isWeapon(id) && !isGearRef(id) && !isPotion(id) && !isSeed(id);
+  return !isWeapon(id) && !isGearRef(id) && !isPotion(id) && !isSeed(id) && !isTool(id);
 }
 
 interface Weapon {
@@ -118,7 +128,7 @@ export function isWeapon(id: unknown): id is WeaponId {
 }
 
 export function isItem(id: unknown): id is ItemId {
-  return isWeapon(id) || isGearRef(id) || isPotion(id) || isSeed(id) || (typeof id === 'string' && Object.hasOwn(BLOCKS, id));
+  return isWeapon(id) || isGearRef(id) || isPotion(id) || isSeed(id) || isTool(id) || (typeof id === 'string' && Object.hasOwn(BLOCKS, id));
 }
 
 /** 이름. 자루('gear:<id>')는 단계를 알아야 해서 Inventory.nameOf를 쓴다. */
@@ -127,6 +137,7 @@ export function itemName(id: ItemId): string {
   if (isGearRef(id)) return '무기';
   if (isPotion(id)) return POTIONS[id].name;
   if (isSeed(id)) return `${SEED_NAMES[cropOfSeed(id)]} 씨앗`;
+  if (isTool(id)) return '횃불';
   return BLOCKS[id].name;
 }
 
@@ -148,6 +159,14 @@ export function paintItem(id: Exclude<ItemId, GearRef>): HTMLCanvasElement {
     const sx = (art.frames - 1) * CROP_CELL.width;
     const sy = art.row * CROP_CELL.height;
     canvas.getContext('2d')!.drawImage(sprite('farm/crops'), sx, sy, CROP_CELL.width, CROP_CELL.height, 0, 0, CROP_CELL.width, CROP_CELL.height);
+    return canvas;
+  }
+  if (isTool(id)) {
+    const image = sprite('torch/torch-icon');
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    canvas.getContext('2d')!.drawImage(image, 0, 0);
     return canvas;
   }
   if (isPotion(id)) {
