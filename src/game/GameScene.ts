@@ -10,10 +10,7 @@ import {
   paintHideoutPassage,
   paintHideoutWall,
   paintInterior,
-  paintLamp,
-  paintLowTable,
   paintRailing,
-  paintGardenRock,
 } from '../art/interior';
 import { paintBobber, paintPortal, paintRock, PORTAL_FRAMES, PORTAL_ORIGIN_Y, type Art } from '../art/props';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
@@ -112,7 +109,6 @@ import { findPath } from './path';
 import { isGame } from './casino';
 import { priceChange, STOCK_INFO, type Market } from './market';
 import {
-  ANNEX_PROPS,
   CAFE_SIGN,
   CASINO_SIGN,
   EXCHANGE_TICKERS,
@@ -1077,12 +1073,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.addSign(MAPS.casino.name, sign.x, sign.y - CASINO_SIGN.lift);
     }
     if (id === 'exchange') this.showTickers();
-    if (id === 'annex') {
-      const { lamps, table, rocks } = ANNEX_PROPS;
-      for (const { x, y } of lamps) this.addMapArt('hideout-lamp', paintLamp, x, y);
-      this.addMapArt('hideout-table', paintLowTable, table.x, table.y);
-      rocks.forEach(({ x, y, size }, i) => this.addMapArt(`annex-rock-${i}`, () => paintGardenRock(size), x, y));
-    }
   }
 
   /**

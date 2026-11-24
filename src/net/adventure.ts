@@ -156,7 +156,7 @@ export interface AdvBattle {
   firstMini: boolean;
   /** 보스·중간 보스를 처음 잡았는지(판 금화 × 5는 이때만) */
   firstKill: boolean;
-  /** 이 전투로 받은 BP(지역 보스 5, 중간 보스 2, 이 판에서 이미 받았으면 0) */
+  /** 이 전투로 받은 BP(지역 보스 3, 중간 보스 2, 처음 값이고 서버 설정 표 bp_boss·bp_mini가 정함. 이긴 전투의 −1은 따로) */
   bpGain: number;
   /** 이 전투로 BP가 0이 되어 판이 끝났으면 true. 결과는 adventure_state로 받는다. state의 bp는 다음 판 값(20)이다. */
   ended: boolean;

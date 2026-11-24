@@ -1,0 +1,378 @@
+-- 모험 보스 BP(2026-11-24, 사용자가 PM 창에 줌, PM 전달). 실제 DB에 들어간 앞 migration은 고치지 않고 설정 표 두 줄과 바뀐 함수만 둔다.
+-- 다시 실행해도 된다: 표 줄은 on conflict do nothing이라 사용자가 바꾼 값을 덮어쓰지 않는다. 함수는 create or replace.
+--
+-- 사용자: "모험에서 보스를 잡으면 bp+3 (즉 bp1 소모되니깐 bp+2), 중간보스를 잡으면 bp + 2 ( bp1 소모되니깐 bp + 1) 이다. 맞으면 놔두고, 틀리면 수정해라."
+--   바로 앞 adventure_battle(20261123100000_adventure_tuning.sql)은 이기면 BP −1, 이번 판에 처음 이긴 보스면 +5(순 +4), 중간 보스면 +2(순 +1)였다.
+--   중간 보스는 맞고 보스만 틀려 5 → 3으로 고친다(순 +2). 수문장은 BP가 없는 그대로다. 같은 판에 다시 이기는 일은 'already won'으로 막혀 있다.
+-- 1. 설정 표 adventure_tuning에 bp_boss 3, bp_mini 2를 더한다(PM이 정함: 사용자가 DB에서 바로 고칠 수 있게). value는 정수로 반올림해 쓴다.
+-- 2. adventure_battle: 20261123100000_adventure_tuning.sql의 것에서 보스·중간 보스 BP를 표에서 읽는 곳만 바꿨다(같은 select에 두 줄을 더함).
+-- 몬스터 세기(adventure_zones·adventure_minis)와 레벨(adventure_spots), 사용자가 실제 DB에서 직접 바꾼 값은 건드리지 않는다.
+-- 앞 파일의 확인 쿼리 values_same은 이 뒤로 표 줄이 16이라 false가 된다(정상).
+--
+-- 실제 DB 확인(SQL Editor, 실행 뒤, 모두 true):
+--   select
+--     (select t.value from public.adventure_tuning as t where t.key = 'bp_boss') = 3
+--       and (select t.value from public.adventure_tuning as t where t.key = 'bp_mini') = 2 as bp_values,
+--     position('max(q.value) filter (where q.key = ''bp_boss'')' in f.src) > 0
+--       and position('max(q.value) filter (where q.key = ''bp_mini'')' in f.src) > 0 as reads_bp,
+--     position('bp_gain := round(t_bp_boss)::integer;' in f.src) > 0
+--       and position('bp_gain := round(t_bp_mini)::integer;' in f.src) > 0 as bp_from_table,
+--     position('bp_gain := 5;' in f.src) = 0 and position('bp_gain := 2;' in f.src) = 0 as no_old_bp,
+--     position('a.bp := greatest(0, a.bp - 1);' in f.src) > 0
+--       and position('a.bp := greatest(0, a.bp - 3);' in f.src) > 0
+--       and position('a.bp := a.bp + bp_gain;' in f.src) > 0
+--       and position('raise exception ''already won''' in f.src) > 0 as bp_rules_kept,
+--     position('from public.adventure_tuning as q' in f.src) > 0
+--       and position('m_hp := d * (30 + 10 * lv) * hp_mul * t_foe_hp * t_foe;' in f.src) > 0
+--       and position('if random() < t_drop_boss * (1 + luc / (luc + 4 * lv))' in f.src) > 0
+--       and position('gain := round(t_exp_base * (lv + 3) ^ 2 * case when is_boss or is_mini then t_exp_boss else 1 end' in f.src) > 0 as tuning_kept
+--   from (select pg_get_functiondef('public.adventure_battle(text, integer, integer)'::regprocedure) as src) as f;
+
+-- ───────── 1. 설정 표 두 줄 ─────────
+
+insert into public.adventure_tuning (key, value, note) values
+  ('bp_boss', 3, '지역 보스를 이번 판에 처음 이길 때 받는 BP(이긴 전투의 BP −1과 따로, 3이면 순 +2). 정수로 반올림'),
+  ('bp_mini', 2, '중간 보스를 이번 판에 처음 이길 때 받는 BP(2면 순 +1). 수문장은 BP가 없다. 정수로 반올림')
+on conflict (key) do nothing;
+
+-- ───────── 2. 전투 ─────────
+
+-- 전투 하나. 20261123100000_adventure_tuning.sql의 것에서 보스·중간 보스 BP를 설정 표(bp_boss, bp_mini)에서 읽는 곳만 바꿨다(위 2번).
+create or replace function public.adventure_battle(map text, x integer, y integer) returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  me public.profiles%rowtype;
+  z public.adventure_zones%rowtype;
+  a public.adventure_players%rowtype;
+  s public.adventure_spots%rowtype;
+  m public.adventure_minis%rowtype;
+  is_boss boolean;
+  is_mini boolean;
+  boss_key text;
+  fresh boolean := false;
+  first_kill boolean := false;
+  bp_gain integer := 0;
+  lv numeric;
+  d numeric;
+  hp_mul double precision := 1;
+  atk_mul double precision := 1;
+  exp_mul numeric := 1;
+  drop_mul numeric := 1;
+  pw jsonb;
+  p_hp double precision; p_atk double precision; p_def double precision; p_agi double precision; p_luc double precision;
+  m_hp double precision; m_atk double precision;
+  combo double precision; crit double precision; hit double precision; crit_mul double precision; leech double precision;
+  saves jsonb;
+  save_left integer;
+  saved boolean;
+  back double precision;
+  my double precision;
+  mon double precision;
+  dmg double precision;
+  is_crit boolean;
+  hits integer;
+  turns jsonb := '[]';
+  won boolean := false;
+  luc numeric;
+  gain numeric := 0;
+  new_level numeric;
+  got_points numeric := 0;
+  gold_gain numeric := 0;
+  parts integer;
+  unit numeric;
+  dropped text;
+  drop_copies integer := 0;
+  roll double precision;
+  settled jsonb;
+  -- 설정 표 값(위 1번의 key)
+  t_drop_normal numeric; t_drop_boss numeric; t_exp_base numeric; t_exp_boss numeric;
+  t_foe_hp numeric; t_foe_atk numeric; t_foe numeric;
+  t_exp3 numeric; t_exp2 numeric; t_exp15 numeric; t_drop3 numeric; t_drop2 numeric; t_foe_hp_half numeric; t_foe_atk_half numeric;
+  t_bp_boss numeric; t_bp_mini numeric;
+begin
+  select * into me from public.profiles as p where p.id = auth.uid() for update;
+  if not found then
+    raise exception 'no profile';
+  end if;
+  select * into s from public.adventure_spots as q where q.map = adventure_battle.map and q.x = adventure_battle.x and q.y = adventure_battle.y;
+  if not found then
+    raise exception 'no monster';
+  end if;
+  select * into strict z from public.adventure_zones as q where q.id = s.zone;
+  if me.map <> s.map then
+    raise exception 'not in the field';
+  end if;
+  a := public.adventure_prepare(me.id);
+  if not a.in_run then
+    raise exception 'no run';
+  end if;
+  if a.run_map is distinct from s.map then
+    raise exception 'not in the field';
+  end if;
+  -- 지역 잠금(앞 지역 보스를 계정이 잡았는지)은 보지 않는다(2026-11-19 사용자 "싸움이 가능해야 한다"). 판이 갈 수 있는 맵은 adventure_move가 정하고
+  -- (다음 지역은 이번 판에 보스를 잡아야), 그 맵에 있으면 싸운다. 높은 지역 포탈로 간 판이 화산 폭풍과 앞 지역 포탈로 걸어 돌아간 곳에서 싸울 수 있다.
+  is_boss := s.kind = 'boss';
+  is_mini := s.kind = 'mini';
+  if is_mini then
+    select * into strict m from public.adventure_minis as q where q.zone = z.id and q.idx = s.mini;
+  end if;
+  lv := s.level;
+  d := case when is_mini then m.strength when is_boss then z.boss_strength else z.strength end;
+  if lv is null then
+    raise exception 'no monster';
+  end if;
+  -- 보스·중간 보스는 판마다 한 번(2026-11-21 사용자 "중간보스, 보스 는 게임 한판 당 한번씩만 잡을수있게"): 이번 판에 이긴 것(run_bosses에 키)과는 싸우지 않는다.
+  -- 수문장도 같다(화면은 이긴 뒤 숨김). 별 하늘 보스 둘은 키가 하나('adv_7')라 하나를 이기면 둘 다 못 싸운다. 진 싸움은 키가 붙지 않아 다시 싸운다.
+  -- BP·last_battle_at을 쓰기 전에 돌려보낸다. 키는 이긴 뒤 붙이는 것과 같다(보스 'adv_N', 중간 보스 'adv_N#idx', 수문장 'gate:맵').
+  boss_key := case when is_boss then z.id when is_mini then z.id || '#' || m.idx end;
+  if coalesce(boss_key, case when s.kind = 'gate' then 'gate:' || s.map end) = any (a.run_bosses) then
+    raise exception 'already won';
+  end if;
+  if a.bp <= 0 then
+    raise exception 'no bp';
+  end if;
+  -- 너무 빨리 누름 막기(기획 8장, 연출과 결과 줄을 합한 가장 짧은 시간)
+  if a.last_battle_at > now() - interval '2.5 seconds' then
+    raise exception 'too fast';
+  end if;
+  -- 숫자 설정 표(2026-11-23 사용자 "옮겨"): 전투 한 번에 한 번 읽는다(16줄, bp_boss·bp_mini는 2026-11-24). 줄이 빠졌으면 싸우지 않는다.
+  select
+    max(q.value) filter (where q.key = 'drop_normal'), max(q.value) filter (where q.key = 'drop_boss'),
+    max(q.value) filter (where q.key = 'exp_base'), max(q.value) filter (where q.key = 'exp_boss_x'),
+    max(q.value) filter (where q.key = 'foe_hp_x'), max(q.value) filter (where q.key = 'foe_atk_x'), max(q.value) filter (where q.key = 'foe_x'),
+    max(q.value) filter (where q.key = 'bonus_exp3'), max(q.value) filter (where q.key = 'bonus_exp2'), max(q.value) filter (where q.key = 'bonus_exp15'),
+    max(q.value) filter (where q.key = 'bonus_drop3'), max(q.value) filter (where q.key = 'bonus_drop2'),
+    max(q.value) filter (where q.key = 'bonus_foe_hp'), max(q.value) filter (where q.key = 'bonus_foe_atk'),
+    max(q.value) filter (where q.key = 'bp_boss'), max(q.value) filter (where q.key = 'bp_mini')
+  into t_drop_normal, t_drop_boss, t_exp_base, t_exp_boss, t_foe_hp, t_foe_atk, t_foe,
+    t_exp3, t_exp2, t_exp15, t_drop3, t_drop2, t_foe_hp_half, t_foe_atk_half, t_bp_boss, t_bp_mini
+  from public.adventure_tuning as q;
+  if t_drop_normal is null or t_drop_boss is null or t_exp_base is null or t_exp_boss is null or t_foe_hp is null or t_foe_atk is null or t_foe is null
+    or t_exp3 is null or t_exp2 is null or t_exp15 is null or t_drop3 is null or t_drop2 is null or t_foe_hp_half is null or t_foe_atk_half is null
+    or t_bp_boss is null or t_bp_mini is null then
+    raise exception 'no tuning';
+  end if;
+  -- 구역 보너스는 일반 몬스터 자리에만 있다(일곱 빛 들판의 빛, 지옥 첫 띠 경험치 방). 배수는 설정 표 bonus_*(처음 값 3, 2, 1.5, 3, 2, 0.5, 0.5).
+  case s.bonus
+    when 'exp3' then exp_mul := t_exp3;
+    when 'exp2' then exp_mul := t_exp2;
+    when 'exp15' then exp_mul := t_exp15;
+    when 'drop3' then drop_mul := t_drop3;
+    when 'drop2' then drop_mul := t_drop2;
+    when 'foeHp' then hp_mul := t_foe_hp_half;
+    when 'foeAtk' then atk_mul := t_foe_atk_half;
+    else null;
+  end case;
+  -- 몬스터 체력 × 2, 공격 × 1.5(2026-11-20 사용자 "공격 1.5, 체력 *2 로", 보통·중간 보스·보스·수문장 모두). 지역 세기는 그대로 두고 여기서 곱한다(에이전트가 정함).
+  -- 그 위에 × 0.8(2026-11-23 사용자 "몬스터들의 세기를 지금보다 20% 약하게 만든다.", 체력·공격 모두, 보통·중간 보스·보스·수문장 모두).
+  -- 표의 세기 값과 레벨은 그대로 두고 여기서 곱한다(기획이 정함). 결과의 'mon' 체력·공격도 줄어든 값이다.
+  -- 2와 1.5는 설정 표 foe_hp_x·foe_atk_x, 0.8은 foe_x(2026-11-23 사용자 "옮겨"). 곱하는 차례는 예전 식과 같다.
+  m_hp := d * (30 + 10 * lv) * hp_mul * t_foe_hp * t_foe;
+  m_atk := d * (5 + 1.5 * lv) * atk_mul * t_foe_atk * t_foe;
+
+  pw := public.adventure_power(me.id);
+  p_hp := (pw ->> 'hp')::double precision;
+  p_atk := (pw ->> 'atk')::double precision;
+  p_def := (pw ->> 'def')::double precision;
+  p_agi := (pw ->> 'agi')::double precision;
+  p_luc := (pw ->> 'luc')::double precision;
+  crit_mul := (pw -> 'fx' ->> 'critMul')::double precision;
+  leech := (pw -> 'fx' ->> 'leech')::double precision;
+  saves := pw -> 'fx' -> 'endure';
+  save_left := jsonb_array_length(saves);
+
+  -- 전투(dungeon-run.js fightOnce). 콤보·크리티컬 식의 몬스터 레벨 × 2 → × 4(2026-11-19 사용자 "agi 의 효과를 줄이고 세기는 5%만 낮춘다.", 기획 17장 'AGI와 장신구 조정의 안' 1)
+  combo := least((pw -> 'fx' ->> 'comboMax')::double precision, p_agi / (p_agi + lv * 4) + (pw -> 'fx' ->> 'comboAdd')::double precision);
+  crit := least(0.5, (p_agi + p_luc) / (p_agi + p_luc + lv * 4));
+  -- 받는 피해 = 몬스터 ATK² ÷ (몬스터 ATK + 내 DEF) × (1 − 장착 무기의 받는 피해 줄임)(기획 5장, 19장 '컬렉션 무기 장착')
+  hit := m_atk * m_atk / (m_atk + p_def) * (1 - coalesce((pw -> 'fx' ->> 'guard')::double precision, 0));
+  my := p_hp;
+  mon := m_hp;
+  <<fight>>
+  for turn in 1..20 loop
+    hits := 1;
+    while hits < 5 and random() < combo loop
+      hits := hits + 1;
+    end loop;
+    for h in 1..hits loop
+      is_crit := random() < crit;
+      dmg := least(mon, p_atk * (0.9 + 0.2 * random()) * case when is_crit then crit_mul else 1 end);
+      mon := mon - dmg;
+      if mon > 0 and leech > 0 then
+        my := least(p_hp, my + dmg * leech);
+      end if;
+      turns := turns || jsonb_build_array(jsonb_build_array(0, round(dmg), is_crit::integer, ceil(my), ceil(greatest(mon, 0))));
+      if mon <= 0 then
+        won := true;
+        exit fight;
+      end if;
+    end loop;
+    dmg := hit * (0.9 + 0.2 * random());
+    my := my - dmg;
+    turns := turns || jsonb_build_array(jsonb_build_array(1, round(dmg), 0, ceil(greatest(my, 0)), ceil(mon)));
+    if my <= 0 then
+      saved := false;
+      while not saved and save_left > 0 loop
+        saved := random() < (saves -> (save_left - 1) ->> 0)::double precision;
+        back := (saves -> (save_left - 1) ->> 1)::double precision;
+        save_left := save_left - 1;
+      end loop;
+      exit fight when not saved;
+      my := greatest(1, p_hp * back);
+      turns := turns || jsonb_build_array(jsonb_build_array(2, 0, 0, ceil(my), ceil(mon)));
+    end if;
+  end loop;
+
+  if won then
+    a.bp := greatest(0, a.bp - 1);
+    a.run_wins := a.run_wins + 1;
+    -- 경험치: expOf × (보스·중간 보스 3, 이길 때마다) × (1 + 배움의 보석) × 구역 보너스. 판 레벨로 줄지 않는다(2026-11-18 사용자 "레벨의 2배가 되더라도, 경험치 못얻거나, 아이템 못얻는건 없다. 무조건 얻는다").
+    -- 얻는 경험치 40 → 20(2026-11-19 사용자 "…50%를 줄이거나…") → 10(2026-11-20 사용자 "레벨업 경험치 얻는량을 지금 보다 다시 50% 줄여라", 보통·중간 보스·보스·수문장 모두)
+    -- 10과 보스·중간 보스 3은 설정 표 exp_base·exp_boss_x(2026-11-23 사용자 "옮겨").
+    gain := round(t_exp_base * (lv + 3) ^ 2 * case when is_boss or is_mini then t_exp_boss else 1 end
+      * (1 + (pw -> 'fx' ->> 'exp')::numeric) * exp_mul);
+    a.run_exp := a.run_exp + gain;
+    -- levelFromExp: 레벨 n까지 쌓인 경험치가 50n(n − 1)
+    new_level := floor((1 + sqrt(1 + 8 * a.run_exp / 100)) / 2);
+    if new_level > a.run_level then
+      got_points := (new_level - a.run_level) * 5;
+      a.run_points := a.run_points + got_points;
+      a.run_level := new_level;
+      if a.auto_split then
+        -- 추천대로 나누기 HP 3 : ATK 3 : DEF 1 : AGI 1(마을 AGI와 상관없이, 2026-11-18 사용자 결정). 나눈 나머지는 남긴다.
+        parts := 8;
+        unit := floor(a.run_points / parts);
+        a.run_hp := a.run_hp + unit * 3;
+        a.run_atk := a.run_atk + unit * 3;
+        a.run_def := a.run_def + unit;
+        a.run_agi := a.run_agi + unit;
+        a.run_points := a.run_points - unit * parts;
+      end if;
+    end if;
+
+    if is_boss then
+      boss_key := z.id;
+      first_kill := not exists (select 1 from public.adventure_bosses as b where b.player = me.id and b.zone = z.id);
+      insert into public.adventure_bosses (player, zone) values (me.id, z.id)
+        on conflict on constraint adventure_bosses_pkey do update set kills = public.adventure_bosses.kills + 1;
+      -- 보스 BP(2026-11-24 사용자 "보스를 잡으면 bp+3 (즉 bp1 소모되니깐 bp+2)", 예전 5): 설정 표 bp_boss(처음 값 3, 정수로 반올림).
+      bp_gain := round(t_bp_boss)::integer;
+    elsif is_mini then
+      boss_key := z.id || '#' || m.idx;
+      first_kill := not exists (
+        select 1 from public.adventure_mini_kills as k where k.player = me.id and k.zone = z.id and k.idx = m.idx
+      );
+      insert into public.adventure_mini_kills (player, zone, idx) values (me.id, z.id, m.idx)
+        on conflict on constraint adventure_mini_kills_pkey do update set kills = public.adventure_mini_kills.kills + 1;
+      -- 중간 보스 BP(같은 날 "중간보스를 잡으면 bp + 2 ( bp1 소모되니깐 bp + 1)", 예전과 같음): 설정 표 bp_mini(처음 값 2).
+      bp_gain := round(t_bp_mini)::integer;
+    end if;
+    fresh := boss_key is not null and not (boss_key = any (a.run_bosses));
+
+    -- 판 금화: 332 × (L ÷ 20,000)^0.08 × lucGold × (1 + 금화 주머니)(166 → 332, 2026-11-19 사용자 "가져오는 재화는 100%로 같게하고, 금화를 현재보다 2배로 늘려라."). 예전: 166(2026-11-18 결과 칸 클릭 규칙 뒤 다시 맞춤, 기획 17장 '결과 칸 클릭 규칙의 안', 사용자 "추천안으로"). 보스·중간 보스를 처음 잡을 때만 × 5(금화 방 × 10).
+    luc := (pw ->> 'luc')::numeric;
+    gold_gain := round(332 * power(lv / 20000, 0.08) * (1 + 3 * luc / (luc + 4 * lv))
+      * case when first_kill then 5 * coalesce(m.gold, 1) else 1 end
+      * (1 + (pw -> 'fx' ->> 'gold')::numeric));
+    a.run_gold := a.run_gold + gold_gain;
+
+    if boss_key is not null then
+      -- 보스·중간 보스 무기: 일반 몬스터 드랍 식에서 0.002만 0.15로, 이길 때마다(이제 판마다 한 번). 2026-11-21 사용자 "보스 한판당 한번이니깐 드롭률을 15% 정도로 올려라.",
+      -- "LUC, 장착무기의 드랍효과는 적용되야한다."(중간 보스도 같음은 PM이 정함). 상한은 두지 않는다(가장 높으면 약 0.15 × 2 × 1.75 ≈ 52%).
+      -- 예전: 0.002(같은 날 "안 2: 일반 몹과 같은 식 (추천)", 처음 잡을 때 반드시 주던 것과 판마다 처음 이길 때만(fresh) 2%는 없앴다).
+      -- 보스 자리에는 구역 보너스가 없어 drop_mul은 1이다. 처음 잡을 때 금화 × 5, BP, firstBoss·firstMini·firstKill, 나오는 무기, 가진 수 5에서 멈춤은 그대로다.
+      -- 0.15는 설정 표 drop_boss(2026-11-23 사용자 "옮겨").
+      if random() < t_drop_boss * (1 + luc / (luc + 4 * lv)) * drop_mul * (1 + coalesce((pw -> 'fx' ->> 'drop')::numeric, 0)) then
+        if is_boss then
+          select w.id into dropped from public.adventure_weapons as w where w.zone = z.id and w.boss order by w.id limit 1;
+        else
+          dropped := m.weapon;
+        end if;
+      end if;
+    elsif random() < t_drop_normal * (1 + luc / (luc + 4 * lv)) * drop_mul * (1 + coalesce((pw -> 'fx' ->> 'drop')::numeric, 0)) then
+      -- 0.08은 설정 표 drop_normal(2026-11-23 사용자 "옮겨").
+      -- 보통 몬스터 무기 기본값 8%(2026-11-23 사용자 "일반 몬스터 무기 드랍 비율을 지금의 10배로 올린다." 뒤 "일반 몬스터 무기 드롭률 8%로 올리자.", 예전 0.2%).
+      -- LUC 몫, 구역 drop_mul(일곱 빛 드롭 방 × 2·× 3), 장착 무기 드랍 효과는 그대로 곱한다(가장 높으면 약 0.08 × 2 × 3 × 1.75 ≈ 84%, 1을 넘지 않음).
+      -- 장착 무기 드랍 +25~75%는 보통 몬스터 드랍과 보스·중간 보스 무기에 똑같이 붙는다(2026-11-21부터, 위 식)
+      -- 별 비율(★1 40, ★2 30, ★3 18, ★4 9, ★5 3) × 0.55^가진 수. 다 모은(+4) 무기와 지역 보스 무기는 빠진다(중간 보스 무기는 들어감).
+      roll := random();
+      with pool as (
+        select w.id, (case w.star when 1 then 40 when 2 then 30 when 3 then 18 when 4 then 9 else 3 end)
+          * power(0.55::double precision, coalesce(c.copies, 0)) as weight
+        from public.adventure_weapons as w
+        left join public.adventure_collection as c on c.weapon = w.id and c.player = me.id
+        where w.zone = z.id and not w.boss and coalesce(c.copies, 0) < 5
+      ), ranges as (
+        select pool.id, sum(pool.weight) over (order by pool.id) as upto, sum(pool.weight) over () as total from pool
+      )
+      select ranges.id into dropped from ranges where ranges.upto > roll * ranges.total order by ranges.upto limit 1;
+    end if;
+    -- 수문장(평원 1, 2026-11-19 사용자 "통로에 길을 막고 있는 화산폭풍의 일반몹 수문장"): 이기면 이번 판에 그 맵의 높은 지역 포탈이 열린다('gate:맵'). BP는 없다.
+    if s.kind = 'gate' and not (('gate:' || s.map) = any (a.run_bosses)) then
+      a.run_bosses := a.run_bosses || ('gate:' || s.map);
+    end if;
+    -- 보스 BP는 한 판에 보스마다 한 번(위에서 이긴 보스와는 싸우지 않으므로 fresh는 늘 참이다)
+    if fresh then
+      a.run_bosses := a.run_bosses || boss_key;
+      a.bp := a.bp + bp_gain;
+    else
+      bp_gain := 0;
+    end if;
+    if dropped is not null then
+      insert into public.adventure_collection (player, weapon) values (me.id, dropped)
+        on conflict (player, weapon) do update set copies = public.adventure_collection.copies + 1
+        where public.adventure_collection.copies < 5;
+      if found then
+        a.run_drops := a.run_drops || to_jsonb(dropped);
+        select c.copies into drop_copies from public.adventure_collection as c where c.player = me.id and c.weapon = dropped;
+      else
+        dropped := null;
+      end if;
+    end if;
+  else
+    a.bp := greatest(0, a.bp - 3);
+    a.run_losses := a.run_losses + 1;
+  end if;
+
+  update public.adventure_players as q set
+    bp = a.bp, run_level = a.run_level, run_exp = a.run_exp, run_points = a.run_points,
+    run_hp = a.run_hp, run_atk = a.run_atk, run_def = a.run_def, run_agi = a.run_agi,
+    run_gold = a.run_gold, run_wins = a.run_wins, run_losses = a.run_losses, run_drops = a.run_drops,
+    run_bosses = a.run_bosses, last_battle_at = now(),
+    -- 최고 레벨: 판 레벨이 지금까지보다 오르면 함께 올린다(같은 레벨이면 먼저 닿은 때를 남김).
+    best_level = greatest(q.best_level, a.run_level),
+    best_at = case when a.run_level > q.best_level then now() else q.best_at end
+    where q.player = me.id;
+
+  if a.bp = 0 then
+    -- 판 끝. 결과는 last_result에 남고, 화면은 연출 뒤 adventure_state로 한 번 받는다(새로고침해도 남음).
+    settled := public.adventure_settle(me.id, 'bp');
+  end if;
+
+  return jsonb_build_object(
+    'win', won,
+    'turns', turns,
+    'me', jsonb_build_object('hp', p_hp, 'atk', p_atk, 'def', p_def, 'agi', p_agi, 'luc', p_luc),
+    'mon', jsonb_build_object(
+      'map', s.map, 'zone', z.id, 'x', s.x, 'y', s.y, 'kind', s.kind, 'art', s.art, 'mini', s.mini, 'bonus', s.bonus,
+      'level', lv, 'boss', is_boss or is_mini, 'hp', m_hp, 'atk', m_atk
+    ),
+    'exp', gain::text,
+    'level', a.run_level::text,
+    'points', got_points::text,
+    'gold', gold_gain::text,
+    'drop', dropped,
+    'dropCopies', drop_copies,
+    'firstBoss', is_boss and first_kill,
+    'firstMini', is_mini and first_kill,
+    'firstKill', first_kill,
+    'bpGain', bp_gain,
+    'ended', settled is not null,
+    'state', public.adventure_view(me.id)
+  );
+end;
+$$;
+
+revoke execute on function public.adventure_battle(text, integer, integer) from public, anon;
+grant execute on function public.adventure_battle(text, integer, integer) to authenticated;

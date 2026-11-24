@@ -7,8 +7,6 @@ import { layoutDungeon } from './dungeon';
 import { advMap, advSize, infernus, decoArt } from './adventureMaps';
 import { FARM_ROAD_TILES, isPlot } from './farm';
 import {
-  ANNEX,
-  ANNEX_PROPS,
   BULL,
   CASINO_FURNITURE,
   COUNTER,
@@ -227,12 +225,6 @@ export function generateMap(id: MapId): GameMap {
     if (id === 'exchange') {
       buildings.push({ ...BULL });
       scenery.trees.push(...EXCHANGE_FURNITURE);
-    }
-    if (id === 'annex') {
-      const { lamps, plants, table, rocks, alcove } = ANNEX_PROPS;
-      scenery.trees.push(...plants.map((at) => ({ sprite: 'plant' as const, ...at })));
-      for (const { x, y } of [...lamps, table, ...rocks]) solid[x + y * size] = 1;
-      for (let x = alcove.x0; x <= alcove.x1; x++) solid[x + ANNEX[1] * size] = 1;
     }
   } else if (id === 'forest') {
     const battle = layoutBattlefield();

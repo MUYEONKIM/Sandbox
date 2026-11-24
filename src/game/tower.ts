@@ -88,7 +88,7 @@ export interface Partition {
 export interface FloorPlan {
   /** 층 번호. 옥상, 바깥 계단, 엘리베이터 안은 null */
   number: number | null;
-  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange' | 'annex' | 'mart' | 'smithy' | 'labor' | 'farmcoop';
+  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange' | 'plain' | 'mart' | 'smithy' | 'labor' | 'farmcoop';
   /** 바닥이 있는 칸 */
   area: Area;
   doorways: Doorway[];
@@ -457,36 +457,11 @@ export const ROOM_PROPS: Partial<Record<TowerId, Prop[]>> = {
 export const LABOR_FURNITURE: Furniture[] = [{ sprite: 'plant', x: 15, y: 28 }];
 
 /**
- * 어디와도 이어지지 않은 16×16칸 다다미방. 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
+ * 어디와도 이어지지 않은 16×16칸 빈방. 들어오는 길은 src/game/hush.ts의 암호문에만 있다.
  * 나가는 포탈은 7층으로 가고, 7층에는 이 방으로 오는 포탈이 없어 엘리베이터 앞에 선다.
+ * 소품 없이 무늬 없는 바닥과 벽만 있고 플레이어가 블록과 가구로 꾸민다(2026-11-24).
  */
 export const ANNEX: Area = [16, 16, 31, 31];
-/**
- * 방석은 바닥 그림이라 밟고 앉을 수 있다. 스탠드, 밥상, 바위, 도코노마 단은 칸을 막는다.
- * 방석 여섯은 오른쪽 벽 가운데 도코노마(족자와 향로)를 보고 두 줄로 놓는다. 바위 정원은 왼쪽 앞, 밥상은 오른쪽 앞.
- */
-export const ANNEX_PROPS = {
-  lamps: [
-    { x: 16, y: 16 },
-    { x: 31, y: 31 },
-  ],
-  plants: [
-    { x: 31, y: 16 },
-    { x: 16, y: 31 },
-  ],
-  table: { x: 28, y: 27 },
-  cushions: [...[21, 24, 27].flatMap((x) => [19, 22].map((y) => ({ x, y }))), { x: 26, y: 27 }],
-  /** 도코노마 단: 오른쪽 벽에 붙은 x 23~25 세 칸 */
-  alcove: { x0: 23, x1: 25 },
-  /** 바위 정원 [x0, y0, x1, y1] */
-  garden: [17, 25, 22, 30] as Area,
-  /** 정원의 바위. r은 둘레에 갈퀴 자국을 두르는 반지름(칸) */
-  rocks: [
-    { x: 19, y: 27, size: 1, r: 1.7 },
-    { x: 21, y: 26, size: 0.65, r: 1.1 },
-    { x: 18, y: 29, size: 0.6, r: 1 },
-  ],
-};
 const ANNEX_EXIT = { x: 24, y: ANNEX[3] };
 
 function wallPortal([x0, y0]: Area, { wall, at }: Doorway, to: Portal['to'], label?: string): Portal {
@@ -628,7 +603,7 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
   annex: {
     ...plain,
     number: null,
-    style: 'annex',
+    style: 'plain',
     area: ANNEX,
     doorways: [],
     portals: [{ ...ANNEX_EXIT, to: 'tower7', label: '7층', landing: { x: ANNEX_EXIT.x, y: ANNEX_EXIT.y - 2 } }],

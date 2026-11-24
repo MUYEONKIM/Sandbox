@@ -445,6 +445,15 @@ function parseBlock(row: { x?: unknown; y?: unknown; z?: unknown; block?: unknow
   return { x: row.x, y: row.y, z: row.z, id: row.block };
 }
 
+/**
+ * 모든 맵을 합친 접속자 수를 세는 채널(2026-11-24 사용자 "몇 명 접속해있는지 알 수 있도록"). 맵 채널과 같은 정책(world:%)으로
+ * 읽고 쓰므로 SQL이 필요 없다. 맵 id는 밑줄로 시작하지 않아 맵 채널과 겹치지 않는다. 들어올 때 빈 상태를 한 번 싣고,
+ * 그 뒤로는 누가 들어오거나 나갈 때만 명단이 온다(맵을 옮겨도 다시 싣지 않는다).
+ */
+const ONLINE_TOPIC = 'world:_online';
+/** 접속자 수 채널이 끊기고 이만큼 지나도 돌아오지 않으면 새로 만들어 다시 든다. */
+const ONLINE_REJOIN_MS = 30_000;
+
 /** 로그인한 플레이어 한 명의 서버 연결. 멀티플레이 통신은 이 파일에만 둔다. */
 export class GameSession {
   private channel: RealtimeChannel | null = null;
@@ -452,6 +461,12 @@ export class GameSession {
   private mapChat: RealtimeChannel | null = null;
   private readonly chat;
   private events!: SessionEvents;
+  /** 접속자 수 채널과 마지막으로 알린 수(끊겼으면 null) */
+  private online: RealtimeChannel | null = null;
+  private onlineCount: number | null = null;
+  private onlineTimer = 0;
+  /** 모든 맵을 합친 접속자 수가 바뀔 때만 부른다. 채널이 끊기면 null */
+  onOnline: ((count: number | null) => void) | null = null;
   private mapId: string;
   private joined = false;
   private pending: ProfilePatch = {};
@@ -476,6 +491,7 @@ export class GameSession {
     this.events = events;
     await supabase.realtime.setAuth();
     await this.joinMap();
+    this.joinOnline();
 
     // 서버만 보낼 수 있는 채널이다. 체력, 회피, 레벨 알림은 맵과 상관없이 모든 플레이어에게 전달된다.
     this.chat
@@ -503,6 +519,39 @@ export class GameSession {
         if (typeof payload?.id === 'string' && level) events.onLevel(payload.id, level, exp);
       })
       .subscribe();
+  }
+
+  /** 접속자 수 채널에 든다. 명단의 키(계정 id) 수가 접속자 수라, 한 사람이 창을 둘 열어도 한 명이다. */
+  private joinOnline() {
+    const channel = supabase.channel(ONLINE_TOPIC, { config: { private: true, presence: { key: this.profile.id } } });
+    this.online = channel;
+    const report = (count: number | null) => {
+      if (count === this.onlineCount) return;
+      this.onlineCount = count;
+      this.onOnline?.(count);
+    };
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        if (channel === this.online) report(Object.keys(channel.presenceState()).length);
+      })
+      .subscribe((status) => {
+        if (channel !== this.online) return;
+        if (status === 'SUBSCRIBED') {
+          window.clearTimeout(this.onlineTimer);
+          this.onlineTimer = 0;
+          void channel.track({});
+          return;
+        }
+        report(null);
+        // 라이브러리도 스스로 다시 들려고 한다. 그래도 오래 끊겨 있으면 채널을 치우고 새로 든다.
+        if (this.onlineTimer) return;
+        this.onlineTimer = window.setTimeout(() => {
+          this.onlineTimer = 0;
+          if (channel !== this.online || channel.state === 'joined') return;
+          this.online = null;
+          void dropChannel(channel).then(() => this.joinOnline());
+        }, ONLINE_REJOIN_MS);
+      });
   }
 
   /** 지금 맵의 채널에 들어간다. 위치, 접속자, 채팅은 같은 맵끼리만 주고받는다(채팅은 2026-11-11 사용자 요청). */

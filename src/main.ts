@@ -71,6 +71,7 @@ function enterGame(
     await signOut();
     location.reload();
   });
+  session.onOnline = (count) => hud.setOnline(count);
   hud.setHp(profile.hp, profile.max_hp);
   hud.setLevel(BigInt(profile.level), profile.exp);
 

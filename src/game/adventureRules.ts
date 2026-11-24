@@ -34,8 +34,11 @@ export type AdvPower = AdvStats & { fx: AdvFx };
 export const BP_RUN = 20;
 export const WIN_BP = 1;
 export const LOSE_BP = 3;
-/** 판 안에서 처음 잡을 때 받는 BP: 지역 보스 +5, 중간 보스 +2(한 판에 보스마다 한 번) */
-export const BOSS_BP = 5;
+/**
+ * 판 안에서 처음 잡을 때 받는 BP: 지역 보스 +3, 중간 보스 +2(한 판에 보스마다 한 번, 이긴 전투의 −1과 따로라 순 +2·+1).
+ * 2026-11-24 사용자 "보스를 잡으면 bp+3 (즉 bp1 소모되니깐 bp+2)"로 보스 5 → 3. 서버는 설정 표 bp_boss·bp_mini를 읽고, 이 값은 처음 값이다.
+ */
+export const BOSS_BP = 3;
 export const MINI_BP = 2;
 /** 서버는 직전 전투와 이만큼 떨어져야 전투를 받는다(adventure_battle, 기획 8장). 화면은 조금 더 기다린다. */
 export const FIGHT_GAP_MS = 2600;

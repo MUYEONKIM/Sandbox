@@ -1549,6 +1549,26 @@ canvas {
   font-weight: 700;
 }
 
+/* 접속자 수(2026-11-24): 이름·골드보다 옅게, 숫자 폭이 흔들리지 않게 */
+.account-online {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 휴대폰 폭에서 이름이 길면 칸이 통째로 다음 줄로 간다(로그아웃 버튼 글자가 두 줄로 꺾이지 않게, 에이전트가 정함). */
+@media (max-width: 620px) {
+  .account {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 4px;
+  }
+
+  .account > * {
+    white-space: nowrap;
+  }
+}
+
 .account-signout {
   padding: 2px 8px;
   color: var(--text);

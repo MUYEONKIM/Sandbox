@@ -137,6 +137,8 @@ export class Hud {
   private readonly toastBox: HTMLElement;
   private readonly announceBox: HTMLElement;
   private readonly accountName: HTMLElement;
+  /** 계정 줄의 접속자 수(모든 맵을 합친 수). 수가 바뀔 때만 고친다. */
+  private readonly online: HTMLElement;
   private popupBox: HTMLElement | null = null;
   private drag: Drag | null = null;
 
@@ -151,6 +153,8 @@ export class Hud {
     this.accountName = element('account-name', account, 'span');
     this.accountName.textContent = nickname;
     this.gold = element('account-gold', account, 'span');
+    this.online = element('account-online', account, 'span');
+    this.online.hidden = true;
     const signOut = element('account-signout', account, 'button') as HTMLButtonElement;
     signOut.type = 'button';
     signOut.textContent = '로그아웃';
@@ -455,6 +459,12 @@ export class Hud {
 
   showDown(down: boolean) {
     this.downNotice.hidden = !down;
+  }
+
+  /** 계정 줄의 접속자 수. null이면(연결이 끊김) 숨긴다. */
+  setOnline(count: number | null) {
+    this.online.hidden = count === null;
+    if (count !== null) this.online.textContent = `접속 ${count}명`;
   }
 
   /** 닉네임을 바꾸면 오른쪽 위 계정 줄의 이름도 바꾼다. */

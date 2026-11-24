@@ -244,7 +244,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     name: '???',
     floor: [],
     floorTop: BLOCK_TOP,
-    color: 0xc9bf7a,
+    color: 0xd9d4c8,
     accent: 0xc9b8ff,
     links: {},
   },

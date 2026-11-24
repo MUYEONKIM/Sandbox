@@ -1,7 +1,6 @@
 import type { Area } from '../game/maps';
 import { SNAIL_COLORS } from '../game/casino';
 import {
-  ANNEX_PROPS,
   BULL,
   CAFE,
   EXCHANGE_TICKERS,
@@ -390,41 +389,15 @@ function exchangeFloor(painter: Painter): FloorShader {
   };
 }
 
-const TATAMI = [0xcfc684, 0xc6bc76, 0xd6cd8e];
-const TATAMI_EDGE = 0x3f4a2e;
+/** 빈방 바닥 돌 두 가지 색과 줄눈(로비 대리석 색에서 결을 뺀 것) */
+const PLAIN_STONE = [0xebe6da, 0xe6e1d5];
+const PLAIN_GROUT = 0xcdc6b8;
 
-/** 이름 없는 방 바닥: 한 장이 1×2칸인 다다미를 줄마다 반 장씩 엇갈려 깔고, 스탠드 불빛이 번진다. 왼쪽 앞은 갈퀴 자국을 낸 모래 정원이다. */
-function annexFloor(painter: Painter): FloorShader {
-  const local = ({ x, y }: { x: number; y: number }) => ({ x: x - painter.x0 + 0.5, y: y - painter.y0 + 0.5 });
-  const lamps = ANNEX_PROPS.lamps.map(local);
-  const rocks = ANNEX_PROPS.rocks.map((rock) => ({ ...local(rock), r: rock.r }));
-  const [x0, y0, x1, y1] = ANNEX_PROPS.garden;
-  const [a0, b0, a1, b1] = [x0 - painter.x0, y0 - painter.y0, x1 + 1 - painter.x0, y1 + 1 - painter.y0];
-  const sand = (gx: number, gy: number, sx: number, sy: number): Color => {
-    const edge = Math.min(gx - a0, a1 - gx, gy - b0, b1 - gy);
-    if (edge < 0.12) return edge < 0.05 ? 0x4a3820 : 0x7a5a3a;
-    // 바위 둘레는 동심원, 나머지는 앞-왼쪽 변과 나란한 줄로 모래를 긁었다.
-    const rock = rocks.find((r) => Math.hypot(gx - r.x, gy - r.y) < r.r);
-    const t = rock ? Math.hypot(gx - rock.x, gy - rock.y) : gy;
-    const base = frac(t * 3.2) < 0.28 ? 0xb9b3a4 : 0xdcd7c9;
-    return (sx * 3 + sy * 5) % 7 === 0 ? shade(base, 0.94) : base;
-  };
-  return (gx, gy, sx, sy) => {
-    let c: Color;
-    if (gx >= a0 && gx < a1 && gy >= b0 && gy < b1) c = sand(gx, gy, sx, sy);
-    else {
-      const row = Math.floor(gy);
-      const along = gx + (row & 1);
-      const mat = Math.floor(along / 2);
-      if (frac(gy) < 0.07 || frac(gy) > 0.93) c = TATAMI_EDGE;
-      else if (frac(along / 2) < 0.02) c = 0xa89c5a;
-      else {
-        const base = TATAMI[Math.floor(hash2(mat, row) * TATAMI.length)];
-        c = (sx + 2 * sy) % 4 === 0 ? shade(base, 0.92) : base;
-      }
-    }
-    const glow = Math.max(0, ...lamps.map((lamp) => 1 - Math.hypot(gx - lamp.x, gy - lamp.y) / 3.4));
-    return glow > 0 ? mix(shade(c, 1 + glow * 0.2), LAMP_LIGHT, glow * 0.28) : c;
+/** 빈방 바닥(이름 없는 방, 2026-11-24 에이전트가 정함): 한 칸에 한 장인 밝은 돌판과 가는 줄눈. 결이나 무늬는 넣지 않는다. */
+function plainFloor(): FloorShader {
+  return (gx, gy) => {
+    if (frac(gx) < 0.04 || frac(gy) < 0.04) return PLAIN_GROUT;
+    return PLAIN_STONE[Math.floor(hash2(Math.floor(gx), Math.floor(gy)) * PLAIN_STONE.length)];
   };
 }
 
@@ -541,7 +514,7 @@ const FLOOR_SHADERS: Record<string, (painter: Painter, plan: FloorPlan) => Floor
   cabin: cabinFloor,
   casino: casinoFloor,
   exchange: exchangeFloor,
-  annex: annexFloor,
+  plain: plainFloor,
   mart: martFloor,
   smithy: smithyFloor,
   labor: laborFloor,
@@ -829,119 +802,6 @@ function paintExchangeWalls(painter: Painter) {
     });
     painter.text('left', label, center - Math.floor(textColumns(label) / 2), 39, 1, EXCHANGE_GOLD);
   });
-}
-
-/** 이름 없는 방 벽: 장지문(창호지와 나무 살), 오른쪽 벽 가운데 도코노마와 족자(먹으로 그린 원), 왼쪽 벽에 둥근 창 둘(달 뜬 창과 별 뜬 창) */
-function paintAnnexWalls(painter: Painter) {
-  for (const wall of ['left', 'right'] as Wall[]) {
-    painter.wallRect(wall, 0, painter.length(wall), 0, WALL_H, (u, v) => {
-      if (v < 5) return 0x4a3020;
-      if (v >= WALL_H - 4) return 0x6a4a30;
-      if (u % 32 < 2) return 0x7a5a3a;
-      if (v < 15) return v === 14 ? 0x6a4a30 : 0x8a6a48;
-      if (u % 8 === 0 || (v - 15) % 10 === 0) return 0xa8865c;
-      return 0xf2ede0;
-    });
-  }
-
-  // 도코노마: 흙벽을 바른 오목한 자리. 양옆 기둥과 위 가로보는 짙은 나무다.
-  const { x0, x1 } = ANNEX_PROPS.alcove;
-  const a0 = (x0 - painter.x0) * U;
-  const a1 = (x1 + 1 - painter.x0) * U;
-  painter.wallRect('right', a0, a1, 0, WALL_H - 4, (u, v) => {
-    if (u < a0 + 3 || u >= a1 - 3) return u === a0 + 1 || u === a1 - 2 ? 0x5a3a24 : 0x4a3020;
-    if (v >= 64) return v === 64 ? 0x3a2414 : 0x4a3020;
-    return (u * 5 + v * 3) % 11 === 0 ? 0xcdb98e : 0xd9c69c;
-  });
-
-  const scroll = (a0 + a1) / 2;
-  painter.wallRect('right', scroll, scroll + 1, 62, 64, () => 0x3a2a1a);
-  painter.wallRect('right', scroll - 12, scroll + 12, 10, 62, (u, v) => {
-    const du = u - scroll;
-    if (v < 13 || v >= 59) return Math.abs(du) < 12 ? 0x3a2a1a : null;
-    if (Math.abs(du) >= 10 || v < 17 || v >= 55) return 0x6a7f6a;
-    const r = Math.hypot(du, (v - 37) * 0.8);
-    if (r > 5 && r < 7.5 && !(du > 2 && v > 40)) return 0x1d1a18;
-    return 0xf6f0de;
-  });
-
-  const center = (at: number) => (at - painter.y0) * U + U / 2;
-  for (const [at, moon] of [
-    [20, true],
-    [27, false],
-  ] as const) {
-    paintRoundWindow(painter, center(at), moon);
-  }
-}
-
-/** 둥근 창: 밤하늘에 대나무 두 줄기. moon이면 달이 뜨고, 아니면 별이 뜬다. */
-function paintRoundWindow(painter: Painter, at: number, moon: boolean) {
-  painter.wallRect('left', at - 18, at + 18, 24, 64, (u, v) => {
-    const r = Math.hypot(u - at, v - 44);
-    if (r >= 17) return null;
-    if (r >= 15) return 0x6a4a30;
-    if (moon ? Math.hypot(u - at - 6, v - 51) < 3.2 : (u * 7 + v * 13) % 47 === 0 && v > 44) return 0xfff4cf;
-    for (const [x0, lean] of [
-      [at - 8, 0.08],
-      [at + 2, -0.05],
-    ]) {
-      const x = x0 + (v - 30) * lean;
-      if (Math.abs(u - x) < 1.2) return (v + Math.round(x0)) % 9 === 0 ? 0x2c3a26 : 0x1a2a1a;
-      if (v > 40 && v < 56 && Math.abs(u - x - 3) < 3 && Math.abs(v - 48 - (u - x)) < 1) return 0x1a2a1a;
-    }
-    return ramp([0x1d2440, 0x26305a, 0x2c3a66], (v - 28) / 32, u, v);
-  });
-}
-
-type Point = [number, number];
-const minus = (a: Point, b: Point): Point => [a[0] - b[0], a[1] - b[1]];
-
-/** 바닥에서 lift만큼 솟은 상자 (바닥 안쪽 격자 좌표 g0~g1, h0~h1). 앞-왼쪽, 앞-오른쪽 옆면과 윗면을 칠한다. */
-function paintSlabBox(
-  painter: Painter,
-  [g0, h0, g1, h1]: [number, number, number, number],
-  lift: number,
-  [front, side]: [Color, Color],
-  top: (u: number, v: number) => Color | null,
-) {
-  const { p } = painter;
-  const at = (gx: number, gy: number): Point => [...painter.screen(gx, gy, -lift)];
-  p.parallelogram(at(g0, h1), minus(at(g1, h1), at(g0, h1)), [0, lift], () => front);
-  p.parallelogram(at(g1, h0), minus(at(g1, h1), at(g1, h0)), [0, lift], () => side);
-  p.parallelogram(at(g0, h0), minus(at(g1, h0), at(g0, h0)), minus(at(g0, h1), at(g0, h0)), top);
-}
-
-/** 방석: 바닥에서 조금 솟은 보라색 네모 방석, 가운데 매듭 */
-function paintCushion(painter: Painter, { x, y }: { x: number; y: number }) {
-  const gx = x - painter.x0;
-  const gy = y - painter.y0;
-  paintSlabBox(painter, [gx + 0.12, gy + 0.12, gx + 0.88, gy + 0.88], 3, [0x4e3468, 0x3e2856], (u, v) => {
-    if (Math.abs(u - 0.5) < 0.08 && Math.abs(v - 0.5) < 0.08) return 0xf2cf6a;
-    if (u < 0.08 || v < 0.08) return 0x8a66b0;
-    return (Math.floor(u * 4) + Math.floor(v * 4)) & 1 ? 0x6a4a8a : 0x72519a;
-  });
-}
-
-/** 도코노마 단: 벽에 붙은 낮은 나무 단. 가운데 향로에서 연기가 한 줄 오른다. */
-function paintAlcoveDais(painter: Painter) {
-  const { p } = painter;
-  const { x0, x1 } = ANNEX_PROPS.alcove;
-  const g0 = x0 - painter.x0 + 0.04;
-  const g1 = x1 + 1 - painter.x0 - 0.04;
-  const lift = 5;
-  paintSlabBox(painter, [g0, 0, g1, 0.9], lift, [0x4a3020, 0x3a2414], (u, v) => {
-    if (v > 0.86) return 0x8a6040;
-    return Math.floor(u * 18 + v * 2) & 1 ? 0x6a4a30 : 0x725036;
-  });
-  const [ix, iy] = painter.screen((g0 + g1) / 2, 0.45, -lift);
-  p.ellipse(ix, iy - 2, 4, 2.5, 0x7a6a48);
-  p.rect(ix - 4, iy - 4, 8, 1, 0x9a8a5e);
-  p.set(ix - 3, iy, 0x5a4a30);
-  p.set(ix + 2, iy, 0x5a4a30);
-  for (let k = 0; k < 18; k++) {
-    if (k % 5 === 4) continue;
-    p.set(ix + Math.round(Math.sin(k / 2.6) * 1.6), iy - 6 - k, k < 9 ? 0xd8d6cc : 0xc4c2ba);
-  }
 }
 
 /** 달팽이 경주로: 왼쪽 벽을 따라 놓인 낮은 상자. 세 줄 잔디 레인, 뒤쪽 끝 결승선, 앞쪽 출발선에 선 달팽이 셋 */
@@ -1302,12 +1162,25 @@ function paintFarmcoopWalls(painter: Painter) {
   });
 }
 
+/** 빈방 벽(이름 없는 방, 2026-11-24 에이전트가 정함): 걸레받이, 무늬 없는 칠한 벽, 천장 아래 가는 테만 둔다. */
+function paintPlainWalls(painter: Painter) {
+  for (const wall of ['left', 'right'] as Wall[]) {
+    painter.wallRect(wall, 0, painter.length(wall), 0, WALL_H, (_u, v) => {
+      if (v < 5) return v === 4 ? 0x9a9284 : 0x7e776a;
+      if (v >= WALL_H - 3) return TRIM;
+      if (v === WALL_H - 4) return 0xd9d3c7;
+      return 0xf1ede4;
+    });
+  }
+}
+
 /** 상점·대장간처럼 tower.ts의 FloorPlan.style에 아직 없을 수 있는 스타일의 벽 */
 const SHOP_WALLS: Partial<Record<string, (painter: Painter) => void>> = {
   mart: paintMartWalls,
   smithy: paintSmithyWalls,
   labor: paintLaborWalls,
   farmcoop: paintFarmcoopWalls,
+  plain: paintPlainWalls,
 };
 
 /** 가장 먼저 그리는 벽면: 사무실 벽, 1층 로비 벽, 옥상 난간 */
@@ -1324,10 +1197,6 @@ function paintWalls(painter: Painter, plan: FloorPlan) {
   }
   if (style === 'exchange') {
     paintExchangeWalls(painter);
-    return;
-  }
-  if (style === 'annex') {
-    paintAnnexWalls(painter);
     return;
   }
   if (style === 'stairs') {
@@ -1554,7 +1423,7 @@ const EDGE_COLORS: Record<string, number[]> = {
   cabin: [0x5b626c, 0x4a505a],
   casino: [0x3a1418, 0x2a0e12],
   exchange: [0x232a36, 0x1a1f29],
-  annex: [0x5a4428, 0x4a3820],
+  plain: [0x8a8476, 0x77726a],
   mart: [0x5b626c, 0x4a505a],
   smithy: [0x3e3a35, 0x2f2c28],
   labor: [0x5a3a20, 0x4a3018],
@@ -1604,10 +1473,6 @@ export function paintInterior(id: TowerId): HTMLCanvasElement {
   paintWalls(painter, plan);
   for (const door of plan.doorways) paintDoor(painter, door, plan.number);
   if (plan.style === 'casino') paintSnailTrack(painter);
-  if (plan.style === 'annex') {
-    paintAlcoveDais(painter);
-    for (const cushion of ANNEX_PROPS.cushions) paintCushion(painter, cushion);
-  }
   p.outlineOuter(OUTLINE);
   return p.toCanvas();
 }
@@ -1637,9 +1502,6 @@ function mix(a: Color, b: Color, t: number): Color {
   const channel = (shift: number) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t);
   return (channel(16) << 16) | (channel(8) << 8) | channel(0);
 }
-
-/** 스탠드 불빛 색(이름 없는 방 바닥) */
-const LAMP_LIGHT = 0xffd98a;
 
 /** 숨은 방 바닥: 짙은 나무 바닥. 가구 없이 비워 두고 플레이어가 꾸민다(2026-11-15 사용자 요청). */
 export function paintHideoutFloor(): HTMLCanvasElement {
@@ -1699,78 +1561,6 @@ export function paintHideoutWall(): HTMLCanvasElement {
   }
   painter.p.outlineOuter(OUTLINE);
   return painter.p.toCanvas();
-}
-
-/** 숨은 방 구석의 스탠드. 갓 아래로 따뜻한 불빛이 샌다. */
-export function paintLamp(): Art {
-  const p = new Pixels(20, 48);
-  const cx = 10;
-  const cy = 44;
-  p.ellipse(cx, cy, 5, 2, 0x3a3a3a);
-  for (let v = 1; v < 32; v++) {
-    p.set(cx - 1, cy - v, 0x4a4a4a);
-    p.set(cx, cy - v, 0x6a6a6a);
-  }
-  for (let y = cy - 42; y <= cy - 31; y++) {
-    const t = (y - (cy - 42)) / 11;
-    const half = 3 + t * 4;
-    for (let x = Math.ceil(cx - half); x <= Math.floor(cx + half - 1); x++) {
-      p.set(x, y, x < cx - half + 2 ? 0xe9b866 : ramp([0xf6dca0, 0xfbe9bf], t, x, y));
-    }
-  }
-  p.rect(cx - 5, cy - 31, 10, 1, 0xfff1c4);
-  p.outlineOuter(OUTLINE);
-  return { canvas: p.toCanvas(), ax: cx, ay: cy };
-}
-
-/** 숨은 방의 낮은 밥상: 컵라면과 머그컵이 올라가 있다. */
-export function paintLowTable(): Art {
-  const p = new Pixels(32, 32);
-  const cx = 16;
-  const cy = 24;
-  const raise = 7;
-  const topY = cy - raise;
-  // 다리
-  for (const [x, y] of [
-    [cx - 10, topY + 1],
-    [cx, topY + 5],
-    [cx + 10, topY + 1],
-  ]) {
-    for (let v = 0; v < raise - 1; v++) p.set(x, y + 1 + v, 0x5e3f24);
-  }
-  // 상판 두께와 윗면
-  p.parallelogram([cx - 11, topY], [11, 5.5], [0, 2], () => 0x7e5834);
-  p.parallelogram([cx, topY + 5.5], [11, -5.5], [0, 2], () => 0x6a4a30);
-  p.parallelogram([cx, topY - 5.5], [11, 5.5], [-11, 5.5], (u, v) => ((u * 7 + v * 3) % 1 < 0.15 ? 0xa97c4c : 0xc69866));
-  // 컵라면
-  p.rect(cx - 6, topY - 8, 6, 6, 0xf4f1ea);
-  p.rect(cx - 6, topY - 6, 6, 2, 0xd8413b);
-  p.rect(cx - 6, topY - 9, 6, 1, 0xe9e3d3);
-  // 머그컵과 김
-  p.rect(cx + 2, topY - 6, 4, 4, 0xf6f3ec);
-  p.set(cx + 6, topY - 5, 0xf6f3ec);
-  p.set(cx + 6, topY - 4, 0xf6f3ec);
-  p.set(cx + 3, topY - 8, 0xdfe7ec);
-  p.set(cx + 4, topY - 10, 0xdfe7ec);
-  p.outlineOuter(OUTLINE);
-  return { canvas: p.toCanvas(), ax: cx, ay: cy };
-}
-
-/** 이름 없는 방 바위 정원의 바위. size 1이 가장 큰 바위다. 위에 이끼가 앉았다. */
-export function paintGardenRock(size: number): Art {
-  const p = new Pixels(Math.ceil(26 * size) + 4, Math.ceil(22 * size) + 4);
-  const cx = Math.floor(p.w / 2);
-  const cy = p.h - 3;
-  const blob = (dx: number, dy: number, rx: number, ry: number, c: Color) =>
-    p.ellipse(cx + dx * size, cy + dy * size, rx * size, ry * size, c);
-  blob(4, -5, 7, 5, 0x55514e);
-  blob(-2, -6, 9, 6, 0x6a6662);
-  blob(-1, -10, 6, 5, 0x7f7a74);
-  blob(-3, -12, 3, 2, 0x938e86);
-  blob(1, -13.5, 3.4, 1.6, 0x5a8a3c);
-  blob(0, -14, 1.6, 0.9, 0x7aa64a);
-  p.outlineOuter(OUTLINE);
-  return { canvas: p.toCanvas(), ax: cx, ay: cy };
 }
 
 /** 바깥 계단 앞 줄의 난간 한 칸. 칸 가운데를 지나 x 방향으로 뻗는다. */
