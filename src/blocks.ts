@@ -186,6 +186,11 @@ export function isWallDecor(id: BlockId) {
   return kind === 'paper' || kind === 'hang';
 }
 
+/** 벽지(뒤쪽 벽 칸이나 놓는 벽 위에 바름) */
+export function isPaper(id: BlockId) {
+  return BLOCKS[id].art.kind === 'paper';
+}
+
 /** 놓는 벽(점프로 넘지 못함) */
 export function isPlacedWall(id: BlockId) {
   return !!infoOf(id).wall;
@@ -205,6 +210,11 @@ export function isRug(id: BlockId) {
  * 그 밖의 윗면(탁자, 의자, 방석 등) 위에는 작은 소품만 올린다. 바닥 타일·벽지·벽걸이는 쌓지 않는다.
  */
 export function canStackOn(below: BlockId, id: BlockId) {
+  // 벽지는 놓는 벽 바로 위에 바른다(2026-11-25 사용자 "내가 세운 벽에도 벽지를"). 유리 칸막이에는 바르지 않는다(PM이 정함).
+  if (isPaper(id)) {
+    const art = BLOCKS[below].art;
+    return art.kind === 'pwall' && art.style !== 'rd_wall_glass';
+  }
   if (isFloorTile(id) || isWallDecor(id) || isWallDecor(below)) return false;
   const top = topOf(below);
   if (top === null) return false;

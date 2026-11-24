@@ -48,7 +48,7 @@ export interface Arm {
  * 2026-11-25 사용자 "꾸미는 블록은 무기·포션과 따로 탭으로", "벽은 따로 '벽'으로": 타일 = 상자 블록과 바닥 타일, 장식품 = 올리는 소품·벽지·벽걸이·바깥용,
  * 가구 = 바닥 가구·깔개, 벽 = 놓는 벽(바닥 타일을 타일에 둔 것은 PM이 정함).
  */
-export const TABS = { tile: '타일', decor: '장식품', furniture: '가구', wall: '벽', weapon: '무기', potion: '포션', seed: '씨앗' } as const;
+export const TABS = { tile: '타일', decor: '장식품', furniture: '가구', wall: '벽', paper: '벽지', weapon: '무기', potion: '포션', seed: '씨앗' } as const;
 export type TabId = keyof typeof TABS;
 
 export function tabOf(id: ItemId): TabId {
@@ -60,6 +60,8 @@ export function tabOf(id: ItemId): TabId {
   if (isCube(id)) return 'tile';
   const art = blockArt(id);
   if (art.kind === 'pwall') return 'wall';
+  // 벽지는 꾸미기 안 따로 된 벽지 탭(2026-11-25 사용자 "벽지를 따로 '벽지' 탭으로")
+  if (art.kind === 'paper') return 'paper';
   if (art.kind === 'ftile') return 'tile';
   if (art.kind === 'room' && art.slot !== 'top') return 'furniture';
   return 'decor';
@@ -221,7 +223,8 @@ export class Inventory {
     // 2026-11-24 방 꾸미기: 옛 가구(f_)는 탭에서 숨기고(놓인 것은 그대로 보이고 회수됨), 새 가구를 낸다. 놓는 벽은 벽 탭, 바닥 타일은 타일 탭.
     if (tab === 'furniture') return ROOM_FURNITURE_IDS;
     if (tab === 'wall') return PLACED_WALL_IDS;
-    if (tab === 'decor') return [...(ROOM_DECOR_TAB as readonly BlockId[]), ...OUTDOOR_IDS];
+    if (tab === 'decor') return [...(ROOM_DECOR_TAB as readonly BlockId[]).filter((id) => tabOf(id) === 'decor'), ...OUTDOOR_IDS];
+    if (tab === 'paper') return (ROOM_DECOR_TAB as readonly BlockId[]).filter((id) => tabOf(id) === 'paper');
     // 타일: 상자 블록 뒤에 바닥 타일
     if (tab === 'tile') return [...BLOCK_IDS.filter((id) => isCube(id)), ...FLOOR_TILE_IDS];
     return BLOCK_IDS.filter((id) => tabOf(id) === tab);

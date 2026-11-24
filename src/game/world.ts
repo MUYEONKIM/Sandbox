@@ -1,4 +1,4 @@
-import { BLOCKS, canStackOn, footprintOf, isFlat, isFloorTile, isLarge, isOnTop, isPlacedWall, topOf, type BlockId } from '../blocks';
+import { BLOCKS, canStackOn, footprintOf, isFlat, isFloorTile, isLarge, isOnTop, isPaper, isPlacedWall, topOf, type BlockId } from '../blocks';
 import { BLOCK_HEIGHT, BUILD_RANGE, MAX_STACK, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
 import { isInside, type Area, type Portal } from './maps';
@@ -98,7 +98,8 @@ export class World {
     for (let i = 0; i < z; i++) {
       const id = stack?.[i];
       if (id === undefined) continue;
-      const top = topOf(id) ?? BLOCK_HEIGHT;
+      // 놓는 벽에 바른 벽지는 높이를 더하지 않는다(벽 겉면 그림).
+      const top = isPaper(id) ? 0 : (topOf(id) ?? BLOCK_HEIGHT);
       lift += top;
       if (top > 0) on = { x, y, z: i };
     }
@@ -317,7 +318,13 @@ export class World {
     const top = this.topAt(target.x, target.y);
     // 납작한 것만 깔린 칸은 빈 바닥과 같이 canPlace로 본다(큰 가구가 차지할 칸을 함께 봐야 함).
     if (top === undefined || top.z + 1 >= MAX_STACK || this.isFlatStack(target.x, target.y)) return false;
-    return id ? canStackOn(top.id, id) : topOf(top.id) !== null;
+    // 벽지를 바른 놓는 벽: 벽지 위에는 벽지를 또 바르지 않고, 그 밖의 것은 아래 벽 기준(낮은 벽 위 소품)으로 본다.
+    let base = top.id;
+    if (isPaper(top.id) && top.z > 0) {
+      if (id && isPaper(id)) return false;
+      base = this.blockAtLevel(target.x, target.y, top.z - 1) ?? top.id;
+    }
+    return id ? canStackOn(base, id) : topOf(base) !== null;
   }
 
   /** 숨은 방처럼 나중에 드러나는 바닥을 걸을 수 있게 한다. solid는 가구가 있어 막는 칸이다. */

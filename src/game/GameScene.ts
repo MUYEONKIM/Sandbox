@@ -26,12 +26,14 @@ import {
   isCube,
   isFlat,
   isFloorTile,
+  isPaper,
   isPlacedWall,
   isRug,
   isWallDecor,
   outdoorFrame,
   outdoorVariant,
   paintBlock,
+  topOf,
   wallAxisMask,
   wallFrame,
   CUBE_IDS,
@@ -42,6 +44,7 @@ import {
   ensureRoomTextures,
   ensureWallDecorTexture,
   hangExtent,
+  paperedWallTexture,
   placeWallDecor,
   wallAtPoint,
   wallCellAt,
@@ -283,6 +286,8 @@ const DEPTH_WALLPAPER = 0.52;
 const DEPTH_WALL_HANG = 0.53;
 const DEPTH_FLOOR_TILE = 0.58;
 const SUPPORT_DEPTH = 0.001;
+/** 놓는 벽 높이(낮은 벽은 윗면 18이 높이다) */
+const PLACED_WALL_HEIGHT = 36;
 /** 모험 맵 등불 시트 텍스처(public/sprites/adventure/adv-lights.png, 맵 자료와 함께 읽음) */
 const ADV_LAMPS_TEXTURE = 'adv-lights';
 /** 화면 안 남의 횃불 가운데 어둠을 걷고 빛을 두는 수(나와 가까운 차례, 2026-11-24 PM 전달 "화면 안 가까운 8명까지") */
@@ -3235,7 +3240,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    * 칸은 그 가구 윗면), 빈 바닥을 가리키면 바닥이다. z는 그 칸에 쌓인 수다.
    */
   private placementSpot(id: BlockId): (Tile & { z: number }) | null {
-    if (isWallDecor(id)) return this.hoveredWall ? this.wallSpot(this.hoveredWall, id) : null;
+    if (isWallDecor(id)) {
+      if (this.hoveredWall) return this.wallSpot(this.hoveredWall, id);
+      // 벽지는 놓는 벽 위에도 바른다(그 칸 맨 위가 놓는 벽일 때, 2026-11-25).
+      const target = this.hoveredBlock;
+      if (!isPaper(id) || !target || this.world.ownerOf(target.x, target.y)) return null;
+      return this.world.canStack(target, this.me.tile, id) ? { ...target, z: this.world.heightAt(target.x, target.y) } : null;
+    }
     if (this.hoveredBlock) {
       const target = this.hoveredBlock;
       const { x, y } = target;
@@ -3368,7 +3379,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.redressAround(x, y, z, id);
     const art = blockArt(id);
     // 벽지·벽걸이(늘 바닥 것보다 뒤), 바닥 타일, 깔개, 손바닥만 한 소품은 캐릭터를 가리지 않으므로 가림 검사와 포탈 지키기에서 뺀다.
-    if (art.kind === 'paper' || art.kind === 'hang' || art.kind === 'ftile' || isRug(id)) return;
+    if (art.kind === 'hang' || art.kind === 'ftile' || isRug(id) || (art.kind === 'paper' && wallCellAt(this.mapId, x, y))) return;
     if (art.kind === 'room' && art.slot === 'top' && art.frame[3] < 24) return;
     // 포탈이나 안내판을 덮으면 늘 반투명하게 그린다(2026-11-16 사용자 "가려지면 안 된다").
     if (this.keepClear.covers(image)) {
@@ -3403,9 +3414,31 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         [0, -1],
       ]) {
         const n = this.placedWallAt(x + dx, y + dy);
-        if (n) redress(x + dx, y + dy, n.z);
+        if (!n) continue;
+        redress(x + dx, y + dy, n.z);
+        // 그 벽에 바른 벽지도 같은 이음 모양으로 다시 그린다.
+        const above = this.world.blockAtLevel(x + dx, y + dy, n.z + 1);
+        if (above && isPaper(above)) redress(x + dx, y + dy, n.z + 1);
       }
     }
+  }
+
+  /**
+   * 놓는 벽 위(z − 1이 놓는 벽)에 바른 벽지: 그 벽과 같은 모양·자리에 벽지 무늬로 칠한 그림(roomArt.paperedWallTexture)을 벽 바로 앞 깊이에 덮는다.
+   * 아래가 놓는 벽이 아니면(옛 자료) 숨긴다.
+   */
+  private dressPaperedWall(image: Phaser.GameObjects.Image, id: BlockId, x: number, y: number, z: number) {
+    const wall = z > 0 ? this.world.blockAtLevel(x, y, z - 1) : undefined;
+    const art = wall ? blockArt(wall) : null;
+    if (!wall || art?.kind !== 'pwall') return image.setVisible(false);
+    ensureRoomTextures(this);
+    const mask = this.wallMask(x, y, art.axis);
+    const key = paperedWallTexture(this, art.style, mask, id, topOf(wall) ?? PLACED_WALL_HEIGHT);
+    const [, , w, h, ax, ay] = wallFrame(art.style, mask);
+    const { lift, on } = this.world.supportOf(x, y, z - 1);
+    const c = tileCenter(x, y);
+    image.setVisible(true).setTexture(key).setOrigin(ax / w, ay / h).setPosition(c.x, c.y - lift);
+    return keepDepth(image, this.depthFor(wall, x, y, z - 1, lift, on) + SUPPORT_DEPTH / 2);
   }
 
   /** 칸에 놓인 놓는 벽과 그 높이 */
@@ -3477,6 +3510,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const art = blockArt(id);
     if (art.kind === 'paper' || art.kind === 'hang') {
       const cell = wallCellAt(this.mapId, x, y);
+      if (!cell && art.kind === 'paper') return this.dressPaperedWall(image, id, x, y, z);
       ensureWallDecorTexture(this);
       if (cell) placeWallDecor(image, id, cell);
       return keepDepth(image, (art.kind === 'paper' ? DEPTH_WALLPAPER : DEPTH_WALL_HANG) + z * 0.0001);
@@ -3863,7 +3897,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (!this.hideoutShown) return;
     }
     // 벽지·벽걸이는 뒤쪽 벽 칸(바닥 밖)에만, 다른 것은 바닥에만 그린다. 층 구조가 바뀌어 벽이나 바닥 밖이 된 칸의 옛 블록은 그리지 않는다.
-    if (isWallDecor(id) ? !wallCellAt(this.mapId, x, y) : !this.world.isOpenGround(x, y)) return;
+    // 벽지는 뒤쪽 벽 칸이나 바닥의 놓는 벽 위에 있다.
+    const onWall = !!wallCellAt(this.mapId, x, y);
+    if (isWallDecor(id) ? !onWall && !(isPaper(id) && this.world.isOpenGround(x, y)) : !this.world.isOpenGround(x, y)) return;
     if (!this.world.blockAtLevel(x, y, z)) this.spawnBlock({ x, y }, z, id);
   }
 

@@ -235,6 +235,100 @@ export function placeWallDecor(image: Phaser.GameObjects.Image, id: BlockId, cel
   return true;
 }
 
+const sheetPixels = new Map<string, ImageData>();
+function pixelsOf(name: SpriteName) {
+  let data = sheetPixels.get(name);
+  if (!data) {
+    data = spritePixels(name);
+    sheetPixels.set(name, data);
+  }
+  return data;
+}
+
+/**
+ * 놓는 벽에 바른 벽지 그림(2026-11-25 사용자 "내가 세운 벽에도 벽지를 바를 수 있게")의 텍스처 이름. 처음 쓸 때 한 장 만들어 두고 다시 쓴다.
+ * 벽 시트의 그 이음 모양 그림을 복사해, 옆면(앞-왼쪽 면·앞-오른쪽 면) 픽셀만 벽지 무늬로 바꾼다. 윗면, 테두리(투명한 칸과 맞닿은 픽셀),
+ * 반투명 픽셀(창문 벽 유리)은 그대로 둔다. 면은 칸 가운데를 지나는 두께 1/4칸 판(디자인 그림과 같은 틀)으로 셈해 고르고,
+ * 무늬 열은 화면 x로 이어(옆 칸 벽과 이음매 없음), 높이는 벽지 아래쪽(걸레받이 포함)을 쓰고 맨 위 3줄은 벽지 마감이다.
+ * 오른쪽 앞면은 0.82배로 어둡게 칠한다(상자 그림과 같은 빛 방향). 기준점은 벽 그림과 같다.
+ */
+export function paperedWallTexture(scene: Phaser.Scene, style: string, mask: number, paper: BlockId, height: number) {
+  const key = `papered:${style}:${mask}:${paper}`;
+  if (scene.textures.exists(key)) return key;
+  const art = blockArt(paper);
+  const [fx, fy, w, h, ax, ay] = ROOM_WALL_FRAMES[style][mask];
+  const wall = pixelsOf('room/room-walls');
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const context = canvas.getContext('2d')!;
+  context.drawImage(sprite('room/room-walls'), fx, fy, w, h, 0, 0, w, h);
+  if (art.kind !== 'paper') {
+    scene.textures.addCanvas(key, canvas);
+    return key;
+  }
+  const out = context.getImageData(0, 0, w, h);
+  const source = pixelsOf(art.sheet);
+  const [px0, py0] = art.frame;
+  const t = 0.125;
+  const boxes: [number, number, number, number][] = [[-t, t, -t, t]];
+  if (mask & 1) boxes.push([-t, 0.5, -t, t]);
+  if (mask & 2) boxes.push([-0.5, t, -t, t]);
+  if (mask & 4) boxes.push([-t, t, -t, 0.5]);
+  if (mask & 8) boxes.push([-t, t, -0.5, t]);
+  const within = (s: number, lo: number, hi: number) => s >= lo - 1e-6 && s <= hi + 1e-6;
+  const alphaAt = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : wall.data[((fy + y) * wall.width + fx + x) * 4 + 3]);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (alphaAt(x, y) !== 255) continue;
+      // 테두리: 네 이웃 중 하나라도 투명하면 그대로 둔다.
+      if (alphaAt(x - 1, y) === 0 || alphaAt(x + 1, y) === 0 || alphaAt(x, y - 1) === 0 || alphaAt(x, y + 1) === 0) continue;
+      const dx = (x + 0.5 - ax) / 16; // u − v
+      const dy = y + 0.5 - ay; // (u + v) × 8 − z
+      let best = -Infinity;
+      let face: 'top' | 'left' | 'right' | null = null;
+      let z = 0;
+      for (const [u0, u1, v0, v1] of boxes) {
+        const s = (dy + height) / 8;
+        const tu = (s + dx) / 2;
+        const tv = (s - dx) / 2;
+        if (within(tu, u0, u1) && within(tv, v0, v1) && s > best) {
+          best = s;
+          face = 'top';
+        }
+        const lu = v1 + dx;
+        const lz = (lu + v1) * 8 - dy;
+        if (within(lu, u0, u1) && lz >= 0 && lz <= height && lu + v1 > best) {
+          best = lu + v1;
+          face = 'left';
+          z = lz;
+        }
+        const rv = u1 - dx;
+        const rz = (u1 + rv) * 8 - dy;
+        if (within(rv, v0, v1) && rz >= 0 && rz <= height && u1 + rv > best) {
+          best = u1 + rv;
+          face = 'right';
+          z = rz;
+        }
+      }
+      if (face !== 'left' && face !== 'right') continue;
+      const fromTop = Math.max(0, Math.min(height - 1, height - 1 - Math.floor(z)));
+      const row = fromTop < 3 ? fromTop : WALL_H - height + fromTop;
+      const col = (((x - ax) % 16) + 16) % 16;
+      const s = ((py0 + row) * source.width + px0 + col) * 4;
+      if (source.data[s + 3] === 0) continue;
+      const k = face === 'right' ? 0.82 : 1;
+      const d = (y * w + x) * 4;
+      out.data[d] = Math.round(source.data[s] * k);
+      out.data[d + 1] = Math.round(source.data[s + 1] * k);
+      out.data[d + 2] = Math.round(source.data[s + 2] * k);
+    }
+  }
+  context.putImageData(out, 0, 0);
+  scene.textures.addCanvas(key, canvas);
+  return key;
+}
+
 /** 벽걸이가 벽을 따라 차지하는 칸 수와 높이 범위(바닥에서 px). 벽지는 null */
 export function hangExtent(id: BlockId) {
   const art = blockArt(id);

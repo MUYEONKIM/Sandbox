@@ -43,11 +43,11 @@ type BagTab = TabId | 'memo';
 const BAG_TABS: Record<BagTab, string> = { ...TABS, memo: '메모' };
 /**
  * 큰 탭과 그 안의 작은 탭(2026-11-25 사용자 "꾸미기 탭, 전투(무기, 포션) 탭, 농사 탭, 메모 탭 이렇게 나뉘면 괜찮다").
- * 꾸미기 안 차례(타일·장식품·가구·벽)와 전투 안 차례(무기·포션)는 PM이 정했다. 작은 탭이 하나뿐인 큰 탭은 작은 탭 줄을 숨긴다.
+ * 꾸미기 안 차례(타일·장식품·가구·벽·벽지, 벽지는 2026-11-25 사용자 "따로 '벽지' 탭으로")와 전투 안 차례(무기·포션)는 PM이 정했다. 작은 탭이 하나뿐인 큰 탭은 작은 탭 줄을 숨긴다.
  */
 type BagGroup = 'build' | 'battle' | 'farm' | 'memo';
 const BAG_GROUPS: { id: BagGroup; label: string; tabs: BagTab[] }[] = [
-  { id: 'build', label: '꾸미기', tabs: ['tile', 'decor', 'furniture', 'wall'] },
+  { id: 'build', label: '꾸미기', tabs: ['tile', 'decor', 'furniture', 'wall', 'paper'] },
   { id: 'battle', label: '전투', tabs: ['weapon', 'potion'] },
   { id: 'farm', label: '농사', tabs: ['seed'] },
   { id: 'memo', label: '메모', tabs: ['memo'] },
@@ -245,6 +245,7 @@ export class Hud {
         this.tab = this.lastTab.get(id) ?? tabs[0];
         this.render();
       });
+      button.dataset.group = id;
       this.groupButtons.set(id, button);
     }
     this.subTabs = element('bag-tabs bag-subtabs', this.bagPane);
@@ -695,12 +696,14 @@ export class Hud {
   private renderBag() {
     const group = BAG_GROUPS.find((g) => g.id === this.group)!;
     for (const [id, button] of this.groupButtons) button.classList.toggle('chosen', id === this.group);
-    // 지금 큰 탭의 작은 탭만 보이고, 작은 탭이 하나뿐이면 줄째 숨긴다.
+    // 지금 큰 탭의 작은 탭만 보인다.
     for (const [id, button] of this.tabButtons) {
       button.hidden = !group.tabs.includes(id);
       button.classList.toggle('chosen', id === this.tab);
     }
-    this.subTabs.hidden = group.tabs.length < 2;
+    // 받침은 늘 보이고 큰 탭 색을 따른다. 작은 탭이 하나뿐이면 띠만 남는다(디자인 세션 5 inventory-tabs.md).
+    this.subTabs.dataset.group = this.group;
+    this.subTabs.classList.toggle('bare', group.tabs.length < 2);
     this.bag.replaceChildren();
     const memo = this.tab === 'memo';
     this.bag.hidden = memo;

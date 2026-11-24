@@ -800,16 +800,6 @@ canvas {
   border-color: var(--panel-edge);
 }
 
-/* 큰 탭(꾸미기·전투·농사·메모) 아래 작은 탭(2026-11-25): 큰 탭보다 낮고 글자가 작다(에이전트가 정함). */
-.bag-subtabs {
-  margin-top: -2px;
-}
-
-.bag-tab.bag-subtab {
-  padding-top: 3px;
-  padding-bottom: 3px;
-  font-size: 13px;
-}
 
 .bag-hint {
   max-width: calc(var(--slot-size) * 9 + 32px);
@@ -6061,5 +6051,196 @@ canvas {
     max-height: none;
     overflow: visible;
     transform: none;
+  }
+}
+
+/* 인벤토리 큰 탭·작은 탭(2026-11-25 사용자 "상단탭을 터치하면 해당 탭에 관련된 아래에 하위 항목이 나오는 식", 디자인 세션 5 시안 inventory-tabs.md, 사용자 "넘겨") */
+/* ───────── 인벤토리 큰 탭·작은 탭 시안(2026-11-25 디자인 세션 5) ─────────
+ * 사용자: "상단탭을 터치하면 해당 탭에 관련된 아래에 하위 항목이 나오는 식으로". 참고 그림은 크롬 탭 그룹(색 칩).
+ * - 큰 탭(꾸미기·전투·농사·메모)은 색이 있는 칩. 고르지 않은 칩은 옅은 바탕에 진한 글자, 고른 칩은 진한 바탕에 밝은 글자.
+ * - 고른 칩은 아래로 이어져 같은 색 받침(.bag-subtabs)이 되고, 그 받침 안에 작은 탭이 놓인다(폴더 탭 모양).
+ * - 작은 탭이 없는 큰 탭(농사·메모)은 받침이 6px 띠만 남아 바로 목록이 나온다.
+ * - 정보창/인벤토리 줄은 지금 갈색 스킨 버튼 그대로 둔다(창 바꾸기). 칩은 납작한 색 면이라 그 줄과 갈린다.
+ * 그림 파일 없음, 움직임 없음. 바뀌는 것은 누를 때 class와 data-group 하나뿐이다.
+ * #hud button 스킨 규칙(테두리 그림)보다 이겨야 해서 #hud button.… 으로 쓰고 style.css 맨 끝에 둔다.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* 큰 탭 색(제가 정한 것): g = 칩·받침 색, g-deep = 테두리·진한 글자, g-pale = 고르지 않은 칩 바탕 */
+#hud [data-group='build'] {
+  --g: #3f6b97;
+  --g-deep: #22405f;
+  --g-pale: #c9d6df;
+}
+
+#hud [data-group='battle'] {
+  --g: #a84639;
+  --g-deep: #642119;
+  --g-pale: #edc9a4;
+}
+
+#hud [data-group='farm'] {
+  --g: #5b8430;
+  --g-deep: #334d17;
+  --g-pale: #d5dc9f;
+}
+
+#hud [data-group='memo'] {
+  --g: #a5751a;
+  --g-deep: #5e410a;
+  --g-pale: #f0d68f;
+}
+
+/* 큰 탭 줄: 칩은 아래 끝을 맞춘다. 고른 칩만 4px 더 내려와 받침에 붙는다. */
+.bag-groups {
+  align-items: flex-end;
+  gap: 4px;
+  margin: 2px 0 0;
+}
+
+#hud button.bag-group {
+  flex: 1;
+  height: 32px;
+  margin-bottom: 4px;
+  padding: 0 4px;
+  color: var(--g-deep);
+  background: var(--g-pale);
+  border: 2px solid var(--g);
+  border-radius: 6px;
+  border-image: none;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 12%);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 28px;
+  white-space: nowrap;
+  image-rendering: auto;
+}
+
+#hud button.bag-group.chosen {
+  position: relative;
+  z-index: 1;
+  /* 받침 위 테두리 2px를 덮고 내려와 칩과 받침이 한 면으로 이어진다. */
+  height: 38px;
+  margin-bottom: -2px;
+  color: #fbf3dc;
+  background: var(--g);
+  border-color: var(--g-deep);
+  border-width: 2px 2px 0;
+  border-radius: 6px 6px 0 0;
+  border-image: none;
+  box-shadow: inset 0 2px 0 rgb(255 255 255 / 18%);
+  /* 글자 높이를 고르지 않은 칩과 맞춘다(칩이 4px 길어진 만큼 아래로 내려가지 않게). */
+  line-height: 30px;
+}
+
+/* 받침: 고른 칩과 같은 색. 고른 칩이 맨 왼쪽(오른쪽)이면 그쪽 위 모서리를 각지게 해 칩과 이어 보이게 한다. */
+.bag-subtabs {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 4px;
+  background: var(--g);
+  border: 2px solid var(--g-deep);
+  border-radius: 6px;
+}
+
+.bag-groups:has(> .bag-group:first-child.chosen) + .bag-subtabs {
+  border-top-left-radius: 0;
+}
+
+.bag-groups:has(> .bag-group:last-child.chosen) + .bag-subtabs {
+  border-top-right-radius: 0;
+}
+
+/* 작은 탭이 없는 큰 탭(농사·메모): 받침은 띠만 남는다. 지금 코드의 hidden 대신 .bare를 붙인다. */
+.bag-subtabs.bare {
+  height: 6px;
+  padding: 0;
+  border-top: 0;
+  border-radius: 0 0 4px 4px;
+}
+
+.bag-subtabs.bare > * {
+  display: none;
+}
+
+/* 작은 탭: 받침 위의 글자. 고른 것만 크림색 바탕에 진한 글자 */
+#hud button.bag-subtab {
+  flex: 1;
+  height: 28px;
+  margin: 0;
+  padding: 0 4px;
+  color: #fbf3dc;
+  background: none;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  border-image: none;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 24px;
+  white-space: nowrap;
+  image-rendering: auto;
+}
+
+#hud button.bag-subtab.chosen {
+  color: var(--g-deep);
+  background: #fbf3dc;
+  border-width: 2px;
+  border-color: var(--g-deep);
+  border-image: none;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 10%);
+}
+
+/* 누르는 동안: 스킨의 눌린 버튼 그림(#hud button:active)을 쓰지 않고 테두리 두께를 그대로 둔다. */
+#hud button.bag-group:active:not(:disabled),
+#hud button.bag-subtab:active:not(:disabled) {
+  border-width: 2px;
+  border-image: none;
+}
+
+#hud button.bag-group.chosen:active:not(:disabled) {
+  border-bottom-width: 0;
+}
+
+/* 마우스를 올리면(PC) 고르지 않은 칩은 테두리가, 작은 탭은 바탕이 조금 진해진다. */
+@media (hover: hover) {
+  #hud button.bag-group:not(.chosen):hover {
+    border-color: var(--g-deep);
+  }
+
+  #hud button.bag-subtab:not(.chosen):hover {
+    background: rgb(0 0 0 / 14%);
+  }
+}
+
+/* 휴대폰 폭: 칩과 작은 탭을 조금 낮추고 글자를 줄인다. 손가락으로 누를 높이(30px 안팎)는 남긴다. */
+@media (max-width: 620px) {
+  .bag-groups {
+    gap: 3px;
+  }
+
+  #hud button.bag-group {
+    height: 30px;
+    padding: 0 2px;
+    font-size: 14px;
+    line-height: 26px;
+  }
+
+  #hud button.bag-group.chosen {
+    height: 36px;
+    line-height: 28px;
+  }
+
+  .bag-subtabs {
+    gap: 3px;
+    padding: 3px;
+    margin-bottom: 6px;
+  }
+
+  #hud button.bag-subtab {
+    height: 28px;
+    padding: 0 2px;
+    font-size: 13px;
   }
 }
