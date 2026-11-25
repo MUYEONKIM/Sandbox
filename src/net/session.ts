@@ -474,6 +474,11 @@ export class GameSession {
   onOnline: ((count: number | null) => void) | null = null;
   private mapId: string;
   private joined = false;
+  /**
+   * 지금 맵 채널 접속 명단에서 나를 뺀 사람 수(presence sync). 0이면 이동·채집·싸움·총알·던전 몬스터 알림을 보내지 않는다(받을 사람이 없음,
+   * 2026-11-25 Realtime 메시지 줄이기). 누가 새로 들어오면 join에서 announce가 지금 자리를 바로 보내므로 그 사람 화면은 맞는다.
+   */
+  private others = 0;
   private pending: ProfilePatch = {};
   private saveTimer = 0;
   private presenceTimer = 0;
@@ -562,6 +567,7 @@ export class GameSession {
   /** 지금 맵의 채널에 들어간다. 위치, 접속자, 채팅은 같은 맵끼리만 주고받는다(채팅은 2026-11-11 사용자 요청). */
   private async joinMap() {
     const { events, mapId } = this;
+    this.others = 0;
     await dropTopic(`chat:${mapId}`);
     await dropTopic(`world:${mapId}`);
     if (mapId !== this.mapId) return;
@@ -581,6 +587,20 @@ export class GameSession {
       })
       .subscribe();
 
+    // 농장 땅 바뀜은 농장 맵에서만 받는다(다른 맵에서 받으면 버리기만 하므로, 2026-11-25 Realtime 메시지 줄이기).
+    if (mapId === 'farm') {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: 'farm_plots' }, (change) => {
+        if (!current() || mapId !== 'farm') return;
+        if (change.eventType === 'DELETE') {
+          const x = Number(change.old.x);
+          const y = Number(change.old.y);
+          if (Number.isInteger(x) && Number.isInteger(y)) events.onFarmPlotRemoved(x, y);
+          return;
+        }
+        const plot = parsePlot(change.new);
+        if (plot) events.onFarmPlot(plot);
+      });
+    }
     this.lastSystem = null;
     channel
       .on('system', {}, (payload: { message?: string; status?: string }) => {
@@ -589,6 +609,7 @@ export class GameSession {
       .on('presence', { event: 'sync' }, () => {
         if (!current()) return;
         const state = channel.presenceState();
+        this.others = Object.keys(state).filter((key) => key !== this.profile.id).length;
         events.onRoster(new Set(Object.keys(state)));
         // 접속 명단에 각자의 위치와 상태가 실려 있어서, 들어오자마자 다른 사람의 답을 기다리지 않고 그린다.
         for (const [key, metas] of Object.entries(state)) {
@@ -619,25 +640,14 @@ export class GameSession {
       .on('broadcast', { event: 'mhit' }, ({ payload }) => this.monsterIn(current, 'mhit', payload))
       .on('broadcast', { event: 'mdead' }, ({ payload }) => this.monsterIn(current, 'mdead', payload))
       .on('broadcast', { event: 'matk' }, ({ payload }) => this.monsterIn(current, 'matk', payload))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'farm_plots' }, (change) => {
-        if (!current() || mapId !== 'farm') return;
-        if (change.eventType === 'DELETE') {
-          const x = Number(change.old.x);
-          const y = Number(change.old.y);
-          if (Number.isInteger(x) && Number.isInteger(y)) events.onFarmPlotRemoved(x, y);
-          return;
-        }
-        const plot = parsePlot(change.new);
-        if (plot) events.onFarmPlot(plot);
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'blocks' }, ({ new: row }) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'blocks', filter: `map=eq.${mapId}` }, ({ new: row }) => {
         const block = parseBlock(row);
         if (current() && block && row.map === mapId) events.onBlockPlaced(block);
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'blocks' }, ({ old }) => {
         if (current() && old.map === mapId && isTileCoord(old.x) && isTileCoord(old.y) && isLevel(old.z)) events.onBlockRemoved(old.x, old.y, old.z);
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ground_items' }, ({ new: row }) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ground_items', filter: `map=eq.${mapId}` }, ({ new: row }) => {
         const item = parseGround(row);
         if (current() && item && row.map === mapId) events.onGroundAdded(item);
       })
@@ -771,7 +781,7 @@ export class GameSession {
 
   sendMove(x: number, y: number, ms: number, motion: Motion = 'walk') {
     if (!this.joined || !this.channel) return;
-    void this.channel.send({ type: 'broadcast', event: 'move', payload: this.myState(ms, motion, { x, y }) });
+    if (this.others > 0) void this.channel.send({ type: 'broadcast', event: 'move', payload: this.myState(ms, motion, { x, y }) });
     this.refreshPresence();
   }
 
@@ -794,13 +804,13 @@ export class GameSession {
 
   /** 자원을 하나 얻었다고 같은 맵 사람들에게 알린다. 마무리 효과를 그리는 데만 쓴다. */
   sendHarvest(rare: boolean) {
-    if (!this.joined || !this.channel) return;
+    if (!this.joined || !this.channel || this.others === 0) return;
     void this.channel.send({ type: 'broadcast', event: 'harvest', payload: { id: this.profile.id, rare } });
   }
 
   /** 모험 전투를 시작했다(on)거나 끝냈다고 같은 맵 사람들에게 알린다. 머리 위 칼 표시와, 끝날 때 바뀐 판 레벨(이름표)에 쓴다. */
   sendFight(on: boolean) {
-    if (!this.joined || !this.channel) return;
+    if (!this.joined || !this.channel || this.others === 0) return;
     void this.channel.send({ type: 'broadcast', event: 'fight', payload: { id: this.profile.id, on, run: this.events.currentRun() } });
   }
 
@@ -812,7 +822,7 @@ export class GameSession {
 
   /** 던전 몬스터 알림을 같은 맵 사람들에게 보낸다. */
   sendMonster(message: MonsterMessage) {
-    if (!this.joined || !this.channel) return;
+    if (!this.joined || !this.channel || this.others === 0) return;
     const { event, ...payload } = message;
     void this.channel.send({ type: 'broadcast', event, payload });
   }
@@ -916,7 +926,7 @@ export class GameSession {
   }
 
   sendShot(weapon: WeaponId, level: number, fromX: number, fromY: number, toX: number, toY: number) {
-    if (!this.joined || !this.channel) return;
+    if (!this.joined || !this.channel || this.others === 0) return;
     const payload = { id: this.profile.id, weapon, level, fromX, fromY, toX, toY };
     void this.channel.send({ type: 'broadcast', event: 'shot', payload });
   }
@@ -1184,8 +1194,8 @@ export class GameSession {
     const now = performance.now();
     if (now - this.lastAnnounce < ANNOUNCE_GAP_MS) return;
     this.lastAnnounce = now;
-    const { x, y } = this.events.currentTile();
-    this.sendMove(x, y, 0);
+    if (!this.joined || !this.channel) return;
+    void this.channel.send({ type: 'broadcast', event: 'move', payload: this.myState(0, 'walk') });
   }
 
   /** everyone이면 모든 맵에(전체 채팅), 아니면 같은 맵에만(일반 채팅) 보낸다. */

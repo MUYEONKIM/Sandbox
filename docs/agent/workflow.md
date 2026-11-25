@@ -57,13 +57,19 @@
 ## 3. SQL이 있는 변경 (끝: 사용자가 실행했다고 말하고, 확인 가능한 것은 확인함)
 
 - 새 파일 `supabase/migrations/<YYYYMMDDHHMMSS>_<이름>.sql`. 함수를 고칠 때는 이전 마이그레이션의 본문을 복사해 필요한 줄만 바꾸고, `diff`로 바뀐 줄만 확인한다.
-- 사용자에게 파일 경로를 주고 Supabase SQL Editor에서 실행해 달라고 한다. 되돌릴 수 없는 내용(표 삭제, 플레이어 위치 이동)은 미리 말한다.
-- 실행 여부는 공개 키로 일부만 확인할 수 있다. 공개 키는 `gh variable list`의 `VITE_SUPABASE_KEY`다.
+- **실제 서버는 2026-11-25부터 이 PC의 자체 운영 Supabase다**(공식 docker compose, 컨테이너 `supabase-db`·`supabase-rest`·`supabase-auth`·`realtime-dev.supabase-realtime` 등, 개발용 로컬 스택 `supabase_*_iso-sandbox`와 따로). 밖에서는 Tailscale Funnel 주소 `https://its-sandbox.tailc69c42.ts.net`로 들어온다(`/auth/v1`, `/rest/v1`, `/realtime/v1`만 열림). 자세한 것은 코드 세션 4의 공유 노트 `self-host-plan.md`. 예전 Supabase 프로젝트 `aodoapomrddwfamvwwzb`는 일시 중지했고 한 달 동안 되돌리기용으로 둔다.
+- 사용자에게 파일 경로를 주고 이 PC의 운영 관리 화면(Studio, `http://127.0.0.1:8100`) SQL Editor에서 실행해 달라고 한다. 되돌릴 수 없는 내용(표 삭제, 플레이어 위치 이동)은 미리 말한다.
+- 실행 여부는 이 PC에서 운영 DB를 직접 읽어 확인한다(읽기만, 바꾸지 않는다). 확인 쿼리는 파일 맨 위 것을 쓴다.
   ```bash
-  curl -s "https://aodoapomrddwfamvwwzb.supabase.co/rest/v1/<표>?select=<열>&limit=1" -H "apikey: <공개 키>"
+  docker exec supabase-db psql -U postgres -c "begin read only;" -c "<확인 쿼리>" -c "rollback;"
+  ```
+  운영 DB에 쓰는 일(SQL 실행, 값 고치기)은 사용자가 관리 화면에서 한다. 개발용 로컬 DB는 지금처럼 `npx supabase migration up`으로만 바꾼다(컨테이너 이름이 다르니 헷갈리지 않는다).
+- 바깥 주소로 확인할 때의 공개 키는 운영 `prod\.env`의 `ANON_KEY`(= `gh variable list`의 `VITE_SUPABASE_KEY`)다. 문서와 노트에는 키 값을 적지 않는다.
+  ```bash
+  curl -s "https://its-sandbox.tailc69c42.ts.net/rest/v1/<표>?select=<열>&limit=1" -H "apikey: <공개 키>"
   ```
   함수는 `curl -s -X POST ".../rest/v1/rpc/<함수>" -H "apikey: <공개 키>" -H "Content-Type: application/json" -d '{<인자>}'`.
-  `42501`이면 있음(공개 키에 권한 없음), `42703` 열 없음, `PGRST205` 표 없음, `PGRST202` 함수 없음. 공개 키에 읽기 권한이 있고 행 보안이 걸러 내는 표는 오류 없이 `[]`가 온다. 정책과 함수 본문은 확인할 수 없으므로 "확인 못 함"으로 보고한다.
+  `42501`이면 있음(공개 키에 권한 없음), `42703` 열 없음, `PGRST205` 표 없음, `PGRST202` 함수 없음. 공개 키에 읽기 권한이 있고 행 보안이 걸러 내는 표는 오류 없이 `[]`가 온다.
 
 ## 4. 배포 (끝: 실행이 success이고 실제 사이트 번들에 새 문구가 있음)
 

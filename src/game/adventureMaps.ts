@@ -15,7 +15,7 @@ import type { Tile } from './world';
  *   그림은 2배 해상도(scale 0.5)
  * - monsters-new.json, monsters-new.webp(2026-11-19 새 지역 여섯, 78마리, 844KB, GPU 약 6.7MB): 맵 자료 몬스터의 sheet가 'new'인 것.
  *   처음부터 읽지 않고 그 몬스터가 있는 맵에 들어가기 전에만 읽는다(loadAdventureMaps(map), 렌더링 성능 먼저).
- * - monsters-gate.json, monsters-gate.webp(2026-11-19, 약 8KB): 평원 1 수문장 한 칸(새 그림의 화산 폭풍 첫 몬스터를 오림). 기본 자료와 함께 읽는다.
+ * - 수문장(2026-11-25 맵 v8부터 해골 기사 s0-02, 그림은 monsters.json): 예전 수문장 그림 monsters-gate.json·.webp는 더 쓰지 않아 지웠다.
  *   수문장은 맵 자료 몬스터의 gate 키('gate:adv_1a')가 있고, 이번 판에 이기면(서버 run_bosses에 그 키) 화면에서 치우고 그 칸의 높은 지역 포탈을 세운다.
  * - deco-<지역>.json, deco-<지역>.png(2026-11-20 디자인 세션 새 바닥·꾸밈, 디자인 노트 adventure-deco.md): 지역마다 아틀라스 하나(열다섯, 256px 폭, GPU 150~383KB).
  *   맵 자료 deco(아틀라스 이름), decoFloor(칸마다 tiles 번호), decoProps(서 있는 조각), decoFloors(바닥 조각). 그 맵에 들어가기 전에만 읽고,
@@ -81,7 +81,7 @@ export interface AdvMonsterSpot extends Tile {
   slot: string;
   /** monsters.json 프레임 id(sheet가 'new'이면 monsters-new.json 프레임 id) */
   art: string;
-  /** 'new': 두 번째 몬스터 그림(새 지역 여섯), 'gate': 수문장 그림 */
+  /** 'new': 두 번째 몬스터 그림(새 지역 여섯) */
   sheet?: string;
   /** 수문장: 이번 판에 이기면 서버 run_bosses에 붙는 키('gate:adv_1a') */
   gate?: string;
@@ -239,8 +239,6 @@ interface Loaded {
   floorPieces: HTMLImageElement;
   monsters: MonsterMeta;
   monsterSheet: HTMLImageElement;
-  /** 수문장 그림(한 칸) */
-  gateSheet: MonsterSheet;
 }
 
 /** 몬스터 그림 한 장(프레임 자료와 그림, Phaser 텍스처 키) */
@@ -380,12 +378,11 @@ function loadBaseMaps() {
     imageFile('infernus.png'),
     imageFile('infernus-floor.png'),
     json<MonsterMeta>('monsters.json').then(async (m) => [m, await imageFile(m.image ?? 'monsters.png')] as const),
-    json<MonsterMeta>('monsters-gate.json').then(async (meta): Promise<MonsterSheet> => ({ meta, image: await imageFile(meta.image ?? 'monsters-gate.webp'), key: 'adv-monsters-gate' })),
     json<AdvLampsData>('adv-lights.json')
       .then(async (data) => ({ data, image: await imageFile(data.image) }))
       .catch(() => null),
-  ]).then(([data, meta, pieces, floorPieces, [monsters, monsterSheet], gateSheet, lampData]) => {
-    loaded = { maps: data.maps, meta, pieces, floorPieces, monsters, monsterSheet, gateSheet };
+  ]).then(([data, meta, pieces, floorPieces, [monsters, monsterSheet], lampData]) => {
+    loaded = { maps: data.maps, meta, pieces, floorPieces, monsters, monsterSheet };
     lamps = lampData;
     monsterCache.clear();
     return loaded;
@@ -403,8 +400,6 @@ export function monsterArt(art: string): (MonsterSheet & { frame: MonsterFrame }
   if (!loaded) return null;
   const old = loaded.monsters.frames[art];
   if (old) return { meta: loaded.monsters, image: loaded.monsterSheet, key: 'adv-monsters', frame: old };
-  const gate = loaded.gateSheet.meta.frames[art];
-  if (gate) return { ...loaded.gateSheet, frame: gate };
   const next = newSheet?.meta.frames[art];
   return next && newSheet ? { ...newSheet, frame: next } : null;
 }
