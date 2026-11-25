@@ -89,6 +89,7 @@ import type { ChatBox } from '../ui/chat';
 import type { Hud, RunStatus } from '../ui/hud';
 import { COUNT } from '../ui/countUp';
 import type { Minimap } from '../ui/minimap';
+import type { ChapterMap } from '../ui/chapterMap';
 import type { NameTags } from '../ui/nametags';
 import type { CastleWindow } from '../ui/castle';
 import type { CasinoWindows } from '../ui/casino';
@@ -112,7 +113,7 @@ import type { Arm, Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { formatNumber, levelNeed } from './level';
 import { goldText, toGold } from './gold';
-import { generateMap, type Building, type GameMap } from './map';
+import { generateMap, Terrain, type Building, type GameMap } from './map';
 import {
   arrivalFor,
   CASTLE,
@@ -495,6 +496,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private nextNoticeAt = 0;
   private shotsFired = 0;
   private nextMinimapAt = 0;
+  /** 지역 전체지도: 다음에 견줄 시각과 마지막으로 그린 상태 */
+  private nextChapterAt = 0;
+  private chapterSeen = '';
   /** 미니맵에 지난번 그린 값(그림 번호, 블록 판, 숨은 방, 내 칸, 다른 사람 칸들). 모두 같으면 다시 그리지 않는다. */
   private readonly minimapSeen: number[] = [];
   /** 맵을 옮기거나 미니맵을 펴면 올려서 다음 확인 때 꼭 그리게 한다. */
@@ -576,6 +580,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     private readonly forge: ForgeWindow,
     private readonly adventure: Adventure,
     private readonly adventureWindow: AdventureWindow,
+    private readonly chapterMap: ChapterMap,
   ) {
     super('game');
     this.mapId = isMapId(session.profile.map) ? session.profile.map : DEFAULT_MAP;
@@ -975,7 +980,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       rect.width + CAMERA_PAD_X * 2,
       rect.height + CAMERA_PAD_Y * 2,
     );
-    this.minimap.setMap(info.name, info.color, this.world.map.bounds, isAdventure(id));
+    // 모험 맵은 걷는 땅 윤곽을 한 번 굽고, 지역 맵(입구 맵 말고)이면 지역 전체지도 버튼을 보인다(2026-11-25).
+    const adventureMap = isAdventure(id);
+    const outline = adventureMap ? { cells: this.world.map.terrain, size: this.world.map.size, ground: Terrain.Ground } : undefined;
+    this.minimap.setMap(info.name, info.color, this.world.map.bounds, adventureMap, outline, adventureMap && !!advMap(id)?.zone);
+    this.chapterSeen = '';
     this.minimapEpoch++;
     this.cameras.main.setBackgroundColor(
       info.mood
@@ -1442,6 +1451,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.updateFarmPanel(picking);
     this.placeNameTags();
     this.updateMinimap(time);
+    this.updateChapterMap(time);
     // 거래소 안에 있으면 시세판을 1분마다 새로 받는다(Market.refresh가 1분 안에는 건너뛴다).
     if (this.mapId === 'exchange') void this.market.refresh();
   }
@@ -2550,6 +2560,37 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       portals: this.world.portals,
       bosses: this.advField?.bossDots ?? [],
     });
+  }
+
+  /** M·미니맵 지도 버튼: 모험 지역 맵에서만 지역 전체지도를 열고 닫는다. */
+  toggleChapterMap() {
+    if (this.chapterMap.isOpen) {
+      this.chapterMap.close();
+      return;
+    }
+    if (!isAdventure(this.mapId) || !advMap(this.mapId)?.zone) return;
+    this.chapterSeen = '';
+    void this.chapterMap.show(this.chapterState());
+  }
+
+  private chapterState() {
+    return {
+      now: this.mapId,
+      me: { ...this.me.tile },
+      others: [...this.others.values()].map((avatar) => ({ ...avatar.tile })),
+      beaten: this.adventure.view?.runBosses ?? [],
+    };
+  }
+
+  /** 전체지도가 열려 있으면 0.1초마다 내 칸·맵·이긴 보스·유저 칸을 견주어 바뀌었을 때만 고친다(밑그림은 열 때와 지금 맵이 바뀔 때만 굽는다). */
+  private updateChapterMap(time: number) {
+    if (!this.chapterMap.isOpen || time < this.nextChapterAt) return;
+    this.nextChapterAt = time + MINIMAP_INTERVAL_MS;
+    const state = this.chapterState();
+    const seen = `${state.now}|${state.me.x},${state.me.y}|${state.beaten.join(',')}|${state.others.map((o) => `${o.x},${o.y}`).join(';')}`;
+    if (seen === this.chapterSeen) return;
+    this.chapterSeen = seen;
+    this.chapterMap.update(state);
   }
 
   private pointerWorld() {

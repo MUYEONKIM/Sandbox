@@ -3,7 +3,8 @@
 친구들끼리 천천히 오래 하는 웹 아이소메트릭 도트 샌드박스 RPG. Phaser 4 + TypeScript + Vite, 서버는 Supabase(인증, Postgres, Realtime), 배포는 GitHub Pages.
 
 - 실제 사이트: https://muyeonkim.github.io/Sandbox/ (공개 저장소 MUYEONKIM/Sandbox, `main`에 푸시하면 배포된다)
-- 실제 Supabase 프로젝트: `aodoapomrddwfamvwwzb`. 로컬은 Docker의 Supabase 스택이고 `.env.local`이 그쪽을 가리킨다.
+- 실제 서버: 2026-11-25부터 이 PC의 자체 운영 Supabase다(공식 docker compose, 컨테이너 `supabase-db` 등). 밖에서는 Tailscale Funnel `https://its-sandbox.tailc69c42.ts.net`으로 들어오고, 관리 화면(Studio)은 이 PC의 `http://127.0.0.1:8100`이다. 비밀값은 운영 `prod\.env`에만 있고 문서·커밋에 적지 않는다. 예전 Supabase 프로젝트 `aodoapomrddwfamvwwzb`는 일시 중지했고 한 달 동안 되돌리기용으로 둔다. 자세한 것은 [docs/agent/workflow.md](docs/agent/workflow.md) 3절.
+- 로컬 개발용은 Docker의 Supabase 스택(`supabase_*_iso-sandbox`)이고 `.env.local`이 그쪽을 가리킨다. 운영 스택과 따로다.
 
 ## 일을 시작할 때
 
@@ -22,7 +23,7 @@
 ## 되돌리기 어려운 것
 
 - 로컬 DB는 `npx supabase migration up`으로만 바꾼다. `supabase db reset`은 사용자가 만든 로컬 `test` 계정을 지운다.
-- 새 SQL이 필요한 변경은 사용자가 실제 DB의 SQL Editor에서 실행했다고 말한 뒤에 푸시한다. 먼저 푸시하면 실제 사이트가 깨진다.
+- 새 SQL이 필요한 변경은 사용자가 운영 관리 화면의 SQL Editor에서 실행했다고 말한 뒤에 푸시한다. 먼저 푸시하면 실제 사이트가 깨진다. 운영 DB는 읽기만으로 확인하고 직접 쓰지 않는다.
 - `art-source/`(원본 그림과 그림 생성 스크립트)는 커밋하지 않는다.
 - `git add`에는 경로를 하나씩 쓰고, 커밋 전에 `git status`로 스테이징을 본다.
 

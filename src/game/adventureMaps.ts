@@ -481,3 +481,31 @@ export function lightAt(lights: AdvLights | undefined, x: number, y: number) {
   if (cx < 0 || cy < 0 || cx >= lights.n || cy >= lights.n) return -1;
   return Number(lights.rows[cy][cx]);
 }
+
+/**
+ * 지역 전체지도 배치(2026-11-25 디자인 세션 6 minimap-v8.md, art-source/adventure-v8/minimap/layout.mjs가 만든 chapter-layout.json).
+ * 칸 단위다. 맵 m의 칸 (x, y)는 (ox + (x − y), oy + (x + y) / 2)에 놓고 box는 그 맵 마름모의 [왼, 위, 오른, 아래]. wide는 PC, tall은 휴대폰.
+ */
+export interface ChapterPlace {
+  ox: number;
+  oy: number;
+  box: [number, number, number, number];
+  /**
+   * 맵 이름 자리(v9 배치표, box와 같은 틀, 그 맵의 ox·oy를 더해 그림 좌표로). 'above'면 글 아래끝을 그 점에서 5px 위,
+   * 'below'면 글 위끝을 그 점에서 5px 아래. 가로는 가운데. 없으면 상자 위 가운데.
+   */
+  label?: { x: number; y: number; side: 'above' | 'below' };
+}
+export interface ChapterLayout {
+  maps: Record<string, ChapterPlace>;
+  size: [number, number];
+}
+type ChapterZones = Record<string, { wide: ChapterLayout; tall: ChapterLayout }>;
+let chapterLayout: Promise<ChapterZones> | null = null;
+
+/** 배치표를 처음 쓸 때 한 번 읽는다(약 17KB). 키는 지역 번호('1'~'14'). 못 읽으면 다음에 다시 읽는다. */
+export function loadChapterLayout() {
+  chapterLayout ??= json<{ zones: ChapterZones }>('chapter-layout.json').then((data) => data.zones);
+  chapterLayout.catch(() => (chapterLayout = null));
+  return chapterLayout;
+}

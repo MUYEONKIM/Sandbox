@@ -18,6 +18,7 @@ import { Hud } from './ui/hud';
 import { showLogin } from './ui/login';
 import { KillBoard } from './ui/killboard';
 import { Minimap } from './ui/minimap';
+import { ChapterMap } from './ui/chapterMap';
 import { NoticeBar } from './ui/notice';
 import { watchNewVersion } from './ui/newVersion';
 import { NameTags } from './ui/nametags';
@@ -121,6 +122,10 @@ function enterGame(
   void market.refresh();
 
   const minimap = new Minimap(side);
+  // 모험 지역 전체지도(2026-11-25): M, 미니맵 왼쪽 위 지도 버튼, Esc, ×
+  const chapterMap = new ChapterMap(root);
+  chapterMap.onToggle = (open) => minimap.setMapPressed(open);
+  minimap.onMapButton = () => scene.toggleChapterMap();
   new RankPanel(side, myName, () => session.fetchRanking(PANEL_SIZE));
   const chat = new ChatBox(root, (text, everyone) => void session.sendChat(text, everyone), `chat-log:${profile.id}`, profile.id);
   const tags = new NameTags(root);
@@ -305,9 +310,14 @@ function enterGame(
     onInventory: () => (scene.inAdventure ? void scene.adventureStatsKey() : hud.toggle()),
     onHelp: () => hud.toggleHelp(),
     onRotate: () => scene.reloadOrRotate(),
+    onMap: () => scene.toggleChapterMap(),
     onEscape: () => {
       if (anyModalOpen()) {
         closeTopModal();
+        return;
+      }
+      if (chapterMap.isOpen) {
+        chapterMap.close();
         return;
       }
       hud.close();
@@ -339,7 +349,7 @@ function enterGame(
   hud.onDropGold = () => groundUi.openGoldDrop(economy.gold, (amount) => scene.dropGold(amount));
   void session.myMemos().then((memos) => groundUi.setHeld(memos));
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters, coop, forge, adventure, adventureWindow);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters, coop, forge, adventure, adventureWindow, chapterMap);
 
   hud.onUsePotion = () => scene.drinkSelectedPotion();
   hud.onReselect = () => scene.reloadOrRotate();

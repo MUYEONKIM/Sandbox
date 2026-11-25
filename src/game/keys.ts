@@ -46,6 +46,8 @@ interface KeyActions {
   onRotate(): void;
   onEscape(): void;
   onChat(): void;
+  /** M: 모험 지역 전체지도를 열고 닫는다(2026-11-25, 모험 지역 맵에서만 듣는다). */
+  onMap(): void;
 }
 
 /** event.code는 물리 키 위치를 뜻해서, 한글 입력 상태에서도 WASD와 I가 동작한다. */
@@ -116,6 +118,8 @@ export class Keys {
       this.actions.onHelp();
     } else if (e.code === 'KeyR') {
       this.actions.onRotate();
+    } else if (e.code === 'KeyM') {
+      this.actions.onMap();
     } else if (e.code === 'Escape') {
       this.actions.onEscape();
     } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {

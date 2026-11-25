@@ -6244,3 +6244,170 @@ canvas {
     font-size: 13px;
   }
 }
+
+/* ───────── 2026-11-25 모험 미니맵 지도 버튼과 지역 전체지도(사용자 "현재 챕터 전체지도 보이게", 디자인 세션 6 minimap-v8.md 3절) ─────────
+ * 지도 버튼은 접기 버튼과 마주 보는 왼쪽 위, 같은 크기·같은 버튼 그림. 아이콘은 세 쪽으로 접힌 지도(2px 테두리 + 접힌 금 둘, 그림 파일 없음).
+ * 전체지도 판은 시안대로 어두운 판(양피지 그림 대신)이고, 그림판 두 장(밑그림·덧그림)을 겹친다. */
+#hud .minimap-mapbtn {
+  position: absolute;
+  top: -5px;
+  left: -6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-width: 6px 6px 8px;
+  border-image-width: 6px 6px 8px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#hud .minimap-mapbtn:active,
+#hud .minimap-mapbtn.pressed {
+  border-width: 8px 6px 6px;
+  border-image: url('./ui/skin/button-down.png') 4 fill / 8px 6px 6px / 0 stretch;
+}
+
+#hud .minimap-mapbtn::before,
+#hud .minimap-mapbtn::after {
+  content: '';
+  position: absolute;
+}
+
+#hud .minimap-mapbtn::before {
+  left: 0;
+  top: 0;
+  width: 12px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 2px solid var(--button-text);
+}
+
+#hud .minimap-mapbtn::after {
+  left: 4px;
+  top: 0;
+  width: 1px;
+  height: 10px;
+  background: var(--button-text);
+  box-shadow: 3px 0 0 var(--button-text);
+}
+
+@media (pointer: coarse), (max-width: 620px) {
+  #hud .minimap-mapbtn {
+    top: -8px;
+    left: -8px;
+    width: 30px;
+    height: 30px;
+  }
+
+  #hud .minimap-mapbtn::before {
+    left: 4px;
+    top: 4px;
+  }
+
+  #hud .minimap-mapbtn::after {
+    left: 8px;
+    top: 4px;
+  }
+}
+
+.chapter-map {
+  position: fixed;
+  top: 56px;
+  left: 16px;
+  right: 290px;
+  max-width: 880px;
+  height: min(540px, calc(100vh - 190px));
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  background: rgb(31 21 16 / 96%);
+  border: 2px solid #1f1510;
+  color: #f7ecd6;
+  pointer-events: auto;
+  z-index: 6;
+}
+
+.chapter-map-head {
+  position: relative;
+  flex: none;
+  height: 40px;
+  line-height: 40px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  white-space: pre;
+}
+
+#hud .chapter-map-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* × 두 막대 */
+#hud .chapter-map-close::before,
+#hud .chapter-map-close::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 6px;
+  width: 14px;
+  height: 2px;
+  background: var(--button-text);
+  transform: rotate(45deg);
+}
+
+#hud .chapter-map-close::after {
+  transform: rotate(-45deg);
+}
+
+.chapter-map-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.chapter-map-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+@media (max-width: 620px) {
+  .chapter-map {
+    top: 70px;
+    left: 8px;
+    right: 8px;
+    max-width: none;
+    height: auto;
+    background: rgb(31 21 16 / 97%);
+  }
+
+  .chapter-map-head {
+    height: 30px;
+    line-height: 30px;
+    font-size: 16px;
+  }
+
+  #hud .chapter-map-close {
+    top: 2px;
+    right: 2px;
+    width: 26px;
+    height: 26px;
+  }
+
+  #hud .chapter-map-close::before,
+  #hud .chapter-map-close::after {
+    left: 0;
+    top: 5px;
+    width: 14px;
+  }
+
+  .chapter-map-body {
+    flex: none;
+  }
+}
