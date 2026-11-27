@@ -165,6 +165,22 @@ const NAMES = [
   'room/wall-textures',
   'room/wall-textures-more',
   'room/outdoor-decor',
+  // 방 꾸미기 새 거리(2026-11-27, src/roomUse.ts). 디자인 세션 5: 가구·장식품, 놓는 벽·높은 벽·구멍 벽, 문·창문·커튼, 바닥 타일, 벽지.
+  // 디자인 세션 8: 단·계단·천장 것, 난간, 앉은·누운 자세
+  'room/room-decor-3',
+  'room/room-walls-3',
+  'room/room-openings',
+  'room/room-tiles-3',
+  'room/wall-textures-3',
+  'room/new-decor',
+  'room/new-rails',
+  'room/poses',
+  // 발코니(2026-11-27, 디자인 세션 8): 바탕 그림, 앞 난간 조각, 방 안쪽 문. 야경 층은 그 맵에 들어갈 때 따로 읽는다.
+  'balcony/balcony-base',
+  'balcony/rail-x',
+  'balcony/rail-y',
+  'balcony/rail-corner',
+  'balcony/door-room-right-wall',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

@@ -39,3 +39,6 @@ export const BLOCK_HEIGHT = 18;
 
 /** 한 칸에 쌓을 수 있는 블록 수. blocks 표의 z 검사(0~4)와 같아야 한다. */
 export const MAX_STACK = 5;
+
+/** 천장 자리의 z(2026-11-27). 칸마다 하나이고 바닥 쌓기(0~4)와 따로다. blocks 표의 z 검사(0~4 또는 9)와 같아야 한다. */
+export const CEIL_Z = 9;

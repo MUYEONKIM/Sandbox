@@ -1,9 +1,10 @@
 import type Phaser from 'phaser';
-import { BLOCK_IDS, BLOCKS, blockArt, type BlockId } from '../blocks';
+import { BLOCK_IDS, BLOCKS, blockArt, layerSheet, tileSheet, wallFrame, wallSheet, type BlockId } from '../blocks';
 import { WALL_H } from '../art/interior';
 import { spritePixels, sprite, type SpriteName } from '../art/sprites';
 import { gridToWorld } from '../iso';
 import { OUTDOOR_FRAMES, ROOM_WALL_FRAMES } from '../roomDecor';
+import { USE_LAYER_FRAMES, USE_WALL_FRAMES } from '../roomUse';
 import type { Portal } from './maps';
 import { FLOORS, type TowerId } from './tower';
 import type { Tile } from './world';
@@ -115,6 +116,11 @@ export function ensureRoomTextures(scene: Phaser.Scene) {
   };
   sheet('room/room-decor');
   sheet('room/room-decor-more');
+  // 새 거리 시트: 새 벽·높은 벽·난간 이음 모양('재질:mask'), 구멍 벽과 문·창문·커튼 겹(USE_LAYER_FRAMES 이름 그대로)
+  for (const [style, frames] of Object.entries(USE_WALL_FRAMES)) {
+    frames.forEach(([x, y, w, h], mask) => sheet(wallSheet(style)).add(`${style}:${mask}`, 0, x, y, w, h));
+  }
+  for (const [name, [x, y, w, h]] of Object.entries(USE_LAYER_FRAMES)) sheet(layerSheet(name)).add(name, 0, x, y, w, h);
   for (const id of BLOCK_IDS) {
     const art = blockArt(id);
     if (art.kind === 'room') {
@@ -122,7 +128,7 @@ export function ensureRoomTextures(scene: Phaser.Scene) {
       sheet(art.sheet).add(id, 0, x, y, w, h);
     } else if (art.kind === 'ftile') {
       const [x, y, w, h] = art.frame;
-      sheet('room/room-tiles').add(id, 0, x, y, w, h);
+      sheet(tileSheet(id)).add(id, 0, x, y, w, h);
     }
   }
   for (const [style, frames] of Object.entries(ROOM_WALL_FRAMES)) {
@@ -225,6 +231,18 @@ export function ensureWallDecorTexture(scene: Phaser.Scene) {
   }
 }
 
+/**
+ * 벽걸이 그림을 높은 놓는 벽의 보이는 면에 맞춘다(2026-11-27 room-rules.md 13.2). side는 그 면의 기울기(x 방향 벽은 right, y 방향 벽은 left),
+ * base는 그 면 아래 모서리의 뒤쪽 끝(월드 px)이다. 그림이 없으면 false
+ */
+export function placeWallDecorAt(image: Phaser.GameObjects.Image, id: BlockId, side: WallSide, base: { x: number; y: number }) {
+  const name = `${id}:${side}`;
+  const at = wallArts.get(name);
+  if (!at) return false;
+  image.setTexture(WALL_DECOR_TEXTURE, name).setOrigin(0, 0).setPosition(base.x + at.dx, base.y + at.dy);
+  return true;
+}
+
 /** 벽지·벽걸이 그림을 벽 칸에 맞춘다. 그림이 없으면 false */
 export function placeWallDecor(image: Phaser.GameObjects.Image, id: BlockId, cell: WallCell) {
   const name = `${id}:${cell.side}`;
@@ -256,13 +274,13 @@ export function paperedWallTexture(scene: Phaser.Scene, style: string, mask: num
   const key = `papered:${style}:${mask}:${paper}`;
   if (scene.textures.exists(key)) return key;
   const art = blockArt(paper);
-  const [fx, fy, w, h, ax, ay] = ROOM_WALL_FRAMES[style][mask];
-  const wall = pixelsOf('room/room-walls');
+  const [fx, fy, w, h, ax, ay] = wallFrame(style, mask);
+  const wall = pixelsOf(wallSheet(style));
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const context = canvas.getContext('2d')!;
-  context.drawImage(sprite('room/room-walls'), fx, fy, w, h, 0, 0, w, h);
+  context.drawImage(sprite(wallSheet(style)), fx, fy, w, h, 0, 0, w, h);
   if (art.kind !== 'paper') {
     scene.textures.addCanvas(key, canvas);
     return key;

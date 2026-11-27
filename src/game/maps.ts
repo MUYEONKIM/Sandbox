@@ -248,6 +248,16 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xc9b8ff,
     links: {},
   },
+  // 그 방의 발코니(2026-11-27). 맵 밖은 밤 도시 야경이다(src/game/cityView.ts).
+  balcony: {
+    name: '???',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x755740,
+    accent: 0xffcf7a,
+    background: '#05081a',
+    links: {},
+  },
   // 상점 안(2026-11-15 사용자 요청). 시작마을 가게라 공격이 막힌다(에이전트가 정함, 서버 hit_player에도 있음).
   // 노동청 안과 농협 안(2026-11-16 사용자 "둘 다 만들어"). 시작마을 건물 안이라 공격이 막힌다(서버 hit_player도 막음).
   labor: {
@@ -634,6 +644,8 @@ export interface Portal {
   to: MapId | 'office' | 'dungeon' | 'adventure' | 'coop' | 'shop' | 'forge-shop' | 'forge-anvil' | 'counter' | 'fame' | 'board' | 'trade' | 'panel' | GameId;
   /** 포탈 위에 띄울 이름. 없으면 가는 곳의 이름이다. */
   label?: string;
+  /** 이름표를 달지 않는다(두 칸짜리 문의 둘째 칸). */
+  quiet?: boolean;
   /** 포탈 색. 없으면 가는 곳의 색이다. */
   color?: Color;
   /**

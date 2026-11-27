@@ -1,7 +1,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { isCropId, type CropId, type Grade, type Plot } from '../game/farm';
 import { BLOCKS, type BlockId } from '../blocks';
-import { BASE_HP, MAX_MAP_SIZE, MAX_STACK, TEAM_SIZE } from '../config';
+import { BASE_HP, CEIL_Z, MAX_MAP_SIZE, MAX_STACK, TEAM_SIZE } from '../config';
 import { parseLevel } from '../game/level';
 import { parseGold, toGold, type Gold } from '../game/gold';
 import type { BetResult, GameId } from '../game/casino';
@@ -147,7 +147,12 @@ export interface PlayerMove {
   run: string | null;
   /** 횃불을 들었는지(2026-11-24). 옛 화면은 이 칸을 보내지 않아 false다. */
   torch: boolean;
+  /** 가구에 앉았거나 누웠는지(2026-11-27). 이때 x, y는 그 가구 칸이다. 옛 화면은 이 칸을 보내지 않아 null이다. */
+  pose: Posture | null;
 }
+
+/** 가구를 쓰는 자세 */
+export type Posture = 'sit' | 'lie';
 
 /** 다른 플레이어의 공격. 화면에 보여 주기만 하고 피해 판정은 공격한 쪽이 한다. */
 export interface PlayerShot {
@@ -217,6 +222,32 @@ export interface HeldMemo {
   author: string;
 }
 
+/** 상자 안의 한 줄(2026-11-27): 골드면 amount, 메모면 memo */
+export interface BoxItem {
+  id: number;
+  amount: number | null;
+  memo: HeldMemo | null;
+}
+
+/** 상자에 넣기가 안 된 까닭: 가득 참, 골드 부족, 상자가 없어짐, 그 밖 */
+export type BoxFail = 'full' | 'gold' | 'gone' | 'failed';
+
+function boxFail(message: string): BoxFail {
+  if (message.includes('full')) return 'full';
+  if (message.includes('not enough gold')) return 'gold';
+  if (message.includes('no box')) return 'gone';
+  return 'failed';
+}
+
+function parseBoxItem(row: { id?: unknown; amount?: unknown; memo?: unknown } | null): BoxItem | null {
+  const id = Number(row?.id);
+  if (!row || !Number.isSafeInteger(id)) return null;
+  const amount = row.amount === null || row.amount === undefined ? null : Number(row.amount);
+  const memo = amount === null ? parseMemo(row.memo as Parameters<typeof parseMemo>[0]) : null;
+  if (amount === null ? !memo : !(Number.isSafeInteger(amount) && amount > 0)) return null;
+  return { id, amount, memo };
+}
+
 /** 땅에 놓기가 안 된 까닭: 맵이 서버와 다름, 땅에 둔 것이 너무 많음, 골드 부족, 그 밖 */
 export type DropFail = 'wrong-map' | 'too-many' | 'gold' | 'failed';
 
@@ -260,6 +291,8 @@ export interface SessionEvents {
   currentRun(): string | null;
   /** 횃불을 들었는지(이동 알림과 접속 명단에 싣는다) */
   currentTorch(): boolean;
+  /** 내가 가구에 앉았거나 누웠는지 */
+  currentPose(): Posture | null;
   onMove(move: PlayerMove): void;
   onShot(shot: PlayerShot): void;
   /** 서버가 알려 주는 체력 변화. max는 그 사람의 최대 체력이고, 옛 서버 함수는 보내지 않아 null이다. */
@@ -284,6 +317,8 @@ export interface SessionEvents {
   onBlocksLoaded(blocks: PlacedBlock[]): void;
   onBlockPlaced(block: PlacedBlock): void;
   onBlockRemoved(x: number, y: number, z: number): void;
+  /** 놓인 블록의 id가 바뀌었다(등을 켜고 끔, 커튼을 여닫음) */
+  onBlockChanged(block: PlacedBlock): void;
   /** 지금 맵 땅에 놓인 것 전부. 맵 채널에 들거나 다시 붙을 때 온다. */
   onGroundLoaded(items: GroundItem[]): void;
   onGroundAdded(item: GroundItem): void;
@@ -361,7 +396,7 @@ const isGridCoord = (v: unknown): v is number => typeof v === 'number' && v >= -
 const isHp = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
 const isMaxHp = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= BASE_HP;
 const isBlockId = (v: unknown): v is BlockId => typeof v === 'string' && Object.hasOwn(BLOCKS, v);
-const isLevel = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < MAX_STACK;
+const isLevel = (v: unknown): v is number => Number.isInteger(v) && (((v as number) >= 0 && (v as number) < MAX_STACK) || v === CEIL_Z);
 const isSkin = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < TEAM_SIZE;
 
 /** 다른 플레이어가 보낸 값은 믿을 수 없으므로 형식을 확인한다. */
@@ -385,6 +420,7 @@ function parseMove(value: unknown): PlayerMove | null {
     work: work && isTileCoord(work.x) && isTileCoord(work.y) ? { x: work.x, y: work.y } : null,
     run: parseRun(m.run),
     torch: (m as { torch?: unknown }).torch === true,
+    pose: ((v) => (v === 'sit' || v === 'lie' ? v : null))((m as { pose?: unknown }).pose),
   };
 }
 
@@ -644,6 +680,10 @@ export class GameSession {
         const block = parseBlock(row);
         if (current() && block && row.map === mapId) events.onBlockPlaced(block);
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'blocks', filter: `map=eq.${mapId}` }, ({ new: row }) => {
+        const block = parseBlock(row);
+        if (current() && block && row.map === mapId) events.onBlockChanged(block);
+      })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'blocks' }, ({ old }) => {
         if (current() && old.map === mapId && isTileCoord(old.x) && isTileCoord(old.y) && isLevel(old.z)) events.onBlockRemoved(old.x, old.y, old.z);
       })
@@ -776,6 +816,7 @@ export class GameSession {
       work: this.events.currentWork(),
       run: this.events.currentRun(),
       torch: this.events.currentTorch(),
+      pose: this.events.currentPose(),
     };
   }
 
@@ -1221,6 +1262,45 @@ export class GameSession {
       .select('block')
       .maybeSingle();
     return data && isBlockId(data.block) ? data.block : null;
+  }
+
+  /** 놓인 블록을 짝 id로 바꾼다(등 켜고 끄기, 커튼 여닫기, SQL toggle_block). 남이 먼저 바꿨거나 없어졌으면 false */
+  async toggleBlock(x: number, y: number, z: number, next: BlockId) {
+    await this.flush();
+    const { error } = await supabase.rpc('toggle_block', { map: this.mapId, x, y, z, next });
+    return !error;
+  }
+
+  /** 상자 안을 읽는다(SQL box_list). 실패하면 null */
+  async boxList(x: number, y: number, z: number): Promise<BoxItem[] | null> {
+    await this.flush();
+    const { data, error } = await supabase.rpc('box_list', { map: this.mapId, x, y, z });
+    if (error || !Array.isArray(data)) return null;
+    return data.map(parseBoxItem).filter((item): item is BoxItem => item !== null);
+  }
+
+  /** 상자에 내 메모 하나나 골드를 넣는다(SQL box_put). gold는 넣은 뒤 내 골드다. */
+  async boxPut(x: number, y: number, z: number, item: { memo: number } | { amount: number }): Promise<{ ok: true; gold: Gold } | { ok: false; reason: BoxFail }> {
+    const { data, error } = await supabase.rpc('box_put', {
+      map: this.mapId,
+      x,
+      y,
+      z,
+      memo: 'memo' in item ? item.memo : null,
+      amount: 'amount' in item ? item.amount : null,
+    });
+    if (error) return { ok: false, reason: boxFail(error.message) };
+    return { ok: true, gold: toGold((data as { gold?: unknown } | null)?.gold) };
+  }
+
+  /** 상자 안의 한 줄을 꺼낸다(SQL box_take). 먼저 꺼낸 사람만 받는다. */
+  async boxTake(item: number): Promise<PickResult> {
+    const { data, error } = await supabase.rpc('box_take', { item });
+    if (error) return { ok: false, reason: error.message.includes('gone') ? 'gone' : 'failed' };
+    const d = data as { amount?: unknown; gold?: unknown; memo?: Parameters<typeof parseMemo>[0] };
+    if (d.amount !== undefined && d.amount !== null) return { ok: true, kind: 'gold', amount: Number(d.amount), gold: toGold(d.gold) };
+    const memo = parseMemo(d.memo);
+    return memo ? { ok: true, kind: 'memo', memo } : { ok: false, reason: 'failed' };
   }
 
   saveLater(patch: ProfilePatch) {

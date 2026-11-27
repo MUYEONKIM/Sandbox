@@ -1,5 +1,6 @@
 import { BLOCK_IDS, blockArt, isCube, isFurniture, rotatedBlock, type BlockId } from '../blocks';
 import { ROOM_DECOR_TAB, ROOM_FURNITURE_TAB } from '../roomDecor';
+import { USE_TAB_DECOR, USE_TAB_FURNITURE, USE_TAB_PAPER, USE_TAB_TILE, USE_TAB_WALL } from '../roomUse';
 import {
   gearIdOf,
   gearRef,
@@ -59,7 +60,8 @@ export function tabOf(id: ItemId): TabId {
   if (isFurniture(id)) return 'furniture';
   if (isCube(id)) return 'tile';
   const art = blockArt(id);
-  if (art.kind === 'pwall') return 'wall';
+  if (art.kind === 'pwall' || art.kind === 'door' || art.kind === 'window' || art.kind === 'curtain') return 'wall';
+  if (art.kind === 'room' && art.slot === 'ceil') return 'decor';
   // 벽지는 꾸미기 안 따로 된 벽지 탭(2026-11-25 사용자 "벽지를 따로 '벽지' 탭으로")
   if (art.kind === 'paper') return 'paper';
   if (art.kind === 'ftile') return 'tile';
@@ -221,12 +223,14 @@ export class Inventory {
     if (tab === 'seed') return SEED_IDS;
     // 가구는 방향마다 블록이 따로 있어서 종류마다 첫 방향만 보이고, 단축키 칸에서 돌린다(rotateSelected).
     // 2026-11-24 방 꾸미기: 옛 가구(f_)는 탭에서 숨기고(놓인 것은 그대로 보이고 회수됨), 새 가구를 낸다. 놓는 벽은 벽 탭, 바닥 타일은 타일 탭.
-    if (tab === 'furniture') return ROOM_FURNITURE_IDS;
-    if (tab === 'wall') return PLACED_WALL_IDS;
-    if (tab === 'decor') return [...(ROOM_DECOR_TAB as readonly BlockId[]).filter((id) => tabOf(id) === 'decor'), ...OUTDOOR_IDS];
-    if (tab === 'paper') return (ROOM_DECOR_TAB as readonly BlockId[]).filter((id) => tabOf(id) === 'paper');
+    // 2026-11-27 새 거리: 가구 탭 끝에 단·계단, 벽 탭 끝에 높은 벽·난간·문·창문·커튼, 장식품 탭의 방 꾸미기 것 뒤에 천장 것
+    if (tab === 'furniture') return [...ROOM_FURNITURE_IDS, ...(USE_TAB_FURNITURE as readonly BlockId[])];
+    if (tab === 'wall') return [...PLACED_WALL_IDS, ...(USE_TAB_WALL as readonly BlockId[])];
+    if (tab === 'decor')
+      return [...(ROOM_DECOR_TAB as readonly BlockId[]).filter((id) => tabOf(id) === 'decor'), ...(USE_TAB_DECOR as readonly BlockId[]), ...OUTDOOR_IDS];
+    if (tab === 'paper') return [...(ROOM_DECOR_TAB as readonly BlockId[]).filter((id) => tabOf(id) === 'paper'), ...(USE_TAB_PAPER as readonly BlockId[])];
     // 타일: 상자 블록 뒤에 바닥 타일
-    if (tab === 'tile') return [...BLOCK_IDS.filter((id) => isCube(id)), ...FLOOR_TILE_IDS];
+    if (tab === 'tile') return [...BLOCK_IDS.filter((id) => isCube(id)), ...FLOOR_TILE_IDS, ...(USE_TAB_TILE as readonly BlockId[])];
     return BLOCK_IDS.filter((id) => tabOf(id) === tab);
   }
 

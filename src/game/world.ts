@@ -1,5 +1,19 @@
-import { BLOCKS, canStackOn, footprintOf, isFlat, isFloorTile, isLarge, isOnTop, isPaper, isPlacedWall, topOf, type BlockId } from '../blocks';
-import { BLOCK_HEIGHT, BUILD_RANGE, MAX_STACK, PLACE_RANGE } from '../config';
+import {
+  BLOCKS,
+  canStackOn,
+  footprintOf,
+  isDoor,
+  isFlat,
+  isFloorTile,
+  isLarge,
+  isOnTop,
+  isPaper,
+  isPlacedWall,
+  standLift,
+  topOf,
+  type BlockId,
+} from '../blocks';
+import { BLOCK_HEIGHT, BUILD_RANGE, CEIL_Z, MAX_STACK, PLACE_RANGE } from '../config';
 import { Terrain, type GameMap } from './map';
 import { isInside, type Area, type Portal } from './maps';
 
@@ -40,6 +54,14 @@ export class World {
   private readonly covered = new Map<number, { owner: number; z: number }>();
   /** covered를 거꾸로 찾는 표: "놓은 칸 키:z" → 덮은 칸 키들 */
   private readonly coverIndex = new Map<string, number[]>();
+  /**
+   * 천장 자리(z CEIL_Z)에 매단 것(2026-11-27). 바닥 쌓기와 따로라 걷기·쌓기·총알과 상관없다.
+   * 두 칸짜리(줄 조명, 가렌드)는 놓은 칸에 두고, 뻗은 칸은 ceilCover에 놓은 칸을 적는다.
+   */
+  private readonly ceilings = new Map<number, BlockId>();
+  private readonly ceilCover = new Map<number, number>();
+  /** 지금 이 화면에서 열려 보이는 문 칸. 닫혀 보이는 문만 총알을 막는다(room-rules.md 3.2). */
+  private readonly openDoors = new Set<number>();
   /** 블록을 놓거나 치울 때마다 1씩 는다. 전쟁터 손전등이 막힌 칸이 바뀐 것을 알아챌 때 쓴다. */
   version = 0;
   /** 울타리가 막는 변(농장만). 키는 fenceKey. */
@@ -117,9 +139,68 @@ export class World {
     return { x: key % this.map.size, y: Math.floor(key / this.map.size) };
   }
 
-  /** 높이 z에 놓인 블록 */
+  /** 높이 z에 놓인 블록(z가 CEIL_Z면 천장 자리) */
   blockAtLevel(x: number, y: number, z: number) {
+    if (z === CEIL_Z) return this.ceilings.get(this.key(x, y));
     return this.blocks.get(this.key(x, y))?.[z];
+  }
+
+  /** 칸 (x, y)의 천장 자리를 쓰는 것: 놓은 칸과 id. 두 칸짜리가 뻗어 온 칸이면 그 놓은 칸이다. */
+  ceilAt(x: number, y: number): (Tile & { id: BlockId }) | null {
+    if (!this.inBounds(x, y)) return null;
+    const key = this.key(x, y);
+    const owner = this.ceilings.has(key) ? key : this.ceilCover.get(key);
+    const id = owner === undefined ? undefined : this.ceilings.get(owner);
+    return id === undefined || owner === undefined ? null : { ...this.tileOf(owner), id };
+  }
+
+  /** 천장 것이 쓰는 칸들 */
+  private ceilTiles(x: number, y: number, id: BlockId): Tile[] {
+    const { x0, y0, a, b } = footprintOf(id, x, y);
+    const tiles: Tile[] = [];
+    for (let cy = y0; cy < y0 + b; cy++) for (let cx = x0; cx < x0 + a; cx++) tiles.push({ x: cx, y: cy });
+    return tiles;
+  }
+
+  /** target 칸의 천장 자리에 id를 매달 수 있는지: 손이 닿고, 쓰는 칸이 모두 바닥 위이고 천장 자리가 비어 있어야 한다. */
+  canHang(target: Tile, player: Tile, id: BlockId) {
+    if (!inBuildReach(player, target)) return false;
+    return this.ceilTiles(target.x, target.y, id).every(({ x, y }) => {
+      if (!this.inBounds(x, y) || this.map.terrain[this.key(x, y)] !== Terrain.Ground || this.map.solid[this.key(x, y)]) return false;
+      if (this.buildFilter && !this.buildFilter(x, y)) return false;
+      if (!this.map.buildZones.some((zone) => isInside(zone, x, y))) return false;
+      return !this.ceilAt(x, y);
+    });
+  }
+
+  /** 칸 (x, y)에 선 캐릭터를 올려 그리는 높이(아트 px): 그 칸에 놓인 단의 윗면, 계단은 그 반(room-rules.md 5절, 보이기만 높음) */
+  floorLift(x: number, y: number) {
+    const stack = this.inBounds(x, y) ? this.blocks.get(this.key(x, y)) : undefined;
+    if (!stack) return 0;
+    let lift = 0;
+    for (const id of stack) if (id !== undefined) lift += standLift(id);
+    return lift;
+  }
+
+  /** 칸에 놓인 문과 그 높이. 없으면 null */
+  doorAt(x: number, y: number): { id: BlockId; z: number } | null {
+    const stack = this.inBounds(x, y) ? this.blocks.get(this.key(x, y)) : undefined;
+    if (!stack) return null;
+    for (let z = 0; z < stack.length; z++) {
+      const id = stack[z];
+      if (id !== undefined && isDoor(id)) return { id, z };
+    }
+    return null;
+  }
+
+  /** 문이 이 화면에서 열려 보이는지 적어 둔다. */
+  setDoorOpen(x: number, y: number, open: boolean) {
+    if (open) this.openDoors.add(this.key(x, y));
+    else this.openDoors.delete(this.key(x, y));
+  }
+
+  isDoorOpen(x: number, y: number) {
+    return this.openDoors.has(this.key(x, y));
   }
 
   /** 큰 가구가 덮은 칸이면 그 가구를 놓은 칸과 높이 */
@@ -208,7 +289,10 @@ export class World {
 
   /** 총알과 칼을 막는 칸: 건물이나 자원 같은 고정 장애물과 지나갈 수 없는 블록이다(쌓인 것 중 하나라도). 물과 꽃은 넘어간다. */
   blocksShots(x: number, y: number) {
-    return this.map.solid[this.key(x, y)] === 1 || this.covered.has(this.key(x, y)) || this.solidStack(x, y);
+    const key = this.key(x, y);
+    if (this.map.solid[key] === 1 || this.covered.has(key) || this.solidStack(x, y)) return true;
+    // 닫혀 보이는 문은 막는다(사람은 늘 지나간다).
+    return !this.openDoors.has(key) && this.doorAt(x, y) !== null;
   }
 
   /**
@@ -267,7 +351,13 @@ export class World {
       const top = this.topAt(target.x, target.y)!;
       if (isFloorTile(id) || !canStackOn(top.id, id)) return false;
     }
-    return this.placeTiles(target, id).every((tile) => this.isFreeForBlock(tile, player));
+    const tiles = this.placeTiles(target, id);
+    // 여러 칸 가구는 덮는 칸이 모두 같은 높이(모두 단이거나 모두 바닥)일 때만 놓는다(room-rules.md 5.2).
+    if (tiles.length > 1) {
+      const lift = this.supportOf(target.x, target.y, this.heightAt(target.x, target.y), true).lift;
+      if (tiles.some((t) => this.supportOf(t.x, t.y, this.heightAt(t.x, t.y), true).lift !== lift)) return false;
+    }
+    return tiles.every((tile) => this.isFreeForBlock(tile, player));
   }
 
   /**
@@ -353,6 +443,13 @@ export class World {
   place(x: number, y: number, z: number, id: BlockId) {
     this.version++;
     const key = this.key(x, y);
+    if (z === CEIL_Z) {
+      this.ceilings.set(key, id);
+      for (const t of this.ceilTiles(x, y, id)) {
+        if (this.inBounds(t.x, t.y) && (t.x !== x || t.y !== y)) this.ceilCover.set(this.key(t.x, t.y), key);
+      }
+      return;
+    }
     const stack = this.blocks.get(key) ?? [];
     const onFloor = stack.slice(0, z).every((below) => below === undefined || isFlat(below));
     stack[z] = id;
@@ -371,6 +468,12 @@ export class World {
   remove(x: number, y: number, z: number) {
     this.version++;
     const key = this.key(x, y);
+    if (z === CEIL_Z) {
+      this.ceilings.delete(key);
+      for (const [tile, owner] of this.ceilCover) if (owner === key) this.ceilCover.delete(tile);
+      return;
+    }
+    if (this.blocks.get(key)?.[z] !== undefined && isDoor(this.blocks.get(key)![z])) this.openDoors.delete(key);
     const stack = this.blocks.get(key);
     if (!stack) return;
     const covers = this.coverIndex.get(`${key}:${z}`);

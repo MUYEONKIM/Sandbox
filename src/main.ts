@@ -39,6 +39,7 @@ import { CoopWindow } from './ui/coop';
 import { OfficeWindow } from './ui/office';
 import { ShopWindow } from './ui/shop';
 import { GroundUi } from './ui/ground';
+import { BoxUi } from './ui/box';
 import { anyModalOpen, closeTopModal } from './ui/modal';
 import { openRenameDialog } from './ui/rename';
 import { showWhatsNew } from './ui/whatsNew';
@@ -349,7 +350,7 @@ function enterGame(
   hud.onDropGold = () => groundUi.openGoldDrop(economy.gold, (amount) => scene.dropGold(amount));
   void session.myMemos().then((memos) => groundUi.setHeld(memos));
 
-  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters, coop, forge, adventure, adventureWindow, chapterMap);
+  const scene = new GameScene(inventory, hud, keys, chat, tags, minimap, session, economy, office, shop, castle, fame, elevator, casino, notices, board, wanted, exchange, market, groundUi, dungeon, dungeonData.monsters, coop, forge, adventure, adventureWindow, chapterMap, new BoxUi(root, session, economy, groundUi));
 
   hud.onUsePotion = () => scene.drinkSelectedPotion();
   hud.onReselect = () => scene.reloadOrRotate();

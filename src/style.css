@@ -2777,6 +2777,48 @@ canvas {
   font-size: 17px;
 }
 
+.box-window .box-count {
+  font-size: 15px;
+  opacity: 0.8;
+}
+
+.box-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.box-row,
+.box-put {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.box-row > span:last-of-type,
+.box-put > input,
+.box-put > select {
+  flex: 1;
+  min-width: 0;
+}
+
+.box-row .memo-row-body {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.box-memo-select {
+  padding: 8px;
+  color: #2b2118;
+  background: #fffbea;
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-size: 15px;
+}
+
 .memo-input {
   resize: vertical;
   background-image: repeating-linear-gradient(transparent 0 23px, #c9d6ea 23px 24px);

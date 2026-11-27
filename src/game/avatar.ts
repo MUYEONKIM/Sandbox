@@ -55,6 +55,18 @@ const SMOKE_ALPHA = 0.75;
 const SMOKE_SPREAD = 7;
 const SMOKE_RISE = 9;
 
+/** 앉았거나 누운 자세 그림과 놓을 자리 */
+export interface Pose {
+  kind: 'sit' | 'lie';
+  frame: string;
+  x: number;
+  y: number;
+  originX: number;
+  originY: number;
+  flip: boolean;
+  depth: number;
+}
+
 /** 맵 위의 캐릭터 하나. 내 캐릭터와 다른 플레이어가 함께 쓴다. */
 export class Avatar {
   private readonly image: Phaser.GameObjects.Image;
@@ -91,6 +103,13 @@ export class Avatar {
   private poseX = 0;
   private poseY = 0;
   private poseLean = 0;
+  /** 칸에 선 캐릭터를 올려 그리는 높이(아트 px)를 주는 함수: 단·계단(2026-11-27, 보이기만 높음). 장면이 넣는다. */
+  floorLift: ((x: number, y: number) => number) | null = null;
+  /**
+   * 가구에 앉았거나 누운 자세(2026-11-27, 그림은 디자인 세션 8 poses.png). frame은 자세 그림 이름('스킨:자세'), (x, y)는 그 그림 기준점을
+   * 둘 월드 자리(앉는 면·눕는 면), origin은 기준점(뒤집었으면 뒤집은 값), depth는 그 가구 바로 앞 깊이다.
+   */
+  private posture: Pose | null = null;
   hp: number;
   /** 최대 체력. HP 스텟에 따라 사람마다 다르다. */
   maxHp: number;
@@ -164,9 +183,26 @@ export class Avatar {
     if (hidden === this.hidden) return false;
     this.hidden = hidden;
     this.image.setVisible(!hidden);
-    this.shadow.setVisible(!hidden);
+    this.shadow.setVisible(!hidden && !this.posture);
     if (hidden) this.gun.setVisible(false);
     return true;
+  }
+
+  /** 가구에 앉히거나 눕힌다. null이면 일어난다. */
+  setPosture(posture: Pose | null) {
+    this.posture = posture;
+    if (!posture) this.image.setOrigin(0.5, TEAM_FOOT_Y / TEAM_H);
+    this.shadow.setVisible(!posture && !this.hidden);
+    this.sync();
+  }
+
+  /** 고른 캐릭터 번호(team.png 차례) */
+  get skinIndex() {
+    return this.firstFrame / TEAM_FRAMES;
+  }
+
+  get postureKind() {
+    return this.posture?.kind ?? null;
   }
 
   /** 지금 바라보는 화면 방향. 오른쪽이 1이다. */
@@ -331,6 +367,18 @@ export class Avatar {
   }
 
   private sync() {
+    // 앉았거나 누웠으면 자세 그림 한 장을 그 자리에 둔다(걷기·점프·무기 그림 없음).
+    if (this.posture) {
+      const p = this.posture;
+      const at = gridToWorld(this.tile.x + 0.5, this.tile.y + 0.5);
+      this.anchor.x = at.x;
+      this.anchor.y = at.y;
+      this.image.setTexture('poses', p.frame).setFlipX(p.flip).setOrigin(p.originX, p.originY).setRotation(0).setPosition(p.x, p.y);
+      keepDepth(this.image, p.depth);
+      this.gun.setVisible(false);
+      this.torch?.setVisible(false);
+      return;
+    }
     const { x, y } = this.position();
     const pos = gridToWorld(x + 0.5, y + 0.5);
     this.anchor.x = pos.x;
@@ -340,8 +388,14 @@ export class Avatar {
     const hop = walking ? STEP_HOP * Math.sin(Math.PI * this.t) : 0;
     const lift = this.airborne ? JUMP_HEIGHT * 4 * this.t * (1 - this.t) : hop;
     const knock = this.knockAmount;
+    // 단·계단 위에서는 그 높이만큼 올려 그린다(걷는 동안은 두 칸 높이 사이를 잇는다). 앉거나 누우면 앉는 면 높이다.
+    let ground = 0;
+    if (this.floorLift) {
+      const to = this.floorLift(this.tile.x, this.tile.y);
+      ground = this.t < 1 ? to + (this.floorLift(Math.round(this.from.x), Math.round(this.from.y)) - to) * (1 - this.t) : to;
+    }
     const drawX = pos.x + this.knockX * KNOCK_DISTANCE * knock + this.poseX;
-    const drawY = pos.y + this.knockY * KNOCK_DISTANCE * 0.6 * knock - lift + this.poseY;
+    const drawY = pos.y + this.knockY * KNOCK_DISTANCE * 0.6 * knock - lift + this.poseY - ground;
     const idleFrame = Math.floor(this.scene.time.now / IDLE_FRAME_MS) % TEAM_FRAMES;
     const frame = this.firstFrame + (walking ? this.stepFrame : idleFrame);
     // 공중에서는 넘어가는 벽보다 앞에 그려져야 벽에 가리지 않는다.
@@ -354,7 +408,7 @@ export class Avatar {
       .setFlipX(this.flip)
       .setRotation(this.knockX * KNOCK_LEAN * knock + this.poseLean);
     keepDepth(this.image, depth);
-    keepDepth(this.shadow.setPosition(pos.x, pos.y), depthOf(x, y));
+    keepDepth(this.shadow.setPosition(pos.x, pos.y - ground), depthOf(x, y));
 
     if (this.torch) {
       const lit = this.torchLit;

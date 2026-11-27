@@ -4,6 +4,7 @@ import { paintCube } from './art/cube';
 import { BLOCK_HEIGHT } from './config';
 import { FURNITURE_BLOCKS, FURNITURE_NEXT } from './furniture';
 import { OUTDOOR_FRAMES, ROOM_BLOCKS, ROOM_NEXT, ROOM_WALL_FRAMES } from './roomDecor';
+import { USE_BLOCKS, USE_LAYER_FRAMES, USE_NEXT, USE_WALL_FRAMES, USE_WALL_HEIGHT, USE_WALL_SHEET } from './roomUse';
 
 /** tiles.png는 32×32 칸이 가로 11개씩 놓인 그림이다. */
 const TILE_CELL = 32;
@@ -25,18 +26,27 @@ export type Frame = readonly [number, number, number, number, number, number, nu
  * paper: 벽지(뒤쪽 벽 칸에 붙임, 16 × 76 무늬). hang: 벽걸이(뒤쪽 벽 칸에 검, 납작한 앞모습, hang은 바닥에서 그림 아래 끝 px, span은 벽을 따라 칸 수).
  * pwall: 놓는 벽(칸 가운데를 지나는 얇은 판, 이음 모양 16칸은 ROOM_WALL_FRAMES). ftile: 바닥 타일(z 0에만, 윗면 0).
  * outdoor: 바깥용 장식품의 새 그림(OUTDOOR_FRAMES, 칸 자리로 하나를 고름).
+ *
+ * 방 꾸미기 새 거리(2026-11-27, src/roomUse.ts, 공유 노트 room-rules.md).
+ * room의 slot ceil: 천장에 매다는 것(천장 자리 z 9, 그림에 줄까지 들어 있어 칸 가운데 바닥이 기준점).
+ * pwall의 axis none: 난간(제 방향 없이 옆 칸 벽·난간 쪽으로만 팔을 뻗음).
+ * door: 문(곧은 벽 칸 하나, 문 구멍 벽 + 문 두 겹, 가까이 가면 열림). window: 끼우는 창문(창 구멍 벽 + 창문, 낮·밤).
+ * curtain: 창문 칸 바로 위 z에 얹는 커튼·블라인드(열림·닫힘은 짝 id).
  */
-export type RoomSheet = 'room/room-decor' | 'room/room-decor-more';
+export type RoomSheet = 'room/room-decor' | 'room/room-decor-more' | 'room/room-decor-3' | 'room/new-decor';
 export type BlockArt =
   | { kind: 'cube'; texture: number; side?: number }
   | { kind: 'sprite'; sprite: SpriteName }
   | { kind: 'tile'; tiles: readonly number[] }
   | { kind: 'furniture'; frame: Frame }
-  | { kind: 'room'; sheet: RoomSheet; slot: 'floor' | 'rug' | 'top'; frame: Frame }
-  | { kind: 'paper'; sheet: 'room/wall-textures' | 'room/wall-textures-more'; frame: readonly [number, number, number, number] }
+  | { kind: 'room'; sheet: RoomSheet; slot: 'floor' | 'rug' | 'top' | 'ceil'; frame: Frame }
+  | { kind: 'paper'; sheet: 'room/wall-textures' | 'room/wall-textures-more' | 'room/wall-textures-3'; frame: readonly [number, number, number, number] }
   | { kind: 'hang'; sheet: RoomSheet; frame: Frame; hang: number; span: number }
-  | { kind: 'pwall'; style: string; axis: 'x' | 'y' }
-  | { kind: 'ftile'; frame: Frame }
+  | { kind: 'pwall'; style: string; axis: 'x' | 'y' | 'none' }
+  | { kind: 'door'; door: string; axis: 'x' | 'y' }
+  | { kind: 'window'; win: string; axis: 'x' | 'y' }
+  | { kind: 'curtain'; cur: string; axis: 'x' | 'y'; open: boolean }
+  | { kind: 'ftile'; sheet?: 'room/room-tiles-3'; frame: Frame }
   | { kind: 'outdoor' };
 
 interface BlockInfo {
@@ -50,6 +60,20 @@ interface BlockInfo {
   onTop?: boolean;
   /** 놓는 벽: 점프로 넘지 못한다(맵 벽 partitions와 같음). */
   wall?: boolean;
+  /** 높은 놓는 벽(76px): 벽걸이를 건다. */
+  tall?: boolean;
+  /** 단: 바닥처럼 그 위에 무엇이든 놓고, 그 칸의 캐릭터를 top만큼 올려 그린다. */
+  dais?: boolean;
+  /** 계단: 그 칸의 캐릭터를 이만큼(아트 px) 올려 그린다. */
+  step?: number;
+  /** 천장에 매다는 것(천장 자리) */
+  ceil?: boolean;
+  /** 매단 것의 가장 낮은 곳(바닥에서 px) */
+  drop?: number;
+  /** 꺼진 등(짝 id는 pairOf) */
+  off?: boolean;
+  /** 꺼진 그림이 따로 없어 켠 그림을 어둡게 칠해 쓰는 꺼진 등 */
+  dim?: boolean;
 }
 
 /** 바깥용 장식품 21개(2026-11-24 같은 id·크기·막힘에 새 그림, 디자인 세션 3). 맵에 박힌 고정 장식은 옛 그림 그대로다. */
@@ -135,6 +159,8 @@ export const BLOCKS = {
   ...FURNITURE_BLOCKS,
   // 2026-11-24 방 꾸미기 새 장식품(rd_, src/roomDecor.ts)
   ...ROOM_BLOCKS,
+  // 2026-11-27 방 꾸미기 새 거리(src/roomUse.ts)
+  ...USE_BLOCKS,
 } as const satisfies Record<string, BlockInfo>;
 
 export type BlockId = keyof typeof BLOCKS;
@@ -165,9 +191,91 @@ export function topOf(id: BlockId): number | null {
   return infoOf(id).top ?? null;
 }
 
-/** 바닥 타일·얇은 깔개(윗면 0): 그 위가 바닥과 같아 무엇이든 놓는다. */
+/** 바닥 타일·얇은 깔개(윗면 0)와 단: 그 위가 바닥과 같아 무엇이든 놓는다. */
 export function isFlat(id: BlockId) {
-  return topOf(id) === 0;
+  return topOf(id) === 0 || isDais(id);
+}
+
+/** 단(보이기만 높은 바닥) */
+export function isDais(id: BlockId) {
+  return !!infoOf(id).dais;
+}
+
+/** 그 블록이 있는 칸에 선 캐릭터를 올려 그리는 높이(단은 윗면, 계단은 step) */
+export function standLift(id: BlockId) {
+  const info = infoOf(id);
+  return info.dais ? (info.top ?? 0) : (info.step ?? 0);
+}
+
+/** 천장에 매다는 것 */
+export function isCeil(id: BlockId) {
+  return !!infoOf(id).ceil;
+}
+
+/** 매단 것의 가장 낮은 곳(바닥에서 px) */
+export function dropOf(id: BlockId) {
+  return infoOf(id).drop ?? 52;
+}
+
+/** 꺼진 등 */
+export function isOff(id: BlockId) {
+  return !!infoOf(id).off;
+}
+
+/** 꺼진 그림이 따로 없는 꺼진 등(켠 그림을 어둡게 칠함) */
+export function isDim(id: BlockId) {
+  return !!infoOf(id).dim;
+}
+
+/** 바닥 타일 그림이 든 시트 */
+export function tileSheet(id: BlockId): 'room/room-tiles' | 'room/room-tiles-3' {
+  const art = BLOCKS[id].art as BlockArt;
+  return (art.kind === 'ftile' && art.sheet) || 'room/room-tiles';
+}
+
+/** 높은 놓는 벽(벽걸이를 검) */
+export function isTallWall(id: BlockId) {
+  return !!infoOf(id).tall;
+}
+
+export function isDoor(id: BlockId) {
+  return BLOCKS[id].art.kind === 'door';
+}
+
+export function isWindow(id: BlockId) {
+  return BLOCKS[id].art.kind === 'window';
+}
+
+export function isCurtain(id: BlockId) {
+  return BLOCKS[id].art.kind === 'curtain';
+}
+
+/** 벽처럼 옆 칸과 이어지는 것: 놓는 벽, 난간, 문, 끼우는 창문 */
+export function isWallLike(id: BlockId) {
+  const { kind } = BLOCKS[id].art;
+  return kind === 'pwall' || kind === 'door' || kind === 'window';
+}
+
+/**
+ * 켜고 끄기·여닫기의 짝 id(서버 toggle_block과 같은 규칙: 상태 토막 _on·_off·_open·_shut을 뺀 나머지가 같음).
+ * 켠 등 ↔ 끈 등(_off를 방향 번호 앞에 붙임), _on ↔ _off, _open ↔ _shut. 짝이 없으면 null
+ */
+export function pairOf(id: BlockId): BlockId | null {
+  const swap = (from: string, to: string) => {
+    const next = (id as string).replace(new RegExp(`_${from}(?=_|$)`), `_${to}`);
+    return next !== id && Object.hasOwn(BLOCKS, next) ? (next as BlockId) : null;
+  };
+  const found = swap('open', 'shut') ?? swap('shut', 'open') ?? swap('on', 'off');
+  if (found) return found;
+  if (/_off(?=_|$)/.test(id)) {
+    const on = swap('off', 'on');
+    if (on) return on;
+    const plain = (id as string).replace(/_off(?=_|$)/, '');
+    return Object.hasOwn(BLOCKS, plain) ? (plain as BlockId) : null;
+  }
+  const m = /^(.*?)(_\d)?$/.exec(id)!;
+  const off = `${m[1]}_off${m[2] ?? ''}`;
+  return Object.hasOwn(BLOCKS, off) ? (off as BlockId) : null;
 }
 
 /** 다른 것의 윗면에 올리는 작은 소품 */
@@ -210,15 +318,28 @@ export function isRug(id: BlockId) {
  * 그 밖의 윗면(탁자, 의자, 방석 등) 위에는 작은 소품만 올린다. 바닥 타일·벽지·벽걸이는 쌓지 않는다.
  */
 export function canStackOn(below: BlockId, id: BlockId) {
-  // 벽지는 놓는 벽 바로 위에 바른다(2026-11-25 사용자 "내가 세운 벽에도 벽지를"). 유리 칸막이에는 바르지 않는다(PM이 정함).
+  // 벽지는 놓는 벽 바로 위에 바른다(2026-11-25 사용자 "내가 세운 벽에도 벽지를"). 유리 칸막이와 난간에는 바르지 않는다(PM이 정함).
   if (isPaper(id)) {
     const art = BLOCKS[below].art;
-    return art.kind === 'pwall' && art.style !== 'rd_wall_glass';
+    return art.kind === 'pwall' && art.style !== 'rd_wall_glass' && art.axis !== 'none';
   }
+  // 커튼·블라인드는 같은 방향의 끼우는 창문 바로 위에만 단다(2026-11-27).
+  if (isCurtain(id)) {
+    const a = BLOCKS[below].art;
+    const c = BLOCKS[id].art;
+    return a.kind === 'window' && c.kind === 'curtain' && a.axis === c.axis;
+  }
+  // 천장 것은 천장 자리에만(쌓지 않음), 커튼 위에는 아무것도 얹지 않는다.
+  if (isCeil(id) || isCeil(below) || isCurtain(below)) return false;
   if (isFloorTile(id) || isWallDecor(id) || isWallDecor(below)) return false;
+  // 단은 빈 바닥이나 바닥 타일 바로 위에만 놓는다. 단 위에는 바닥처럼 무엇이든(단 위 단은 빼고).
+  if (isDais(id)) return isFloorTile(below);
+  if (isDais(below)) return true;
   const top = topOf(below);
   if (top === null) return false;
   if (top === 0) return !(isRug(below) && isRug(id));
+  // 문·난간·끼우는 창문은 바닥(바닥 타일·단 위 포함)에만 세운다.
+  if (isWallLike(id)) return false;
   if (isCube(below)) return !isLarge(id) && !isPlacedWall(id);
   return isOnTop(id);
 }
@@ -250,7 +371,7 @@ export function isLarge(id: BlockId) {
 
 /** 가구를 돌렸을 때(R) 바뀌는 다음 방향. 방향이 하나뿐이거나 가구가 아니면 null */
 export function rotatedBlock(id: BlockId): BlockId | null {
-  return ((FURNITURE_NEXT[id] ?? ROOM_NEXT[id]) as BlockId | undefined) ?? null;
+  return ((FURNITURE_NEXT[id] ?? ROOM_NEXT[id] ?? USE_NEXT[id]) as BlockId | undefined) ?? null;
 }
 
 /** tile 블록이 칸 (x, y)에서 쓰는 tiles.png 번호 */
@@ -271,12 +392,32 @@ export function outdoorFrame(id: BlockId, x: number, y: number): Frame {
 
 /** 놓는 벽의 이음 모양 mask 그림 */
 export function wallFrame(style: string, mask: number): Frame {
-  return ROOM_WALL_FRAMES[style][mask] as unknown as Frame;
+  return (USE_WALL_FRAMES[style] ?? ROOM_WALL_FRAMES[style])[mask] as unknown as Frame;
 }
 
-/** 놓는 벽이 제 방향으로 늘 뻗는 이음 비트(x면 +x|−x, y면 +y|−y) */
-export function wallAxisMask(axis: 'x' | 'y') {
-  return axis === 'x' ? 1 | 2 : 4 | 8;
+/** 놓는 벽 그림이 든 시트(새 벽·높은 벽은 room-walls-3, 난간은 new-rails) */
+export function wallSheet(style: string): 'room/room-walls' | 'room/room-walls-3' | 'room/new-rails' {
+  return USE_WALL_SHEET[style] ?? 'room/room-walls';
+}
+
+/** 놓는 벽 재질의 높이(아트 px): 높은 벽 76, 난간 14, 그 밖 36 */
+export function wallStyleHeight(style: string) {
+  return USE_WALL_HEIGHT[style] ?? 36;
+}
+
+/** 겹 그림이 든 시트: 구멍 벽은 벽 시트, 문·창문·커튼은 room-openings */
+export function layerSheet(name: string): 'room/room-walls-3' | 'room/room-openings' {
+  return name.startsWith('slot:') || name.startsWith('winslot:') ? 'room/room-walls-3' : 'room/room-openings';
+}
+
+/** 문·창문·커튼 겹 그림(roomUse.ts USE_LAYER_FRAMES). 없으면 null */
+export function layerFrame(name: string): Frame | null {
+  return (USE_LAYER_FRAMES[name] as unknown as Frame | undefined) ?? null;
+}
+
+/** 놓는 벽이 제 방향으로 늘 뻗는 이음 비트(x면 +x|−x, y면 +y|−y, 난간은 없음) */
+export function wallAxisMask(axis: 'x' | 'y' | 'none') {
+  return axis === 'none' ? 0 : axis === 'x' ? 1 | 2 : 4 | 8;
 }
 
 /** 시트 한 자리를 정사각형 캔버스 가운데에 그린다(아이콘). */
@@ -321,11 +462,26 @@ export function paintBlockIcon(id: BlockId): HTMLCanvasElement {
   }
   if (art.kind === 'ftile') {
     const [x, y, w, h] = art.frame;
-    return frameIcon(sprite('room/room-tiles'), x, y, w, h);
+    return frameIcon(sprite(tileSheet(id)), x, y, w, h);
   }
   if (art.kind === 'pwall') {
-    const [x, y, w, h] = wallFrame(art.style, wallAxisMask(art.axis));
-    return frameIcon(sprite('room/room-walls'), x, y, w, h);
+    const [x, y, w, h] = wallFrame(art.style, art.axis === 'none' ? 3 : wallAxisMask(art.axis));
+    return frameIcon(sprite(wallSheet(art.style)), x, y, w, h);
+  }
+  if (art.kind === 'door' || art.kind === 'window' || art.kind === 'curtain') {
+    // 높은 흰 벽에 끼운 모습으로 그린다(커튼은 커튼만).
+    const layers =
+      art.kind === 'door'
+        ? [`slot:rd_wallh_white:${art.axis}`, `door:${art.door}:76:${art.axis}:shut`]
+        : art.kind === 'window'
+          ? [`winslot:rd_wallh_white:${art.axis}`, `window:${art.win}:76:${art.axis}:morning`]
+          : [`curtain:${art.cur}:76:${art.axis}:${art.open ? 'open' : 'shut'}`];
+    canvas.width = canvas.height = 80;
+    for (const name of layers) {
+      const f = layerFrame(name);
+      if (f) context.drawImage(sprite(layerSheet(name)), f[0], f[1], f[2], f[3], 40 - f[4], 76 - f[5], f[2], f[3]);
+    }
+    return canvas;
   }
   if (art.kind === 'outdoor') {
     const [x, y, w, h] = OUTDOOR_FRAMES[id][0];

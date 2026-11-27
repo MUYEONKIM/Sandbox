@@ -18,6 +18,7 @@ export type TowerId =
   | 'casino'
   | 'exchange'
   | 'annex'
+  | 'balcony'
   | 'mart'
   | 'smithy'
   | 'labor'
@@ -127,14 +128,16 @@ export const LOBBY_FURNITURE: Furniture[] = [
  * 4층 오른쪽 아래 바닥 끝 바깥에 숨은 방. 바닥 끝 칸 trigger를 밟으면 밟은 사람 화면에서만 드러나고,
  * 벗어나면 다시 숨는다. 처음 자리는 사용자가 정했고(2026-11-08), 자리가 알려져서 입구를 바닥 끝을 따라 더 아래로
  * 옮겼다(2026-11-15 사용자 요청). 방은 바닥에서 한 칸 떨어져 있고 입구 앞 통로 한 칸(passage)으로만 이어진다
- * (같은 날 "그 좌표로만 진입하도록 한 칸 띄워 줘"). 크기는 8×12칸이고, 가구 없이 비워 두어 블록과 가구를 놓아
- * 꾸민다(같은 날 "8*12로 바꾸고 사물을 뺀다", "자유롭게 꾸밀 수 있게"). 옮긴 거리는 에이전트가 정했다.
+ * (같은 날 "그 좌표로만 진입하도록 한 칸 띄워 줘"). 가구 없이 비워 두어 블록과 가구를 놓아 꾸민다(같은 날
+ * "8*12로 바꾸고 사물을 뺀다", "자유롭게 꾸밀 수 있게"). 옮긴 거리는 에이전트가 정했다.
+ * 크기는 10×14칸이다(2026-11-27 사용자 "8*12 가 아닌 10*14 로"). 예전 8×12칸(x 44~51, y 16~27)을 모두 품게
+ * 통로 반대쪽(x)으로 두 칸, 앞뒤(y)로 한 칸씩 늘려서 이미 놓인 블록이 그 자리에 남는다(늘린 쪽은 에이전트가 정함).
  */
 export const HIDEOUT = {
   map: 'tower4' as const,
   trigger: { x: 42, y: 21 },
   passage: { x: 43, y: 21 },
-  area: [44, 16, 51, 27] as Area,
+  area: [44, 15, 53, 28] as Area,
   title: '진우씨가 유일하게 맘 편히 쉬었던 안식처',
 };
 
@@ -465,6 +468,30 @@ export const LABOR_FURNITURE: Furniture[] = [{ sprite: 'plant', x: 15, y: 28 }];
  */
 export const ANNEX: Area = [16, 16, 39, 35];
 const ANNEX_EXIT = { x: 36, y: ANNEX[3] };
+/**
+ * 빈방 뒤쪽 오른쪽 벽의 발코니 문(2026-11-27 사용자 "문 열고 나가면 발코니", 자리와 그림은 디자인 세션 8): 벽을 따라 칸 x 27·28에 걸친
+ * 유리 두 짝 문이고, 문 앞 두 칸이 발코니로 나가는 포탈이다. 문 그림은 벽 모서리에서 177px부터 30px 폭, 높이 50px이다(디자인 balcony.json).
+ */
+export const ANNEX_DOOR = { x: [27, 28] as const, u: 177 };
+/**
+ * 발코니(같은 날, 6판): x 12칸 × y 5칸. 뒤쪽 오른쪽 변이 건물 외벽(가운데 칸 x 5·6 앞에 문), 나머지 세 변은 유리 난간이다.
+ * 바닥·외벽·뒤 왼쪽 난간·아래층 외벽은 그림 한 장(balcony-base)이고, 앞 두 변 난간은 칸 조각으로 캐릭터 앞에 그린다.
+ * 맵 밖에는 밤 도시 야경을 깐다(src/game/cityView.ts). 블록과 가구를 놓을 수 있고, 지붕이 없어 벽지·벽걸이·천장 것은 못 건다.
+ */
+export const BALCONY: Area = [16, 16, 27, 20];
+const BALCONY_DOOR = [BALCONY[0] + 5, BALCONY[0] + 6] as const;
+/**
+ * 발코니 그림과 카메라 값(디자인 세션 8 balcony.json 6판, 아트 px). 바탕 그림 왼쪽 위 = 바닥 뒤 모서리 − (left, top).
+ * 건물이 위·아래로 이어져 그림이 길다. 카메라는 이 맵에서만 캐릭터 발이 화면 (가로 60%, 세로 62%)에 오게 따라가고,
+ * 카메라 범위의 오른쪽 끝을 바닥 뒤 모서리 x + right(건물 오른쪽 끝)에 묶어 넓은 화면에서 건물 오른쪽에 하늘이 보이지 않게 한다.
+ */
+export const BALCONY_VIEW = { left: 80, top: 461, playerAt: [0.6, 0.62] as const, right: 226 };
+/** 발코니 앞 난간 칸: [x, y, 조각]. 그 칸에 설 수 있고 난간은 캐릭터 앞에 그린다. */
+export const BALCONY_RAILS: readonly (readonly [number, number, 'x' | 'y' | 'corner'])[] = [
+  ...Array.from({ length: BALCONY[2] - BALCONY[0] }, (_, i) => [BALCONY[0] + i, BALCONY[3], 'x'] as const),
+  ...Array.from({ length: BALCONY[3] - BALCONY[1] }, (_, i) => [BALCONY[2], BALCONY[1] + i, 'y'] as const),
+  [BALCONY[2], BALCONY[3], 'corner'],
+];
 
 function wallPortal([x0, y0]: Area, { wall, at }: Doorway, to: Portal['to'], label?: string): Portal {
   return wall === 'right'
@@ -608,7 +635,19 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'plain',
     area: ANNEX,
     doorways: [],
-    portals: [{ ...ANNEX_EXIT, to: 'tower7', label: '7층', landing: { x: ANNEX_EXIT.x, y: ANNEX_EXIT.y - 2 } }],
+    // 첫 포탈(7층)이 쓰러진 뒤 일어나는 칸이다. 발코니 문 앞 두 칸은 발코니로 나간다.
+    portals: [
+      { ...ANNEX_EXIT, to: 'tower7', label: '7층', landing: { x: ANNEX_EXIT.x, y: ANNEX_EXIT.y - 2 } },
+      ...ANNEX_DOOR.x.map((x, n): Portal => ({ x, y: ANNEX[1], to: 'balcony', label: '발코니', quiet: n > 0, landing: { x, y: ANNEX[1] + 2 } })),
+    ],
+  },
+  balcony: {
+    ...plain,
+    number: null,
+    style: 'plain',
+    area: BALCONY,
+    doorways: [],
+    portals: BALCONY_DOOR.map((x, n): Portal => ({ x, y: BALCONY[1], to: 'annex', label: '방', quiet: n > 0, landing: { x, y: BALCONY[1] + 2 } })),
   },
   elevator: {
     ...plain,
