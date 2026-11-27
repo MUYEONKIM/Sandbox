@@ -24,7 +24,15 @@ export type TowerId =
   | 'mart'
   | 'smithy'
   | 'labor'
-  | 'farmcoop';
+  | 'farmcoop'
+  | 'villa1'
+  | 'villa_lift'
+  | 'villa2'
+  | 'villa3'
+  | VillaRoomId;
+
+/** 시작마을 빌라 2층 방 열(201~210호, 2026-11-27) */
+export type VillaRoomId = 'villa201' | 'villa202' | 'villa203' | 'villa204' | 'villa205' | 'villa206' | 'villa207' | 'villa208' | 'villa209' | 'villa210';
 
 /** 1층 로비 바닥. 블록 설치 구역도 이 범위다. */
 export const LOBBY: Area = [13, 13, 32, 32];
@@ -62,6 +70,8 @@ export interface Doorway {
   wall: 'left' | 'right';
   at: number;
   kind: DoorKind;
+  /** 층 버튼판(panel)의 버튼 수(없으면 7, 빌라 엘리베이터는 3) */
+  buttons?: number;
 }
 
 /** 칸 하나를 차지하는 가구 */
@@ -437,6 +447,15 @@ export const ROOM_PROPS: Partial<Record<TowerId, Prop[]>> = {
     ...props('office-printer-x', 1, 1, [3, 15]),
   ],
   rooftop: [...props('roof-hvac', 2, 2, [6, 5], [9, 5]), ...props('roof-solar', 2, 1, [16, 3], [19, 3], [22, 3], [25, 3])],
+  // 시작마을 빌라 로비 화분 둘과 옥상 소품(디자인 세션 11 villa.json lobbyProps·roofProps)
+  villa1: props('plant', 1, 1, [24, 15], [15, 24]),
+  villa3: [
+    ...props('villa/tank', 3, 2, [13, 3]),
+    ...props('villa/laundry', 3, 1, [8, 8]),
+    ...props('villa/tub-red', 1, 1, [4, 13], [5, 14]),
+    ...props('villa/tub-blue', 1, 1, [4, 14]),
+    ...props('villa/bench', 2, 2, [12, 10]),
+  ],
   labor: [
     ...props('labor-counter', 3, 1, [21, 17]),
     ...props('labor-lockers', 2, 1, [15, 15], [27, 15]),
@@ -512,6 +531,48 @@ export const BALCONY_RAILS: readonly (readonly [number, number, 'x' | 'y' | 'cor
   ...Array.from({ length: BALCONY[3] - BALCONY[1] }, (_, i) => [BALCONY[2], BALCONY[1] + i, 'y'] as const),
   [BALCONY[2], BALCONY[3], 'corner'],
 ];
+
+/**
+ * 시작마을 빌라(2026-11-27 사용자 "시작마을에 빌라 … 1층 로비 → 엘리베이터 → 2층 주거(201~210호 복도식, 문 옆 명패) → 3층 옥상", 그림·값은 디자인 세션 11 villa.json).
+ * 로비·복도·옥상은 바닥·벽을 그린 그림 한 장(villa/lobby·hall·roof)을 놓고, 방 열은 이름 없는 방과 같은 빈방 그림(16 × 13, 사용자 "지금의 2/3")을 같이 쓴다.
+ * 엘리베이터 안은 아이티공간 것과 같은 그림에 버튼만 셋(R·2·1)이다. 방 현관문은 걸어서 지나가는 문(walkDoor.ts)이다. 방 주인은 서버 villa_rooms 표다.
+ */
+export const VILLA_LOBBY: Area = [15, 15, 24, 24];
+const VILLA_CABIN: Area = [21, 21, 24, 24];
+export const VILLA_HALL: Area = [3, 20, 35, 23];
+export const VILLA_ROOF: Area = [3, 3, 16, 14];
+export const VILLA_ROOM: Area = [16, 16, 31, 28];
+export const VILLA_ROOMS = [201, 202, 203, 204, 205, 206, 207, 208, 209, 210] as const;
+export const villaRoomId = (room: number) => `villa${room}` as VillaRoomId;
+export const isVillaRoom = (id: string): id is VillaRoomId => /^villa2(0[1-9]|10)$/.test(id);
+/** 빌라 맵(로비·엘리베이터·복도·옥상·방)인지 */
+export const isVilla = (id: string) => id.startsWith('villa');
+/**
+ * 복도 현관문 열(오른쪽 긴 벽, 벽 칸 y 19): 201 + k호의 문 칸은 x 5 + 3k·6 + 3k, 문 그림 왼쪽 위 = 바닥 뒤 모서리 + (u, floor(u / 2) − 50),
+ * 명패(그림에 그려진 호수 판) 위 이름표 아래 가운데 = 바닥 뒤 모서리 + (plate, plate / 2 − 47).
+ */
+export const VILLA_HALL_DOORS = VILLA_ROOMS.map((room, k) => ({ room, map: villaRoomId(room), x: [5 + 3 * k, 6 + 3 * k] as const, u: 33 + 48 * k, plate: 71 + 48 * k }));
+export const VILLA_PLATE_LIFT = 47;
+/** 방 안 현관문(오른쪽 뒤 벽 칸 x 18·19): 이름 없는 방 발코니 문과 같은 셈(u 33, 높이 50) */
+export const VILLA_ROOM_DOOR = { x: [18, 19] as const, u: 33, top: 50 };
+/** 빌라 엘리베이터 버튼(위에서 R·2·1)과 내리기 글 */
+export const VILLA_ELEVATOR_STOPS: { label: string; to: TowerId; exit: string }[] = [
+  { label: 'R', to: 'villa3', exit: '옥상에서 내리기' },
+  { label: '2', to: 'villa2', exit: '2층에서 내리기' },
+  { label: '1', to: 'villa1', exit: '1층에서 내리기' },
+];
+
+function villaRoomFloor(): FloorPlan {
+  return {
+    ...plain,
+    number: null,
+    style: 'plain',
+    area: VILLA_ROOM,
+    doorways: [],
+    // 현관문(걸어서 지나감) 두 칸. 첫 칸 앞 (18, 16)이 쓰러진 뒤 일어나는 칸이다.
+    portals: VILLA_ROOM_DOOR.x.map((x): Portal => ({ x, y: VILLA_ROOM[1] - 1, to: 'villa2', door: true, landing: { x, y: VILLA_ROOM[1] } })),
+  };
+}
 
 function wallPortal([x0, y0]: Area, { wall, at }: Doorway, to: Portal['to'], label?: string): Portal {
   return wall === 'right'
@@ -692,6 +753,54 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     // 4층으로 들어가는 문(걸어서 지나감). 첫 칸 앞이 쓰러진 뒤 일어나는 칸이다.
     portals: BALCONY_DOOR.map((x): Portal => ({ x, y: BALCONY4[1] - 1, to: 'tower4', door: true, landing: { x, y: BALCONY4[1] } })),
   },
+  villa1: {
+    ...plain,
+    number: null,
+    style: 'plain',
+    area: VILLA_LOBBY,
+    doorways: [],
+    portals: [
+      { x: VILLA_LOBBY[2], y: 20, to: 'plains', label: '시작마을', landing: { x: 22, y: 20 } },
+      { x: 21, y: VILLA_LOBBY[1], to: 'villa_lift', label: '엘리베이터', landing: { x: 21, y: VILLA_LOBBY[1] + 2 } },
+    ],
+  },
+  villa_lift: {
+    ...plain,
+    number: null,
+    style: 'cabin',
+    area: VILLA_CABIN,
+    doorways: [{ ...panel, buttons: VILLA_ELEVATOR_STOPS.length }],
+    portals: [wallPortal(VILLA_CABIN, panel, 'panel')],
+  },
+  villa2: {
+    ...plain,
+    number: null,
+    style: 'plain',
+    area: VILLA_HALL,
+    doorways: [],
+    portals: [
+      { x: VILLA_HALL[0], y: 21, to: 'villa_lift', label: '엘리베이터', landing: { x: VILLA_HALL[0] + 2, y: 21 } },
+      ...VILLA_HALL_DOORS.flatMap(({ map, x }) => x.map((dx): Portal => ({ x: dx, y: VILLA_HALL[1] - 1, to: map, door: true, landing: { x: dx, y: VILLA_HALL[1] } }))),
+    ],
+  },
+  villa3: {
+    ...plain,
+    number: null,
+    style: 'plain',
+    area: VILLA_ROOF,
+    doorways: [],
+    portals: [{ x: VILLA_ROOF[0], y: 5, to: 'villa_lift', label: '엘리베이터', landing: { x: VILLA_ROOF[0] + 2, y: 5 } }],
+  },
+  villa201: villaRoomFloor(),
+  villa202: villaRoomFloor(),
+  villa203: villaRoomFloor(),
+  villa204: villaRoomFloor(),
+  villa205: villaRoomFloor(),
+  villa206: villaRoomFloor(),
+  villa207: villaRoomFloor(),
+  villa208: villaRoomFloor(),
+  villa209: villaRoomFloor(),
+  villa210: villaRoomFloor(),
   elevator: {
     ...plain,
     number: null,

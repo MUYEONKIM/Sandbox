@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { spriteUrl } from '../art/sprites';
 import { gridToWorld } from '../iso';
 import type { DayPhase } from './daylight';
-import { STAIRS as STAIRS_AREA, UPPER } from './tower';
+import { STAIRS as STAIRS_AREA, UPPER, VILLA_ROOF } from './tower';
 
 /**
  * 옥상·바깥 계단·4층 발코니의 도시 풍경(2026-11-27 사용자 "우리 옥상과, 옥상 올라가는 계단, 4층에도 시티뷰를", 4층은 맵 대신 발코니).
@@ -34,6 +34,14 @@ const ART = {
   'balcony4-rail-x': {},
   'balcony4-rail-y': {},
   'balcony4-rail-corner': {},
+  // 시작마을 빌라 옥상(디자인 세션 9 villa-view.json): 구름은 120 × 56 세 틀, 빌라 바깥벽은 32 × 166 네 틀(0·2 켜진 창, 1·3 꺼진 창)
+  'villa-sky': {},
+  'villa-clouds': { frames: [120, 56, 3] },
+  'villa-far': {},
+  'villa-mid': {},
+  'villa-near': {},
+  'villa-wall-left': { frames: [32, 166, 4] },
+  'villa-wall-right': { frames: [32, 166, 4] },
 } as const satisfies Record<string, { phases?: readonly DayPhase[]; frames?: readonly [number, number, number] }>;
 
 export type CityArt = keyof typeof ART;
@@ -245,7 +253,7 @@ const FLOOR_EDGE = 6;
  * 붙박이 그림(카메라와 같이 움직임, 풍경보다 앞·바닥 그림보다 뒤): 옥상 바닥 앞 두 변 아래 우리 건물 바깥벽(4칸마다 64 × 136 한 조각, 틀 셋을 돌려 씀),
  * 바깥 계단 앞 변 아래 유리벽(2칸마다 32 × 266). 자리는 디자인 city-views.json maps.*.pinned와 같고, 여기서는 바닥 범위에서 셈한다.
  */
-export const CITY_PINNED: Record<'rooftop' | 'stairs', readonly PinnedPiece[]> = {
+export const CITY_PINNED: Record<'rooftop' | 'stairs' | 'villa3', readonly PinnedPiece[]> = {
   rooftop: (() => {
     const [x0, y0, x1, y1] = UPPER;
     const left = gridToWorld(x0, y1 + 1);
@@ -255,6 +263,18 @@ export const CITY_PINNED: Record<'rooftop' | 'stairs', readonly PinnedPiece[]> =
       { art: 'tower-wall-left' as const, x: left.x + 64 * k, y: left.y + FLOOR_EDGE + 32 * k, frame: String(k % 3) },
       { art: 'tower-wall-right' as const, x: right.x - 64 - 64 * k, y: right.y + FLOOR_EDGE + 32 * k, frame: String((k + 1) % 3) },
     ]).flat();
+  })(),
+  // 빌라 옥상 바닥 앞 두 변 아래 우리 빌라 벽(2칸마다 한 조각, 틀 차례는 디자인 villa-view.json pinned 그대로)
+  villa3: (() => {
+    const [x0, y0, x1, y1] = VILLA_ROOF;
+    const left = gridToWorld(x0, y1 + 1);
+    const right = gridToWorld(x1 + 1, y0);
+    const leftFrames = [0, 3, 2, 1, 0, 3, 2];
+    const rightFrames = [1, 0, 3, 2, 1, 0];
+    return [
+      ...leftFrames.map((frame, k) => ({ art: 'villa-wall-left' as const, x: left.x + 32 * k, y: left.y + FLOOR_EDGE + 16 * k, frame: String(frame) })),
+      ...rightFrames.map((frame, k) => ({ art: 'villa-wall-right' as const, x: right.x - 32 - 32 * k, y: right.y + FLOOR_EDGE + 16 * k, frame: String(frame) })),
+    ];
   })(),
   stairs: (() => {
     const [x0, , x1, y1] = STAIRS_AREA;
@@ -270,6 +290,7 @@ export const CITY_PINNED: Record<'rooftop' | 'stairs', readonly PinnedPiece[]> =
 export const FLOOR_TINT: Readonly<Record<string, Partial<Record<DayPhase, number>>>> = {
   rooftop: { evening: 0x6b75a8, dawn: 0xa8a8cc, sunset: 0xf2c2b3 },
   stairs: { evening: 0x9ea8db, dawn: 0xcccce6, sunset: 0xffdbcc },
+  villa3: { evening: 0x7580b3, dawn: 0xb3b3d6, sunset: 0xf5c7b8 },
 };
 
 /** 층 위 끝을 정하는 셈: 월드에 붙임(옥상·계단) 또는 지평선에 붙임(4층 발코니) */
@@ -284,6 +305,8 @@ interface SkyLayer {
   top: Anchor;
   /** 하나뿐인 그림(달): 가운데 x = 화면 너비 × 이 값 */
   sprite?: { x: number; w: number };
+  /** 그림의 프레임(빌라 구름 세 틀) */
+  frame?: string;
   /** 화면 아래 끝까지 세로로 감기는 판. 월드에 붙은 층이면 안쪽 무늬를 (카메라 y − 뒤 모서리 y) × (plane − fy)만큼 민다. */
   plane?: number;
   /** 이 층 아래 끝부터 화면 아래 끝까지 채우는 색(층과 같이 움직임) */
@@ -302,6 +325,7 @@ const ROOF_FILL: Record<DayPhase, number> = { evening: 0x03061a, dawn: 0x141c44,
 const ROOF = { fy: 0.12, A: -280 } as const;
 const STAIRS = { fy: 0.25, A: 148 } as const;
 const B4 = 0.36;
+const VILLA = { fy: 0.15, A: 104 } as const;
 
 /** 맵마다 풍경 층(뒤 → 앞). 값은 디자인 city-views.json maps.*.layers와 balcony4.json view 그대로다. */
 export const SKYLINES = {
@@ -334,6 +358,19 @@ export const SKYLINES = {
         top: { fy: 0.45, A: STAIRS.A, dy: -70 },
         fillBelow: { evening: 0x080711, dawn: 0x141929, morning: 0x36383d, sunset: 0x2e2124 },
       },
+    ],
+  },
+  // 빌라 옥상(디자인 세션 9 villa-view.json): 낮은 주택가 지붕 높이에서 본 이웃 옥상·동네·아파트·산 능선과 하늘, 구름 세 장
+  villa3: {
+    fill: { evening: 0x050a1e, dawn: 0x18224c, morning: 0x2f74c4, sunset: 0x2a2a62 },
+    layers: [
+      { art: 'villa-sky', h: 220, fx: 0.03, top: { ...VILLA, dy: -320 } },
+      { art: 'villa-clouds', h: 56, fx: 0, top: { ...VILLA, dy: -260 }, sprite: { x: 0.14, w: 120 }, frame: '0' },
+      { art: 'villa-clouds', h: 56, fx: 0, top: { ...VILLA, dy: -232 }, sprite: { x: 0.52, w: 120 }, frame: '1' },
+      { art: 'villa-clouds', h: 56, fx: 0, top: { ...VILLA, dy: -276 }, sprite: { x: 0.84, w: 120 }, frame: '2' },
+      { art: 'villa-far', h: 128, fx: 0.1, top: { ...VILLA, dy: -214 }, fillBelow: { evening: 0x313144, dawn: 0xbd8f8b, morning: 0xc1ddf2, sunset: 0xce8b53 } },
+      { art: 'villa-mid', h: 110, fx: 0.25, top: { fy: 0.3, A: VILLA.A, dy: -136 }, fillBelow: { evening: 0x0a0a12, dawn: 0x161a2b, morning: 0x4b4e55, sunset: 0x312327 } },
+      { art: 'villa-near', h: 236, fx: 0.45, top: { fy: 0.45, A: VILLA.A, dy: -120 }, fillBelow: { evening: 0x0a0a12, dawn: 0x161a2b, morning: 0x4b4e55, sunset: 0x312327 } },
     ],
   },
   balcony4: {
@@ -402,7 +439,7 @@ export class Skyline {
         ? add.image(0, 0, BLANK).setOrigin(0, 0)
         : add.tileSprite(0, 0, 16, layer.h, BLANK).setOrigin(0, 0);
       obj.setScrollFactor(0).setDepth(depth);
-      this.art.bind(obj, layer.art);
+      this.art.bind(obj, layer.art, layer.frame);
       const fill = layer.fillBelow
         ? add.rectangle(0, 0, 16, 16, layer.fillBelow[this.phase]).setOrigin(0, 0).setScrollFactor(0).setDepth(depth + 0.001)
         : null;

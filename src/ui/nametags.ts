@@ -3,7 +3,7 @@ import { element } from './dom';
 
 const BUBBLE_MS = 4000;
 
-export type TagKind = 'player' | 'portal' | 'sign' | 'ticker';
+export type TagKind = 'player' | 'portal' | 'sign' | 'ticker' | 'plate';
 
 interface Tag {
   root: HTMLElement;

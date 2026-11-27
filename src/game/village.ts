@@ -2,7 +2,7 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { BOARD, CASTLE, CAVE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, type Area } from './maps';
+import { BOARD, CASTLE, CAVE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, VILLA, type Area } from './maps';
 import type { Tile } from './world';
 
 /** tiles.png의 타일 번호 */
@@ -60,6 +60,8 @@ const STONE_ROADS: Area[] = [
   [23, 41, 31, 42],
   // 도박장: 던전 길에서 위로
   [42, 37, 43, 42],
+  // 빌라: 현관 문에서 성을 두르는 길까지(2026-11-27, 디자인 세션 11)
+  [VILLA.door.x, VILLA.door.y, VILLA.door.x + 1, 13],
   // 농장(오른쪽 귀퉁이)
   [32, 1, 33, 13],
   [32, 1, 44, 2],
@@ -78,6 +80,7 @@ const BUILDINGS: Building[] = [
   { sprite: EXCHANGE.sprite, x: EXCHANGE.x, y: EXCHANGE.y, w: EXCHANGE.w, d: EXCHANGE.d },
   { sprite: SMITHY.sprite, x: SMITHY.x, y: SMITHY.y, w: SMITHY.w, d: SMITHY.d },
   { sprite: CAVE.sprite, x: CAVE.x, y: CAVE.y, w: CAVE.w, d: CAVE.d },
+  { sprite: VILLA.sprite, x: VILLA.x, y: VILLA.y, w: VILLA.w, d: VILLA.d },
 ];
 
 const FIXED_TREES: Tree[] = [
@@ -89,19 +92,24 @@ const FIXED_TREES: Tree[] = [
   { sprite: BOARD.sprite, x: BOARD.x, y: BOARD.y },
   // 귀퉁이 포탈 안내판
   ...GUIDEPOSTS.map(({ x, y }) => ({ sprite: 'board' as const, x, y })),
-  // 마을 나무 여섯 그루(2026-11-16 디자인 세션이 포탈·안내판을 가리지 않는 자리로 고름, occlusion.md)
-  { sprite: 'oaktree', x: 23, y: 7 },
-  { sprite: 'pinetree', x: 29, y: 4 },
+  // 마을 나무(2026-11-16 디자인 세션이 포탈·안내판을 가리지 않는 자리로 고름, occlusion.md). 참나무 (23, 7)와 소나무 (29, 4)는
+  // 2026-11-27 빌라 자리라 뺐다(사용자 "둘 다 빼고 그 자리에").
   { sprite: 'firtree', x: 39, y: 17 },
   { sprite: 'pinetree', x: 41, y: 33 },
   { sprite: 'firtree', x: 6, y: 13 },
   { sprite: 'firtree', x: 21, y: 43 },
+  // 빌라 앞뜰 벤치 둘(장식, 칸 하나를 막음, 앉기 없음, 디자인 세션 11)
+  { sprite: 'villa/bench-out', x: 22, y: 11 },
+  { sprite: 'villa/bench-out', x: 27, y: 11 },
 ];
 
 /** 울타리처럼 줄지어 심은 덤불: 성 앞 정원. 가운데는 지나다닐 수 있게 비운다. */
 const HEDGE_ROWS: Area[] = [
   [18, 30, 22, 30],
   [24, 30, 28, 30],
+  // 빌라 앞 양쪽(2026-11-27, 현관 돌길은 비움)
+  [21, 8, 22, 8],
+  [27, 8, 28, 8],
 ];
 
 /** 나무를 심지 않는 구역: 건물과 그 앞길 둘레 */
@@ -113,6 +121,7 @@ const TREELESS: Area[] = [
   [34, 34, 45, 45],
   [34, 19, 40, 28],
   [16, 34, 31, 44],
+  [16, 0, 31, 13],
 ];
 
 

@@ -187,6 +187,19 @@ const NAMES = [
   'balcony/rail-corner',
   'balcony/door-room-frames',
   'balcony/door-balcony-frames',
+  // 시작마을 빌라(2026-11-27, 디자인 세션 11 villa.md): 마을 겉모습·앞뜰 벤치, 로비·복도·옥상 층 그림, 현관문 여닫힘 두 벌, 옥상 소품. 옥상 풍경은 cityViews.ts가 따로 읽는다.
+  'villa/house',
+  'villa/bench-out',
+  'villa/lobby',
+  'villa/hall',
+  'villa/roof',
+  'villa/door-hall-frames',
+  'villa/door-room-frames',
+  'villa/tank',
+  'villa/laundry',
+  'villa/tub-red',
+  'villa/tub-blue',
+  'villa/bench',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

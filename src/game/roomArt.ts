@@ -6,7 +6,7 @@ import { gridToWorld } from '../iso';
 import { OUTDOOR_FRAMES, ROOM_WALL_FRAMES } from '../roomDecor';
 import { USE_LAYER_FRAMES, USE_WALL_FRAMES } from '../roomUse';
 import { MORE_LAYER_FRAMES } from '../roomMore';
-import { ANNEX, ANNEX_DOOR, BALCONY, BALCONY4, BALCONY_LAMPS, FLOORS, TOWER4_DOOR, UPPER, type TowerId } from './tower';
+import { ANNEX, ANNEX_DOOR, BALCONY, BALCONY4, BALCONY_LAMPS, FLOORS, TOWER4_DOOR, UPPER, VILLA_ROOM, VILLA_ROOM_DOOR, VILLA_ROOMS, villaRoomId, type TowerId } from './tower';
 import type { Tile } from './world';
 
 /**
@@ -20,9 +20,11 @@ import type { Tile } from './world';
  * 벽지·벽걸이를 붙이는 맵(사용자가 정함: 4·7·8층과 7층으로 나가는 포탈이 있는 빈방).
  * 발코니는 2026-11-27 사용자 "발코니쪽 벽면에 장식품 마찬가지로 달 수 있게": 뒤쪽 건물 외벽(오른쪽 벽)에만 벽걸이를 건다(벽지는 바르지 않음, WALL_PAPER_OFF).
  */
-export const WALL_DECOR_MAPS: ReadonlySet<string> = new Set(['tower4', 'tower7', 'tower8', 'annex', 'balcony', 'balcony4', 'hideout']);
+const VILLA_ROOM_IDS: readonly string[] = VILLA_ROOMS.map(villaRoomId);
+/** 빌라 방 열(2026-11-27)도 이름 없는 방처럼 벽지·벽걸이·천장 것이 된다. 로비·복도·옥상은 벽에 우편함·현관문·명패가 그려져 있어 받지 않는다(제가 정한 것). */
+export const WALL_DECOR_MAPS: ReadonlySet<string> = new Set(['tower4', 'tower7', 'tower8', 'annex', 'balcony', 'balcony4', 'hideout', ...VILLA_ROOM_IDS]);
 /** 천장 것을 매다는 맵(지붕이 있는 맵). 발코니는 지붕이 없어 뺀다. */
-export const CEIL_MAPS: ReadonlySet<string> = new Set(['tower4', 'tower7', 'tower8', 'annex', 'hideout']);
+export const CEIL_MAPS: ReadonlySet<string> = new Set(['tower4', 'tower7', 'tower8', 'annex', 'hideout', ...VILLA_ROOM_IDS]);
 /** 한쪽 벽만 벽인 맵: 발코니(7층·4층)는 뒤 왼쪽 변이 유리 난간이라 오른쪽 벽(건물 외벽)만 쓴다. */
 const WALL_SIDES: Readonly<Record<string, WallSide>> = { balcony: 'right', balcony4: 'right' };
 /** 벽지를 바르지 않는 맵(제가 정한 것: 발코니 건물 외벽은 바탕 그림의 문·벽등을 덮지 않게 벽걸이만, 4층 발코니도 같음) */
@@ -96,6 +98,8 @@ const WALL_DOOR_TOPS: Readonly<Record<string, ReadonlyMap<string, number>>> = {
   // 4층 발코니 외벽: 문(칸 5·6)과 벽등(칸 3·8) 자리가 7층과 같다(디자인 balcony4.json lamps). 4층 방 쪽은 발코니 문 두 칸.
   balcony4: balconyWall(BALCONY4),
   tower4: new Map(TOWER4_DOOR.x.map((x) => [`${x},${UPPER[1] - 1}`, TOWER4_DOOR.top] as const)),
+  // 빌라 방 현관문 두 칸(벽 칸 x 18·19, y 15): 그 칸에 거는 벽걸이는 문 위로
+  ...Object.fromEntries(VILLA_ROOM_IDS.map((id) => [id, new Map(VILLA_ROOM_DOOR.x.map((x) => [`${x},${VILLA_ROOM[1] - 1}`, VILLA_ROOM_DOOR.top] as const))])),
 };
 
 /**

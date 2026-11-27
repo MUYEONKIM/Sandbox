@@ -176,6 +176,11 @@ import {
   BALCONY_VIEW,
   HIDEOUT,
   TOWER4_DOOR,
+  isVillaRoom,
+  VILLA_HALL,
+  VILLA_HALL_DOORS,
+  VILLA_PLATE_LIFT,
+  VILLA_ROOM_DOOR,
   isTower,
   TICKER_LIFT,
   type PartitionKind,
@@ -277,6 +282,8 @@ const PLAIN_SIGNS: Partial<Record<string, { name: string; x: number; y: number }
   smithy: { name: SMITHY.name, x: 64, y: 27 },
   // 동굴 언덕 꼭대기(디자인 세션 adventure-cave.md 1장이 권한 자리, 글은 에이전트가 정함)
   'cave-x': { name: '던전', x: 64, y: 4 },
+  // 빌라 옥탑 위(디자인 세션 11 villa.json sign)
+  'villa/house': { name: '빌라', x: 92, y: 5 },
 };
 /** 증권거래소: 옥상 가운데 */
 const EXCHANGE_SIGN = { x: 99, y: 55 };
@@ -586,8 +593,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private doorsDirty = false;
   private nextDoorAt = Infinity;
   private doorTile = { x: -1, y: -1 };
-  /** 이 맵의 걸어서 지나가는 문(빈방·발코니의 발코니 문, 2026-11-27). 없으면 null */
-  private walkDoor: WalkDoor | null = null;
+  /** 이 맵의 걸어서 지나가는 문(빈방·발코니의 발코니 문, 4층 발코니 문, 빌라 현관문, 2026-11-27). 빌라 복도는 열 개다. */
+  private walkDoors: WalkDoor[] = [];
+  /** 빌라 방 주인(호수 → 주인 id·닉네임). 복도에 들어올 때 서버에서 한 번 읽는다(null이면 아직 못 읽음). */
+  private villaOwners: Map<number, { owner: string; nickname: string }> | null = null;
+  /** 빌라 '내 방으로 하기' 창이 떠 있는 동안의 문(그동안 그 문은 열지 않음) */
+  private villaAsking: Portal | null = null;
+  private villaModal: Modal | null = null;
   /** 문으로 넘어가는 중: 문이 다 열리길 기다렸다가 문 칸으로 한 걸음 들어가며 맵을 옮긴다. */
   private doorPass: Portal | null = null;
   /** 휴대폰에서 문을 눌러 문 앞 칸으로 걸어가는 중이면 그 문 칸 */
@@ -1122,7 +1134,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     if (id === 'farm') this.showFences();
     // 옥상 소품(바닥 그림과 같이 시간대 색을 곱함, 디자인 floorTint)
-    if (id === 'rooftop') this.floorTinted.push(...this.mapImages.slice(tintFrom));
+    if (id === 'rooftop' || id === 'villa3') this.floorTinted.push(...this.mapImages.slice(tintFrom));
     this.tintFloor();
     // 등 빛: 시간대 덮개가 있는 바깥 맵만(건물 안, 전쟁터, 분위기 색 맵은 뺀다, lantern-glow.md 7-5)
     // 건물 안은 플레이어가 놓은 등만 늘 같은 진하기로 켠다(2026-11-27 room-rules.md 6절).
@@ -1260,7 +1272,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.showBalcony(id, gridToWorld(x0, y0));
       return;
     }
-    const key = `interior-${id}`;
+    if (id === 'villa1' || id === 'villa2' || id === 'villa3') {
+      this.showVillaFloor(id, gridToWorld(x0, y0), left, top);
+      return;
+    }
+    // 빌라 방 열은 넓이가 같아 빈방 그림 한 장을 같이 쓴다.
+    const key = isVillaRoom(id) ? 'interior-villa-room' : `interior-${id}`;
     if (!this.textures.exists(key)) this.textures.addCanvas(key, paintInterior(id));
     const floor = this.add.image(left, top, key).setOrigin(0, 0).setDepth(DEPTH_INTERIOR);
     this.mapImages.push(floor);
@@ -1277,7 +1294,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         'balcony4-door-room',
       );
       this.mapImages.push(image);
-      this.walkDoor = new WalkDoor(image, this.world.portals.filter((p) => p.door));
+      this.walkDoors = [new WalkDoor(image, this.world.portals.filter((p) => p.door))];
     }
     if (id === 'annex') {
       // 발코니 문: 뒤쪽 오른쪽 벽에 붙인 그림(여닫힘 네 장). 벽지·벽걸이(0.52~0.54)보다 앞, 바닥 타일(0.58)보다 뒤에 그린다.
@@ -1288,7 +1305,18 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         .setOrigin(0, 0)
         .setDepth(DEPTH_FLOOR_TILE - 0.01);
       this.mapImages.push(image);
-      this.walkDoor = new WalkDoor(image, this.world.portals.filter((p) => p.door));
+      this.walkDoors = [new WalkDoor(image, this.world.portals.filter((p) => p.door))];
+    }
+    if (isVillaRoom(id)) {
+      // 빌라 방 현관문(오른쪽 뒤 벽 x 18·19): 빈방 발코니 문과 같은 셈·깊이, 너머는 밝은 복도(디자인 세션 11).
+      const corner = gridToWorld(x0, y0);
+      const name = ensureWalkDoorTexture(this, 'villa/door-room-frames');
+      const image = this.add
+        .image(corner.x + VILLA_ROOM_DOOR.u, corner.y + Math.floor(VILLA_ROOM_DOOR.u / 2) - VILLA_ROOM_DOOR.top, name, '0')
+        .setOrigin(0, 0)
+        .setDepth(DEPTH_FLOOR_TILE - 0.01);
+      this.mapImages.push(image);
+      this.walkDoors = [new WalkDoor(image, this.world.portals.filter((p) => p.door))];
     }
     for (const { x, y } of this.world.map.railings) {
       const rail = this.addMapArt('railing', paintRailing, x, y);
@@ -1331,7 +1359,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setDepth(DEPTH_INTERIOR + 0.001);
     if (four) this.phaseArt.bind(door, 'balcony4-door-balcony');
     this.mapImages.push(door);
-    this.walkDoor = new WalkDoor(door, this.world.portals.filter((p) => p.door));
+    this.walkDoors = [new WalkDoor(door, this.world.portals.filter((p) => p.door))];
     // 카메라: 오른쪽 끝만 건물 오른쪽 끝에 묶는다(왼쪽과 세로는 묶지 않음). 따라가는 자리는 updateBalconyCamera가 화면 크기에 맞춘다.
     const far = 100_000;
     this.cameras.main.setBounds(corner.x + BALCONY_VIEW.right - far, -far, far, far * 2);
@@ -1355,11 +1383,114 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
+   * 빌라 로비·2층 복도·옥상(2026-11-27, 디자인 세션 11): 바닥·벽(엘리베이터 문·우편함·현관문·명패·옥탑)을 그린 그림 한 장을 층 그림 자리에 놓는다.
+   * 복도는 현관문 열 개(여닫힘 그림, 텍스처 하나를 같이 씀)와 명패 이름표, 옥상은 도시 풍경(시간대 한 벌)·빌라 바깥벽 조각·바닥 색 곱하기.
+   */
+  private showVillaFloor(id: 'villa1' | 'villa2' | 'villa3', corner: { x: number; y: number }, left: number, top: number) {
+    const art = id === 'villa1' ? 'villa/lobby' : id === 'villa2' ? 'villa/hall' : 'villa/roof';
+    this.spriteTexture(art);
+    const floor = this.add.image(left, top, art, '__BASE').setOrigin(0, 0).setDepth(DEPTH_INTERIOR);
+    this.mapImages.push(floor);
+    if (id === 'villa3') this.showCityView('villa3', corner, floor);
+    if (id !== 'villa2') return;
+    const name = ensureWalkDoorTexture(this, 'villa/door-hall-frames');
+    this.walkDoors = VILLA_HALL_DOORS.map(({ u, map }) => {
+      const image = this.add
+        .image(corner.x + u, corner.y + Math.floor(u / 2) - VILLA_ROOM_DOOR.top, name, '0')
+        .setOrigin(0, 0)
+        .setDepth(DEPTH_FLOOR_TILE - 0.01);
+      this.mapImages.push(image);
+      return new WalkDoor(image, this.world.portals.filter((p) => p.door && p.to === map));
+    });
+    this.paintVillaPlates();
+    // 방 주인은 복도에 들어올 때 한 번 읽는다(다 읽기 전에 다른 맵으로 가면 버림).
+    const visit = this.minimapEpoch;
+    void this.session.villaRooms().then((rooms) => {
+      if (!rooms || visit !== this.minimapEpoch) return;
+      this.villaOwners = rooms;
+      this.paintVillaPlates();
+    });
+  }
+
+  /** 복도 명패 이름표: 주인이 있는 방만 '닉네임네 집'(빈 방은 그림의 호수만, 디자인 세션 11). 주인 목록이 바뀔 때만 다시 단다. */
+  private paintVillaPlates() {
+    if (this.mapId !== 'villa2') return;
+    const corner = gridToWorld(VILLA_HALL[0], VILLA_HALL[1]);
+    for (const { room, plate } of VILLA_HALL_DOORS) {
+      const tag = `plate-${room}`;
+      const owner = this.villaOwners?.get(room);
+      const index = this.signs.findIndex((sign) => sign.tag === tag);
+      if (index >= 0) {
+        this.tags.remove(tag);
+        this.signs.splice(index, 1);
+      }
+      if (!owner) continue;
+      this.tags.add(tag, `${owner.nickname || '누군가'}네 집`, 'plate');
+      this.signs.push({ tag, x: corner.x + plate, y: corner.y + Math.floor(plate / 2) - VILLA_PLATE_LIFT });
+    }
+  }
+
+  /** 빌라 복도 문 포탈이 '내 방으로 하기'를 물어야 하는 문이면 그 호수: 빈 방이고 내 방이 아직 없을 때(주인 목록을 읽은 뒤). */
+  private villaClaimRoom(portal: Portal): number | null {
+    if (this.mapId !== 'villa2' || !portal.door || !this.villaOwners) return null;
+    const room = VILLA_HALL_DOORS.find(({ map }) => map === portal.to)?.room;
+    if (room === undefined || this.villaOwners.has(room)) return null;
+    for (const { owner } of this.villaOwners.values()) if (owner === this.session.profile.id) return null;
+    return room;
+  }
+
+  /**
+   * 빌라 빈 방 문 앞에서 문 쪽으로 걸었고 내 방이 없을 때: 문을 열기 전에 확인 창 [내 방으로 하기] [그냥 들어가기] [닫기](디자인 세션 11 villa.json claim).
+   * 내 방이 되면 명패를 바로 달고 들어간다. 그새 다른 사람이 가져갔으면 같은 창에 "이미 주인이 있는 방입니다."와 [그냥 들어가기] [닫기].
+   */
+  private askVillaClaim(portal: Portal, room: number) {
+    const root = document.getElementById('hud');
+    if (!root) return;
+    this.villaAsking = portal;
+    const modal = new Modal(root, 'villa-claim', `${room}호`);
+    this.villaModal = modal;
+    const note = element('modal-note', modal.box);
+    note.hidden = true;
+    modal.box.querySelector('.modal-title')?.after(note);
+    const enter = () => {
+      this.villaAsking = null;
+      if (this.mapId === 'villa2' && this.doorInFront(this.me.tile) === portal) this.startDoorPass(portal, true);
+    };
+    const claim = modal.button(
+      '내 방으로 하기',
+      async () => {
+        const result = await this.session.claimVillaRoom(room);
+        const rooms = await this.session.villaRooms();
+        if (rooms && this.mapId === 'villa2') {
+          this.villaOwners = rooms;
+          this.paintVillaPlates();
+        }
+        if (result === 'ok' || result === 'have') {
+          enter();
+          return;
+        }
+        // 그새 다른 사람이 가져갔거나 실패했다: 같은 창에 알리고 [그냥 들어가기] [닫기]만 남긴다.
+        note.textContent = result === 'taken' ? '이미 주인이 있는 방입니다.' : '잠시 뒤에 다시 해 주세요.';
+        note.hidden = false;
+        claim.remove();
+        return false;
+      },
+      true,
+    );
+    modal.button('그냥 들어가기', enter);
+    modal.button('닫기', () => undefined);
+    modal.whenClosed(() => {
+      if (this.villaAsking === portal) this.villaAsking = null;
+      if (this.villaModal === modal) this.villaModal = null;
+    });
+  }
+
+  /**
    * 옥상·바깥 계단 도시 풍경(2026-11-27 사용자 "우리 옥상과, 옥상 올라가는 계단 … 시티뷰를 구경할 수 있도록", 디자인 세션 9 city-views.md 0절):
    * 맵 밖에 시간대 한 벌의 풍경 층을 깔고, 바닥 앞 변 아래에 우리 건물 바깥벽(계단은 유리벽) 조각을 붙이고, 바닥 그림에 시간대 색을 곱한다.
    * 카메라 따라가기는 그대로(캐릭터 가운데)다.
    */
-  private showCityView(id: 'rooftop' | 'stairs', corner: { x: number; y: number }, floor: Phaser.GameObjects.Image) {
+  private showCityView(id: 'rooftop' | 'stairs' | 'villa3', corner: { x: number; y: number }, floor: Phaser.GameObjects.Image) {
     const pinned = CITY_PINNED[id];
     this.phaseArt.use([...skylineArt(id), ...new Set(pinned.map((piece) => piece.art))]);
     this.skyline.show(id, corner.y);
@@ -1515,7 +1646,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.skyline.hide();
     this.floorTinted = [];
     this.doors.clear();
-    this.walkDoor = null;
+    this.walkDoors = [];
+    // 맵이 바뀌면(쓰러짐·순간이동 등) 복도의 '내 방으로 하기' 창도 닫는다.
+    this.villaModal?.close();
+    this.villaModal = null;
+    this.villaAsking = null;
     this.doorGoal = null;
     this.windows.clear();
     this.otherPoses.clear();
@@ -1651,7 +1786,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else if (portal.to === 'fame') void this.fame.open();
       else if (portal.to === 'board') this.board.open();
       else if (portal.to === 'trade') this.exchange.open();
-      else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor);
+      else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor, this.mapId === 'villa_lift');
       else if (isGame(portal.to)) this.casino.open(portal.to);
       else if (isAdventure(portal.to)) void this.goAdventureMap(portal.to);
       else this.travel(portal.to);
@@ -1684,7 +1819,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         return;
       }
       // 문 앞 칸에서 문 쪽(벽 쪽, dy −1)으로 걸으면 문으로 넘어간다.
-      const doorAhead = dir.dy < 0 ? this.walkDoor?.portalInFront(this.me.tile) : undefined;
+      const doorAhead = dir.dy < 0 ? this.doorInFront(this.me.tile) : undefined;
       if (doorAhead) {
         this.startDoorPass(doorAhead);
         return;
@@ -2589,7 +2724,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.clearRoute();
     this.workGoal = null;
     this.press = null;
-    if (to === 'elevator' && isTower(this.mapId)) this.elevatorFloor = this.mapId;
+    if ((to === 'elevator' || to === 'villa_lift') && isTower(this.mapId)) this.elevatorFloor = this.mapId;
     this.traveling = true;
     this.stopWork();
     this.dropSeat();
@@ -3867,29 +4002,61 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 걸어서 지나가는 문(빈방·발코니의 발코니 문)을 여닫는다: 넘어가는 중이거나, 막 넘어와 잠시 열어 두는 동안이거나,
+   * 걸어서 지나가는 문(빈방·발코니의 발코니 문, 4층 발코니 문, 빌라 현관문)을 여닫는다: 넘어가는 중이거나, 막 넘어와 잠시 열어 두는 동안이거나,
    * 문 앞 칸에서 문 쪽(dy < 0)을 보는 사람(나와 보이는 남)이 있으면 열고, 아니면 닫는다. 프레임 넘기기는 WalkDoor가 70ms마다 한다.
-   * 이 맵에 문이 없으면 바로 끝나고, 있어도 칸·방향 비교 몇 번이다.
+   * 이 맵에 문이 없으면 바로 끝나고, 있어도 문마다 칸·방향 비교 몇 번이다(빌라 복도 문 열 개).
+   * 빌라 빈 방 문은 '내 방으로 하기'를 물어야 하는 동안(내 방이 없음) 내가 보고 서 있어도 열지 않는다(확인 창이 먼저).
    */
   private updateWalkDoor(time: number) {
-    const door = this.walkDoor;
-    if (!door) return;
-    const facing = (a: Avatar) => !a.isHidden && a.gridFacing.dy < 0 && door.portalInFront(a.tile) !== undefined;
-    let open = this.doorPass !== null || door.held(time) || facing(this.me);
-    if (!open) {
-      for (const avatar of this.others.values()) {
-        if (facing(avatar)) {
-          open = true;
-          break;
+    for (const door of this.walkDoors) {
+      const facing = (a: Avatar) => !a.isHidden && a.gridFacing.dy < 0 && door.portalInFront(a.tile) !== undefined;
+      const mine = this.doorPass ? door.portals.includes(this.doorPass) : facing(this.me) && !this.villaHolds(door.portalInFront(this.me.tile)!);
+      let open = mine || door.held(time);
+      if (!open) {
+        for (const avatar of this.others.values()) {
+          if (facing(avatar)) {
+            open = true;
+            break;
+          }
         }
       }
+      door.want(open, time);
+      door.update(time);
     }
-    door.want(open, time);
-    door.update(time);
   }
 
-  /** 문 앞 칸에서 문으로 넘어가기 시작한다(문을 보고 선다). 문이 다 열리면 advanceDoorPass가 들어간다. */
-  private startDoorPass(portal: Portal) {
+  /** 이 문 포탈이 확인 창(빌라 빈 방) 때문에 아직 열면 안 되는지 */
+  private villaHolds(portal: Portal) {
+    return this.villaAsking === portal || this.villaClaimRoom(portal) !== null;
+  }
+
+  /** tile이 문 앞 칸이면 그 칸의 문 포탈 */
+  private doorInFront(tile: Tile) {
+    for (const door of this.walkDoors) {
+      const portal = door.portalInFront(tile);
+      if (portal) return portal;
+    }
+    return undefined;
+  }
+
+  /** 이 문 포탈이 달린 문 */
+  private doorOf(portal: Portal) {
+    return this.walkDoors.find((door) => door.portals.includes(portal));
+  }
+
+  /**
+   * 문 앞 칸에서 문으로 넘어가기 시작한다(문을 보고 선다). 문이 다 열리면 advanceDoorPass가 들어간다.
+   * 빌라 빈 방 문이고 내 방이 없으면 먼저 '내 방으로 하기' 창을 띄운다(asked: 창에서 들어가기를 골라 다시 부름).
+   */
+  private startDoorPass(portal: Portal, asked = false) {
+    const room = asked ? null : this.villaClaimRoom(portal);
+    if (room !== null) {
+      this.clearRoute();
+      this.doorGoal = null;
+      this.me.face(portal.x - this.me.tile.x, portal.y - this.me.tile.y);
+      this.askVillaClaim(portal, room);
+      return;
+    }
     this.clearRoute();
     this.workGoal = null;
     this.advPending = null;
@@ -3906,7 +4073,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    */
   private advanceDoorPass() {
     const portal = this.doorPass!;
-    const door = this.walkDoor;
+    const door = this.doorOf(portal);
     const back = portalsOf(portal.to as MapId).filter((p) => p.door && p.to === this.mapId);
     if (!door || !back.length) {
       this.doorPass = null;
@@ -3920,7 +4087,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       () => {
         this.doorPass = null;
         this.me.teleport({ x: other.x, y: other.y });
-        this.walkDoor?.showOpen(this.time.now + WALK_DOOR_STEP_MS + WALK_DOOR_HOLD_MS);
+        this.doorOf(other)?.showOpen(this.time.now + WALK_DOOR_STEP_MS + WALK_DOOR_HOLD_MS);
         this.moveTo(other.landing, WALK_DOOR_STEP_MS, 'walk');
         this.me.face(other.landing.x - other.x, other.landing.y - other.y);
       },
@@ -3932,8 +4099,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    * 휴대폰에서 문 그림을 눌렀다: 그 문 칸(누른 곳에 가까운 쪽)의 문 앞 칸으로 걸어가 넘어간다. 이미 문 앞 칸이면 바로 넘어간다. 문을 눌렀으면 true
    */
   private tapWalkDoor(wx: number, wy: number) {
-    const door = this.walkDoor;
-    if (!door || !door.contains(wx, wy)) return false;
+    const door = this.walkDoors.find((d) => d.contains(wx, wy));
+    if (!door) return false;
     const here = door.portalInFront(this.me.tile);
     if (here) {
       this.startDoorPass(here);

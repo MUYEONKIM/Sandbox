@@ -1511,6 +1511,16 @@ canvas {
   font-size: 18px;
 }
 
+/* 빌라 복도 명패 위 '닉네임네 집'(2026-11-27, 디자인 세션 11 villa.json plates.style) */
+.plate-name {
+  padding: 0 6px;
+  color: #f6efd9;
+  background: rgb(63 43 30 / 92%);
+  border: 1px solid #c9a24e;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .float-text {
   position: absolute;
   bottom: 100%;
@@ -6540,4 +6550,18 @@ canvas {
  * 포탈·가구로 여는 창(.office)과 확인 창(.modal-backdrop)은 숨기지 않는다. display만 바꿔 다시 그리는 비용이 작다. */
 #hud.ui-hidden > :not(.office):not(.modal-backdrop) {
   display: none !important;
+}
+
+/* 빌라 '내 방으로 하기' 창(2026-11-27): 버튼 셋이 글자가 꺾이지 않게 한 줄에, 좁으면 다음 줄로 */
+.modal.villa-claim {
+  width: min(440px, 100%);
+}
+
+.modal.villa-claim .modal-buttons {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.modal.villa-claim .modal-button {
+  white-space: nowrap;
 }

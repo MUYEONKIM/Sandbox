@@ -1,7 +1,7 @@
 import type { Color } from '../art/pixels';
 import { MAP_SIZE } from '../config';
 import { GAMES, isGame, type GameId } from './casino';
-import { COUNTER_INFO, FLOORS, isTower, PANEL_INFO, type TowerId } from './tower';
+import { COUNTER_INFO, FLOORS, isTower, PANEL_INFO, VILLA_ROOMS, villaRoomId, type TowerId, type VillaRoomId } from './tower';
 import { advEntry, advMap, advArrival, type AdvPortalSpot } from './adventureMaps';
 
 const END = MAP_SIZE - 1;
@@ -267,6 +267,17 @@ export const MAPS: Record<MapId, MapInfo> = {
     background: '#05081a',
     links: {},
   },
+  // 시작마을 빌라(2026-11-27, 디자인 세션 11 villa.json): 로비·엘리베이터·2층 복도·옥상·방 열. 시작마을 건물 안이라 공격이 막힌다(서버 hit_player도 villa로 시작하는 맵을 막음).
+  villa1: { name: '빌라 1층', floor: [], floorTop: BLOCK_TOP, color: 0xcfc6b4, accent: 0xffb37a, links: {}, safe: true },
+  villa_lift: { name: '엘리베이터', floor: [], floorTop: BLOCK_TOP, color: 0x8a929c, accent: 0xbfe6ff, links: {}, safe: true },
+  villa2: { name: '빌라 2층', floor: [], floorTop: BLOCK_TOP, color: 0xb9ae98, accent: 0xffb37a, links: {}, safe: true },
+  villa3: { name: '빌라 옥상', floor: [], floorTop: BLOCK_TOP, color: 0x5f8a62, accent: 0x8fd0ff, links: {}, safe: true },
+  ...(Object.fromEntries(
+    VILLA_ROOMS.map((room): [VillaRoomId, MapInfo] => [
+      villaRoomId(room),
+      { name: `${room}호`, floor: [], floorTop: BLOCK_TOP, color: 0xd9d4c8, accent: 0xffb37a, links: {}, safe: true },
+    ]),
+  ) as Record<VillaRoomId, MapInfo>),
   // 4층 발코니(2026-11-27, 비밀 아님). 맵 밖은 시간대마다 바뀌는 도시 풍경이다(src/game/cityViews.ts).
   balcony4: {
     name: '아이티공간 4층 발코니',
@@ -568,6 +579,21 @@ export const SMITHY = {
   name: '대장간',
 };
 
+/**
+ * 시작마을 빌라(2026-11-27, 디자인 세션 11 villa.json 2판): '농장 가는 길' 표지판 위 잔디밭의 나무 둘(소나무 (29, 4)·참나무 (23, 7))을 빼고
+ * 8 × 6칸 건물을 세웠다(사용자 "둘 다 빼고 그 자리에"). 현관은 광장 쪽 앞 왼쪽 면이고 문 앞 칸이 포탈이다.
+ */
+export const VILLA = {
+  sprite: 'villa/house' as const,
+  x: 21,
+  y: 2,
+  w: 8,
+  d: 6,
+  door: { x: 24, y: 8 },
+  landing: { x: 25, y: 10 },
+  name: '빌라',
+};
+
 /** 대장간 안 창구 포탈 */
 const FORGE_INFO = { name: '대장간', accent: 0xff9a3c };
 
@@ -728,6 +754,7 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...CAVE.door, to: 'dungeon', landing: CAVE.landing });
     portals.push({ ...COOP.door, to: 'farmcoop', landing: COOP.landing });
     portals.push({ ...SMITHY.door, to: 'smithy', landing: SMITHY.landing });
+    portals.push({ ...VILLA.door, to: 'villa1', label: VILLA.name, landing: VILLA.landing });
   }
   return portals;
 }

@@ -1370,11 +1370,12 @@ function paintDoor(painter: Painter, door: Doorway, floorNumber: number | null) 
     return;
   }
   if (door.kind === 'panel') {
-    // 층 버튼판: 위에서부터 7층, 맨 위에는 층 표시창
+    // 층 버튼판: 위에서부터 7층(빌라는 셋, door.buttons), 맨 위에는 층 표시창
+    const buttons = door.buttons ?? 7;
     painter.wallRect(wall, uc - 7, uc + 7, 22, 56, (u, v) => {
       if (u === uc - 7 || u === uc + 6 || v === 22 || v === 55) return 0x5b626c;
       const row = Math.floor((53 - v) / 4.4);
-      const inButton = Math.abs(u - uc) <= 1 && (53 - v) % 4.4 < 2.2 && row < 7;
+      const inButton = Math.abs(u - uc) <= 1 && (53 - v) % 4.4 < 2.2 && row < buttons;
       return inButton ? (row === 0 ? 0xffd84d : 0xf4f4f0) : 0x2b2f36;
     });
     painter.wallRect(wall, uc - 9, uc + 9, 60, 69, () => 0x1d2229);

@@ -1271,6 +1271,22 @@ export class GameSession {
     return !error;
   }
 
+  /** 빌라 방 주인 목록(SQL villa_room_list, 2026-11-27): 호수 → 주인 id·닉네임. 실패하면 null */
+  async villaRooms(): Promise<Map<number, { owner: string; nickname: string }> | null> {
+    const { data, error } = await supabase.rpc('villa_room_list');
+    if (error || !Array.isArray(data)) return null;
+    const rooms = new Map<number, { owner: string; nickname: string }>();
+    for (const row of data as { room: number; owner: string; nickname: string | null }[]) rooms.set(Number(row.room), { owner: row.owner, nickname: row.nickname ?? '' });
+    return rooms;
+  }
+
+  /** 빈 빌라 방을 내 방으로 한다(SQL claim_villa_room): 'ok' 됨, 'taken' 다른 사람이 가져감, 'have' 이미 내 방이 있음, null 실패 */
+  async claimVillaRoom(room: number): Promise<'ok' | 'taken' | 'have' | null> {
+    const { data, error } = await supabase.rpc('claim_villa_room', { p_room: room });
+    if (error) return null;
+    return data === 'ok' || data === 'taken' || data === 'have' ? data : null;
+  }
+
   /** 상자 안을 읽는다(SQL box_list). 실패하면 null */
   async boxList(x: number, y: number, z: number): Promise<BoxItem[] | null> {
     await this.flush();
