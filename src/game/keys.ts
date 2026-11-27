@@ -48,6 +48,8 @@ interface KeyActions {
   onChat(): void;
   /** M: 모험 지역 전체지도를 열고 닫는다(2026-11-25, 모험 지역 맵에서만 듣는다). */
   onMap(): void;
+  /** U: 화면의 인터페이스를 모두 숨기고 다시 보인다(2026-11-27 사용자 "특정키 누르면 인터페이스들 다 안보이게", 키는 코드 세션 7이 정함). */
+  onHideUi(): void;
 }
 
 /** event.code는 물리 키 위치를 뜻해서, 한글 입력 상태에서도 WASD와 I가 동작한다. */
@@ -120,6 +122,8 @@ export class Keys {
       this.actions.onRotate();
     } else if (e.code === 'KeyM') {
       this.actions.onMap();
+    } else if (e.code === 'KeyU') {
+      this.actions.onHideUi();
     } else if (e.code === 'Escape') {
       this.actions.onEscape();
     } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {

@@ -175,12 +175,17 @@ const NAMES = [
   'room/new-decor',
   'room/new-rails',
   'room/poses',
-  // 발코니(2026-11-27, 디자인 세션 8): 바탕 그림, 앞 난간 조각, 방 안쪽 문. 야경 층은 그 맵에 들어갈 때 따로 읽는다.
+  // 방 꾸미기 4차(디자인 세션 5: 러그·탁자·벽 조명·벽걸이 TV·벽 장식·탁상 소품, 새 창문)와 연말·크리스마스 묶음(디자인 세션 8)
+  'room/room-decor-4',
+  'room/room-openings-4',
+  'room/room-decor-xmas',
+  // 발코니(2026-11-27, 디자인 세션 8): 바탕 그림, 앞 난간 조각, 방 안쪽 문과 발코니 쪽 문의 여닫힘 네 장. 야경 층은 그 맵에 들어갈 때 따로 읽는다.
   'balcony/balcony-base',
   'balcony/rail-x',
   'balcony/rail-y',
   'balcony/rail-corner',
-  'balcony/door-room-right-wall',
+  'balcony/door-room-frames',
+  'balcony/door-balcony-frames',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

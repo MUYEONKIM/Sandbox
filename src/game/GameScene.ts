@@ -3,12 +3,7 @@ import { paintJumpShadow, paintSmoke } from '../art/effects';
 import { DECOR_LIFT, paintGround, TILE_CELL, worldRect } from '../art/ground';
 import { paintWorkGround } from '../art/workGround';
 import {
-  hideoutOrigin,
-  hideoutPassageOrigin,
   interiorOrigin,
-  paintHideoutFloor,
-  paintHideoutPassage,
-  paintHideoutWall,
   paintInterior,
   paintRailing,
 } from '../art/interior';
@@ -34,7 +29,6 @@ import {
   isOff,
   isPaper,
   isRug,
-  isTallWall,
   isWallDecor,
   isWallLike,
   isWindow,
@@ -54,13 +48,16 @@ import {
 } from '../blocks';
 import { isStore, seatKind, toggleOf } from './furnitureUse';
 import { CityView } from './cityView';
+import { ensureWalkDoorTexture, WalkDoor, WALK_DOOR_HOLD_MS, WALK_DOOR_STEP_MS } from './walkDoor';
 import { BALCONY_RAIL_ART, POSE_FRAMES, USE_SEATS } from '../roomUse';
 import type { DayPhase } from './daylight';
 import {
+  backWallHang,
   blockedWallCells,
   ensureRoomTextures,
   ensureWallDecorTexture,
   hangExtent,
+  hangOnWall,
   paperedWallTexture,
   placeWallDecor,
   placeWallDecorAt,
@@ -69,7 +66,9 @@ import {
   wallFront,
   wallNext,
   wallOutline,
+  CEIL_MAPS,
   WALL_DECOR_MAPS,
+  WALL_PAPER_OFF,
   type WallCell,
 } from './roomArt';
 import { FURNITURE_BLOCKS } from '../furniture';
@@ -139,7 +138,6 @@ import {
   CASTLE,
   DEFAULT_MAP,
   EXCHANGE,
-  type Area,
   isMapId,
   MAPS,
   OFFICE,
@@ -172,10 +170,10 @@ import {
   EXCHANGE_HALL_SIGN,
   FLOORS,
   ANNEX_DOOR,
+  BALCONY_DOOR_ART,
   BALCONY_RAILS,
   BALCONY_VIEW,
   HIDEOUT,
-  inHideout,
   isTower,
   TICKER_LIFT,
   type PartitionKind,
@@ -298,7 +296,6 @@ const DAYLIGHT_PAD = 2000;
 const BURNT_TINT = 0x6b5b50;
 const BATTLE_ART: Record<BattleKind, () => Art> = { sandbag: paintSandbags, hedgehog: paintHedgehog, crater: paintCrater };
 /** 4층 숨은 방 바닥은 층 그림 바로 위에 그린다. */
-const DEPTH_HIDEOUT = 0.55;
 /** 같은 칸에 쌓인 블록끼리 위층을 나중에 그리도록 높이마다 더하는 깊이. 칸 하나의 깊이 차(10)보다 훨씬 작다. */
 const STACK_DEPTH = 0.01;
 /**
@@ -450,12 +447,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 작물 곁 안내 창에 지난번 넣은 값. 모두 같으면 창을 고치지 않는다(docs/balance/farm.md 9.3 '그리는 법'). */
   private readonly farmCard = { plot: null as Plot | null, held: null as ItemId | null, seeds: -1, blocked: false, tick: 0 };
   private level: bigint;
-  /** 숨은 방이 보이는지. 그 칸들을 밟고 있는 동안에만 보인다. */
-  private hideoutShown = false;
   /** 이동 키 하나를 같은 칸에서 누르고 있는 중: "맵:x:y:키 코드", 그 칸에서 누르기 시작한 시각, 이미 열어 봤는지 */
   private hush: { place: string; since: number; tried: boolean } | null = null;
-  /** 숨은 방 그림. 사라지는 중에도 여기 남아 있다가 다 사라지면 지운다. */
-  private hideoutImages: Phaser.GameObjects.Image[] = [];
   /** 지금 레벨에서 모은 경험치 */
   private exp: number;
   private readonly others = new Map<string, Avatar>();
@@ -592,6 +585,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private doorsDirty = false;
   private nextDoorAt = Infinity;
   private doorTile = { x: -1, y: -1 };
+  /** 이 맵의 걸어서 지나가는 문(빈방·발코니의 발코니 문, 2026-11-27). 없으면 null */
+  private walkDoor: WalkDoor | null = null;
+  /** 문으로 넘어가는 중: 문이 다 열리길 기다렸다가 문 칸으로 한 걸음 들어가며 맵을 옮긴다. */
+  private doorPass: Portal | null = null;
+  /** 휴대폰에서 문을 눌러 문 앞 칸으로 걸어가는 중이면 그 문 칸 */
+  private doorGoal: Portal | null = null;
   /** 발코니 맵 밖의 밤 도시 야경. 그 맵에서만 그린다. */
   private city!: CityView;
   /** 발코니 카메라 자리를 마지막으로 맞춘 화면 크기·배율 */
@@ -684,10 +683,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.minimapEpoch++;
       this.nextMinimapAt = 0;
     });
-    // 숨은 방 안에서 접속을 끊었다면 방이 열린 채로 시작한다.
-    const saved = this.session.profile;
-    if (this.mapId === HIDEOUT.map && inHideout(saved.x, saved.y)) this.showHideout(false);
-
     const { id, nickname, hp, max_hp: maxHp, skin } = this.session.profile;
     this.me = new Avatar(this, id, this.startTile(), hp, skin, maxHp);
     this.me.floorLift = this.floorLiftAt;
@@ -1034,11 +1029,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 맵 하나를 화면에 올린다. 블록과 다른 플레이어는 서버에서 받아 채운다. */
   private showMap(id: MapId) {
     this.mapId = id;
-    this.hideoutShown = false;
-    this.hideoutBlocks.clear();
     const info = MAPS[id];
+    // 4층 숨은 방은 2026-11-27부터 따로 된 방(맵)이다. 들어오면 방 이름 글을 띄운다(예전 4층 안에서 드러날 때와 같음).
+    if (id === 'hideout') this.hud.announce(HIDEOUT.title);
     this.world = new World(generateMap(id), this.visiblePortals(id));
-    this.blockedWalls = blockedWallCells(id, this.world.portals);
+    this.blockedWalls = blockedWallCells(id);
     // 7, 8층처럼 넓은 맵은 월드 범위가 왼쪽 아래로 더 나가서 바닥 그림과 카메라 범위를 맵마다 맞춘다.
     const rect = worldRect(this.world.map.size);
     this.ground.setTexture(this.groundTexture(id)).setPosition(rect.left, 0);
@@ -1130,7 +1125,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (kind === 'crater') image.setDepth(DEPTH_DECAL);
     }
 
-    this.portalSprites = this.world.portals.map((portal) => this.addPortalSprite(portal));
+    // 걸어서 지나가는 문(Portal.door)과 숨은 입구(Portal.secret)는 포탈 그림·이름표가 없다.
+    this.portalSprites = this.world.portals.filter((portal) => !portal.door && !portal.secret).map((portal) => this.addPortalSprite(portal));
     // 블록은 이 뒤에 서버에서 받아 놓는다(spawnBlock이 덮는지 본다).
     this.keepClear.guard([...this.portalSprites.map(({ image }) => image), ...boards]);
     this.clearAdventurePortals();
@@ -1250,15 +1246,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!this.textures.exists(key)) this.textures.addCanvas(key, paintInterior(id));
     this.mapImages.push(this.add.image(left, top, key).setOrigin(0, 0).setDepth(DEPTH_INTERIOR));
     if (id === 'annex') {
-      // 발코니 문: 뒤쪽 오른쪽 벽에 붙인 그림. 벽지·벽걸이(0.52~0.54)보다 앞, 바닥 타일(0.58)보다 뒤에 그린다.
+      // 발코니 문: 뒤쪽 오른쪽 벽에 붙인 그림(여닫힘 네 장). 벽지·벽걸이(0.52~0.54)보다 앞, 바닥 타일(0.58)보다 뒤에 그린다.
       const corner = gridToWorld(x0, y0);
-      this.spriteTexture('balcony/door-room-right-wall');
-      this.mapImages.push(
-        this.add
-          .image(corner.x + ANNEX_DOOR.u, corner.y + Math.floor(ANNEX_DOOR.u / 2) - 50, 'balcony/door-room-right-wall', '__BASE')
-          .setOrigin(0, 0)
-          .setDepth(DEPTH_FLOOR_TILE - 0.01),
-      );
+      const name = ensureWalkDoorTexture(this, 'balcony/door-room-frames');
+      const image = this.add
+        .image(corner.x + ANNEX_DOOR.u, corner.y + Math.floor(ANNEX_DOOR.u / 2) - ANNEX_DOOR.top, name, '0')
+        .setOrigin(0, 0)
+        .setDepth(DEPTH_FLOOR_TILE - 0.01);
+      this.mapImages.push(image);
+      this.walkDoor = new WalkDoor(image, this.world.portals.filter((p) => p.door));
     }
     for (const { x, y } of this.world.map.railings) this.addMapArt('railing', paintRailing, x, y);
     this.showPartitions();
@@ -1285,6 +1281,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         .setOrigin(0, 0)
         .setDepth(DEPTH_INTERIOR),
     );
+    // 방으로 들어가는 문(여닫힘 네 장, 0번은 바탕에 그려진 문과 같음): 바닥 뒤 모서리 + (81, −10), 바탕 바로 위(캐릭터보다 뒤).
+    const doorName = ensureWalkDoorTexture(this, 'balcony/door-balcony-frames');
+    const door = this.add
+      .image(corner.x + BALCONY_DOOR_ART.x, corner.y + BALCONY_DOOR_ART.y, doorName, '0')
+      .setOrigin(0, 0)
+      .setDepth(DEPTH_INTERIOR + 0.001);
+    this.mapImages.push(door);
+    this.walkDoor = new WalkDoor(door, this.world.portals.filter((p) => p.door));
     // 카메라: 오른쪽 끝만 건물 오른쪽 끝에 묶는다(왼쪽과 세로는 묶지 않음). 따라가는 자리는 updateBalconyCamera가 화면 크기에 맞춘다.
     const far = 100_000;
     this.cameras.main.setBounds(corner.x + BALCONY_VIEW.right - far, -far, far, far * 2);
@@ -1416,100 +1420,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
-  /** 숨은 방 통로 한 칸 */
-  private readonly passageArea: Area = [HIDEOUT.passage.x, HIDEOUT.passage.y, HIDEOUT.passage.x, HIDEOUT.passage.y];
-
-  /** 숨은 방은 4층 바닥 끝의 정해진 칸이나 통로, 방 안을 밟고 있는 동안에만 보인다. */
-  private checkHideout() {
-    if (this.mapId !== HIDEOUT.map) return;
-    const { x, y } = this.me.tile;
-    const inside = (x === HIDEOUT.trigger.x && y === HIDEOUT.trigger.y) || inHideout(x, y);
-    if (inside && !this.hideoutShown) this.showHideout(true);
-    else if (!inside && this.hideoutShown) this.hideHideout();
-  }
-
-  /**
-   * 숨은 방 안에 놓인 블록과 가구. 방이 닫혀 있는 동안에는 World와 화면에 두지 않고 여기에만 둔다.
-   * World에 두면 방 밖 사람이 허공 칸을 가리켜 회수하거나 위에 쌓고, 미니맵 점과 총알 막힘으로 방 자리가 드러난다.
-   */
-  private readonly hideoutBlocks = new Map<string, PlacedBlock>();
-
-  private showHideoutBlocks() {
-    const blocks = [...this.hideoutBlocks.values()].sort((a, b) => a.z - b.z);
-    for (const { x, y, z, id } of blocks) if (!this.world.blockAtLevel(x, y, z)) this.spawnBlock({ x, y }, z, id);
-  }
-
-  private hideHideoutBlocks() {
-    for (const { x, y, z } of this.hideoutBlocks.values()) this.removeBlockAt(x, y, z);
-  }
-
-  /** 숨은 방 안의 칸인지(4층에서만) */
-  private inHideoutHere(x: number, y: number) {
-    return this.mapId === HIDEOUT.map && inHideout(x, y);
-  }
-
-  /** 숨은 방 그림을 지운다. 맵을 옮길 때 지워지도록 mapImages에서도 뺀다. */
-  private dropHideoutImages() {
-    const images = this.hideoutImages;
-    this.hideoutImages = [];
-    this.tweens.killTweensOf(images);
-    for (const image of images) image.destroy();
-    this.mapImages = this.mapImages.filter((image) => !images.includes(image));
-  }
-
-  /** 방을 벗어나면 서서히 사라지고 다시 걸을 수 없는 허공이 된다. */
-  private hideHideout() {
-    this.hideoutShown = false;
-    this.hideHideoutBlocks();
-    this.world.closeFloor(HIDEOUT.area);
-    this.world.closeFloor(this.passageArea);
-    this.drops.refresh();
-    this.tweens.killTweensOf(this.hideoutImages);
-    this.tweens.add({
-      targets: this.hideoutImages,
-      alpha: 0,
-      duration: 500,
-      ease: 'Sine.easeIn',
-      onComplete: () => {
-        if (!this.hideoutShown) this.dropHideoutImages();
-      },
-    });
-  }
-
-  /** 숨은 방을 내 화면에만 드러내고 걸어 들어갈 수 있게 한다. fadeIn이면 천천히 나타난다. */
-  private showHideout(fadeIn: boolean) {
-    this.dropHideoutImages();
-    this.hideoutShown = true;
-    this.world.openFloor(HIDEOUT.area, []);
-    this.world.openFloor(this.passageArea, []);
-    this.drops.refresh();
-    const [x0, y0] = HIDEOUT.area;
-    const { left, top } = hideoutOrigin(gridToWorld(x0, y0));
-    const { passage } = HIDEOUT;
-    const bridge = hideoutPassageOrigin(gridToWorld(passage.x, passage.y));
-    const texture = (key: string, paint: () => HTMLCanvasElement) => {
-      if (!this.textures.exists(key)) this.textures.addCanvas(key, paint());
-      return key;
-    };
-    const floor = this.add.image(left, top, texture('hideout-floor', paintHideoutFloor)).setOrigin(0, 0).setDepth(DEPTH_HIDEOUT);
-    // 벽은 방 맨 뒤 칸보다 바로 앞에 그려야 벽 뒤쪽 칸에 선 캐릭터가 벽에 가린다.
-    const wall = this.add
-      .image(left, top, texture('hideout-wall', paintHideoutWall))
-      .setOrigin(0, 0)
-      .setDepth(depthOf(x0, y0) - 1);
-    const path = this.add
-      .image(bridge.left, bridge.top, texture('hideout-passage', paintHideoutPassage))
-      .setOrigin(0, 0)
-      .setDepth(DEPTH_HIDEOUT);
-    this.mapImages.push(floor, wall, path);
-    const images = [floor, wall, path];
-    this.showHideoutBlocks();
-    this.hideoutImages = images;
-    this.hud.announce(HIDEOUT.title);
-    if (!fadeIn) return;
-    for (const image of images) image.setAlpha(0);
-    this.tweens.add({ targets: images, alpha: 1, duration: 1600, ease: 'Sine.easeOut' });
-  }
 
   private addSign(name: string, x: number, y: number) {
     const tag = `sign-${name}`;
@@ -1529,6 +1439,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.blockExtras.clear();
     this.city.hide();
     this.doors.clear();
+    this.walkDoor = null;
+    this.doorGoal = null;
     this.windows.clear();
     this.otherPoses.clear();
     this.dropSeat();
@@ -1546,8 +1458,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.covers.clear();
     this.workFx.clear();
     this.spotImages.clear();
-    this.tweens.killTweensOf(this.hideoutImages);
-    this.hideoutImages = [];
     for (const image of this.mapImages) image.destroy();
     this.mapImages = [];
     this.bullets.clear();
@@ -1567,7 +1477,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const delta = Math.min(this.game.loop.rawDelta, MAX_FRAME_MS);
     this.advancePlayer(delta);
     this.updatePress(time);
-    this.checkHideout();
     this.checkHush(time);
     for (const avatar of this.others.values()) avatar.update(delta);
     this.updateVision();
@@ -1580,6 +1489,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.updateAim();
     this.updateTorches(time);
     this.updateDoors(time);
+    this.updateWalkDoor(time);
     if (this.city.active) {
       this.updateBalconyCamera();
       this.city.update(delta);
@@ -1632,6 +1542,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const wasMoving = this.me.moving;
     this.me.update(delta);
     if (this.traveling || this.down) return;
+    if (this.doorPass) {
+      this.advanceDoorPass();
+      return;
+    }
 
     // F는 발밑에 주울 것이 있으면 줍고, 없으면 일을 시작하거나 멈춘다.
     // 맞닿은 칸에 쓸 수 있는 가구가 있으면 쓴다(앉기·눕기, 등 켜고 끄기, 커튼, 상자, 2026-11-27).
@@ -1667,6 +1581,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       else this.travel(portal.to);
       return;
     }
+    // 휴대폰에서 누른 문 앞 칸에 닿았다: 문으로 넘어간다.
+    if (this.doorGoal && !this.route.length && this.canAct) {
+      const goal = this.doorGoal;
+      this.doorGoal = null;
+      if (goal.landing.x === this.me.tile.x && goal.landing.y === this.me.tile.y) {
+        this.startDoorPass(goal);
+        return;
+      }
+    }
     // 누른 몬스터의 옆 칸에 닿았다: 싸운다.
     if (this.advPending && !this.route.length) {
       const m = this.advPending;
@@ -1678,9 +1601,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.clearRoute();
       this.advPending = null;
       this.workGoal = null;
+      this.doorGoal = null;
       // 앉았거나 누웠으면 먼저 일어나 들어온 칸에 선다.
       if (this.seated) {
         this.standUp();
+        return;
+      }
+      // 문 앞 칸에서 문 쪽(벽 쪽, dy −1)으로 걸으면 문으로 넘어간다.
+      const doorAhead = dir.dy < 0 ? this.walkDoor?.portalInFront(this.me.tile) : undefined;
+      if (doorAhead) {
+        this.startDoorPass(doorAhead);
         return;
       }
       this.beginStep(this.me.tile, dir);
@@ -1775,6 +1705,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    * 그 밖에는 그 칸까지 걷는다(낮은 벽 바로 너머 칸이면 넘어 뛴다).
    */
   private tap(wx: number, wy: number) {
+    this.doorGoal = null;
     // 모험 맵: 몬스터를 누르면 그 옆 칸까지 걸어가 싸운다(기획 19장 3번). 누른 자리로 본다.
     if (this.clickMonster(wx, wy)) return;
     const g = worldToGrid(wx, wy);
@@ -1798,6 +1729,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     if (inReach(this.me.tile, goal) && this.useFurniture(goal)) return;
     this.workGoal = null;
+    if (this.tapWalkDoor(wx, wy)) return;
     if (!this.tapJump(goal)) this.walkTo(goal);
   }
 
@@ -2576,8 +2508,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.session.refreshPresence();
   }
 
-  /** 포탈을 타면 화면을 어둡게 한 사이에 맵을 바꾼다. */
-  private travel(to: MapId, onArrive?: () => void) {
+  /** 포탈을 타면 화면을 어둡게 한 사이에 맵을 바꾼다. arrival을 주면 그 칸에 선다(없으면 arrivalFor). */
+  private travel(to: MapId, onArrive?: () => void, arrival?: Tile) {
     this.clearRoute();
     this.workGoal = null;
     this.press = null;
@@ -2587,7 +2519,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.dropSeat();
     const cam = this.cameras.main;
     cam.once('camerafadeoutcomplete', () => {
-      const tile = arrivalFor(to, this.mapId);
+      const tile = arrival ?? arrivalFor(to, this.mapId);
       this.clearMap();
       this.showMap(to);
       this.me.teleport(tile);
@@ -2614,13 +2546,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /**
    * 전쟁터: 손전등 빛을 다시 계산한다. 빛 밖의 다른 플레이어는 숨기지 않고 어둠 아래에서 어둡게 보이고, 이름표만 흐리게 한다
    * (2026-11-18 사용자 "시야각 밖에 있어도 어둡게라도 상대방 캐릭터는 보여야 된다. 시야각은 단순히 밝아지는 느낌이다").
-   * 4층: 숨은 방 안에 선 다른 사람은 내가 방을 열지 않았으면(내 화면에서 그 칸이 허공이면) 숨긴다(2026-11-15).
    */
   private updateVision() {
-    if (!this.flashlight.active) {
-      if (this.mapId === HIDEOUT.map) this.hideOthersInVoid();
-      return;
-    }
+    if (!this.flashlight.active) return;
     const me = this.me.position();
     const ox = me.x + 0.5;
     const oy = me.y + 0.5;
@@ -2635,14 +2563,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const [id, avatar] of this.others) {
       const at = avatar.position();
       this.tags.setDim(id, !this.flashlight.sees(at.x + 0.5, at.y + 0.5));
-    }
-  }
-
-  /** 내 화면에서 허공인 칸(닫힌 숨은 방)에 선 다른 사람과 이름표, 말풍선을 숨긴다. */
-  private hideOthersInVoid() {
-    for (const [id, avatar] of this.others) {
-      const hidden = this.world.isVoid(avatar.tile.x, avatar.tile.y);
-      if (avatar.setHidden(hidden)) this.tags.setHidden(id, hidden);
     }
   }
 
@@ -2697,7 +2617,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     };
     see(this.minimapEpoch);
     see(this.world.version);
-    see(this.hideoutShown ? 1 : 0);
     see(this.me.tile.x);
     see(this.me.tile.y);
     // 모험 보스 점: 목록이 바뀔 때(맵에 놓을 때, 이긴 뒤, 새 판)만 번호가 바뀐다. 모험 맵이 아니면 -1.
@@ -2716,7 +2635,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       me: this.me.tile,
       others,
       blocks: [...this.world.blockTiles(), ...this.world.map.walls, ...this.world.map.partitions],
-      portals: this.world.portals,
+      portals: this.world.portals.filter((portal) => !portal.door && !portal.secret),
       bosses: this.advField?.bossDots ?? [],
     });
   }
@@ -3096,9 +3015,20 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return dy <= half && dy >= -half - height;
   }
 
+  /** 인터페이스를 숨겼는지(U, main.ts). 숨긴 동안은 설치 미리보기·손 닿는 범위 테두리도 그리지 않는다. */
+  private uiHidden = false;
+
+  /** 인터페이스 숨기기(U): 게임 위에 그리는 손 닿는 범위·설치 미리보기도 숨기고, 다시 보일 때 되살린다. */
+  setUiHidden(hidden: boolean) {
+    this.uiHidden = hidden;
+    this.range.setVisible(!hidden);
+    this.marker.setVisible(!hidden);
+    if (hidden) this.ghost.setVisible(false);
+  }
+
   private updateHover() {
-    // 휴대폰에는 마우스 커서가 없으므로 설치 미리보기를 띄우지 않는다.
-    if (this.hud.isOpen || this.input.activePointer.wasTouch) {
+    // 휴대폰에는 마우스 커서가 없으므로 설치 미리보기를 띄우지 않는다. 인터페이스를 숨겼을 때도 띄우지 않는다.
+    if (this.hud.isOpen || this.input.activePointer.wasTouch || this.uiHidden) {
       this.hoveredBlock = this.hoveredGround = this.hoveredWall = this.hoveredCeil = null;
       this.ghost.setVisible(false);
       this.marker.clear();
@@ -3352,7 +3282,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.strokeWall(cell, ok ? 0xffffff : 0xff6b5e, span);
       if (held && isWallDecor(held)) {
         ensureWallDecorTexture(this);
-        if (placeWallDecor(this.ghost, held, cell)) {
+        const low = backWallHang(this.mapId, held, cell);
+        const ext = hangExtent(held);
+        if (placeWallDecor(this.ghost, held, cell, low !== null && ext ? low - ext.low : 0)) {
           this.ghost.setAlpha(spot ? 0.7 : 0.35).setTint(spot ? 0xffffff : 0xff6b5e).setVisible(true);
           keepDepth(this.ghost, DEPTH_WALL_HANG + 0.001);
         }
@@ -3470,7 +3402,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 매다는 것: 가리킨 칸의 천장 자리. 지붕이 있는 맵(벽지를 붙이는 맵과 같음)에서만 건다(room-rules.md 7절).
     if (isCeil(id)) {
       const tile = this.hoveredBlock ?? this.hoveredGround;
-      if (!tile || !WALL_DECOR_MAPS.has(this.mapId)) return null;
+      if (!tile || !CEIL_MAPS.has(this.mapId)) return null;
       return this.world.canHang(tile, this.me.tile, id) ? { ...tile, z: CEIL_Z } : null;
     }
     if (isWallDecor(id)) {
@@ -3478,8 +3410,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       // 벽지는 놓는 벽 위에도 바른다(그 칸 맨 위가 놓는 벽일 때, 2026-11-25).
       const target = this.hoveredBlock;
       if (!target || this.world.ownerOf(target.x, target.y)) return null;
-      // 벽걸이는 높은 놓는 벽에 건다(2026-11-27).
-      if (!isPaper(id)) return this.tallWallHangSpot(target, id);
+      // 벽걸이는 놓는 벽에 건다(높은 벽 2026-11-27, 낮은 벽 같은 날 사용자 "우리가 세운 벽에도 장식품을").
+      if (!isPaper(id)) return this.wallHangSpot(target, id);
       // 벽걸이가 걸린 높은 벽에는 벽지를 더 바르지 않는다(벽지는 벽 바로 위 자리).
       const top = this.world.topAt(target.x, target.y);
       if (top && blockArt(top.id).kind === 'hang') return null;
@@ -3497,8 +3429,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 벽 칸에 벽지·벽걸이를 붙일 자리. 손은 벽 칸 바로 앞 바닥에 닿아야 하고, 문·포탈 뒤 칸에는 붙이지 않는다.
-   * 벽지는 칸마다 하나, 벽걸이는 벽을 따라 차지하는 칸과 높이가 다른 벽걸이와 겹치지 않아야 한다.
+   * 벽 칸에 벽지·벽걸이를 붙일 자리. 손은 벽 칸 바로 앞 바닥에 닿아야 하고, 벽 그림에 그린 문 자리에는 붙이지 않는다(포탈 뒤 벽 칸은 붙임, 2026-11-27).
+   * 벽지는 칸마다 하나, 벽걸이는 한 칸에 벽지까지 5개다.
    */
   private wallSpot(cell: WallCell, id: BlockId): (Tile & { z: number }) | null {
     if (!inBuildReach(this.me.tile, wallFront(cell))) return null;
@@ -3508,8 +3440,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!usable(cell)) return null;
     const stackOf = (c: Tile) => Array.from({ length: this.world.heightAt(c.x, c.y) }, (_, i) => this.world.blockAtLevel(c.x, c.y, i));
     const mine = hangExtent(id);
-    if (!mine) return stackOf(cell).some((b) => b && blockArt(b).kind === 'paper') ? null : { x: cell.x, y: cell.y, z };
+    if (!mine) return WALL_PAPER_OFF.has(this.mapId) || stackOf(cell).some((b) => b && blockArt(b).kind === 'paper') ? null : { x: cell.x, y: cell.y, z };
     for (let k = 1; k < mine.span; k++) if (!usable(wallNext(cell, k))) return null;
+    // 문 칸(빈방 발코니 문)에 걸치면 문 위로 올려 건다. 올려도 벽에 들어가지 않으면 걸지 않는다.
+    if (backWallHang(this.mapId, id, cell) === null) return null;
     // 벽걸이는 겹쳐 건다(2026-11-27 사용자, room-rules.md 13절): 한 칸에 벽지까지 5개, 높이·칸 겹침은 보지 않는다.
     // 같은 벽걸이를 같은 칸에 또 거는 것만 막는다(똑같이 포개져 하나로 보임).
     if (stackOf(cell).includes(id)) return null;
@@ -3517,13 +3451,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 높은 놓는 벽(76px)에 벽걸이를 걸 자리(room-rules.md 13.2): 그 칸 쌓기(z 0~4) 안에서 벽·벽지·벽걸이 위 다음 z다.
-   * 두 칸 이상 벽걸이는 뻗는 옆 칸도 같은 방향의 높은 놓는 벽이어야 한다. 같은 벽걸이를 또 걸지 않는다.
+   * 놓는 벽에 벽걸이를 걸 자리(room-rules.md 13.2, 낮은 벽은 2026-11-27 사용자 "우리가 세운 벽에도 장식품을"): 그 칸 쌓기(z 0~4) 안에서
+   * 벽·벽지·벽걸이 위 다음 z다. 그림이 그 벽 높이에 들어가야 하고(roomArt.hangOnWall), 두 칸 이상 벽걸이는 뻗는 옆 칸도 같은 방향·같은 높이의
+   * 놓는 벽이어야 한다. 같은 벽걸이를 또 걸지 않는다.
    */
-  private tallWallHangSpot(target: Tile, id: BlockId): (Tile & { z: number }) | null {
-    const wall = this.tallWallAt(target.x, target.y);
+  private wallHangSpot(target: Tile, id: BlockId): (Tile & { z: number }) | null {
+    const wall = this.hangWallAt(target.x, target.y);
     const mine = hangExtent(id);
-    if (!wall || !mine || !inBuildReach(this.me.tile, target)) return null;
+    if (!wall || !mine || hangOnWall(id, wall.height) === null || !inBuildReach(this.me.tile, target)) return null;
     const z = this.world.heightAt(target.x, target.y);
     if (z >= MAX_STACK) return null;
     for (let k = wall.z + 1; k < z; k++) {
@@ -3531,17 +3466,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (!above || !isWallDecor(above) || above === id) return null;
     }
     for (let k = 1; k < mine.span; k++) {
-      const next = wall.axis === 'x' ? this.tallWallAt(target.x + k, target.y) : this.tallWallAt(target.x, target.y + k);
-      if (!next || next.axis !== wall.axis) return null;
+      const next = wall.axis === 'x' ? this.hangWallAt(target.x + k, target.y) : this.hangWallAt(target.x, target.y + k);
+      if (!next || next.axis !== wall.axis || next.height !== wall.height) return null;
     }
     return { x: target.x, y: target.y, z };
   }
 
-  /** 칸에 놓인 높은 놓는 벽: 높이 z와 방향 */
-  private tallWallAt(x: number, y: number): { z: number; axis: 'x' | 'y' } | null {
+  /**
+   * 칸에 놓인, 벽걸이를 거는 놓는 벽: 높이 z, 방향, 벽 높이(px). 벽지를 바르는 벽과 같다(유리 칸막이와 난간은 빼고, blocks.ts canStackOn).
+   * 낮은 벽 위 윗면이 있는 벽(낮은 벽 18, 낮은 나무 난간)은 그 윗면 높이다.
+   */
+  private hangWallAt(x: number, y: number): { z: number; axis: 'x' | 'y'; height: number } | null {
     const wall = this.placedWallAt(x, y);
     const art = wall ? blockArt(wall.id) : null;
-    return wall && art?.kind === 'pwall' && art.axis !== 'none' && isTallWall(wall.id) ? { z: wall.z, axis: art.axis } : null;
+    if (!wall || art?.kind !== 'pwall' || art.axis === 'none' || art.style === 'rd_wall_glass') return null;
+    return { z: wall.z, axis: art.axis, height: topOf(wall.id) ?? wallStyleHeight(art.style) };
   }
 
   /** 벽 칸에서 회수할 것(맨 위). 없거나 손이 닿지 않으면 null */
@@ -3582,11 +3521,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 블록은 무제한이라 가방에서 빼지 않는다. 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
     const { mapId } = this;
     this.spawnBlock(spot, z, id);
-    const hidden = this.inHideoutHere(x, y);
-    if (hidden) this.hideoutBlocks.set(`${x},${y},${z}`, { x, y, z, id });
     void this.session.placeBlock(x, y, z, id).then((placed) => {
       if (placed || mapId !== this.mapId) return;
-      if (hidden) this.hideoutBlocks.delete(`${x},${y},${z}`);
       this.removeBlockAt(x, y, z);
       void this.session.syncBlocks();
     });
@@ -3628,7 +3564,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const removed = await this.session.removeBlock(x, y, z);
     if (!removed) return;
     if (mapId !== this.mapId) return;
-    this.hideoutBlocks.delete(`${x},${y},${z}`);
     this.removeBlockAt(x, y, z);
   }
 
@@ -3775,16 +3710,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 높은 놓는 벽에 건 벽걸이(room-rules.md 13.2): 뒤쪽 벽과 같은 기울기 그림을 그 벽의 보이는 면에 놓는다.
+   * 놓는 벽에 건 벽걸이(room-rules.md 13.2): 뒤쪽 벽과 같은 기울기 그림을 그 벽의 보이는 면에 놓는다. 낮은 벽은 그 벽 높이에 맞춰 내려 건다(hangOnWall).
    * x 방향 벽은 앞-왼쪽 면(오른쪽 벽 기울기), y 방향 벽은 앞-오른쪽 면(왼쪽 벽 기울기)이다. 깊이는 뻗은 마지막 칸의 벽 바로 앞이고,
-   * 같은 칸은 나중에 건 것(z 큰 것)이 앞이다. 아래에 높은 벽이 없으면(옛 자료) 숨긴다.
+   * 같은 칸은 나중에 건 것(z 큰 것)이 앞이다. 아래에 거는 벽이 없거나 그림이 들어가지 않으면(옛 자료) 숨긴다.
    */
-  private dressTallWallHang(image: Phaser.GameObjects.Image, id: BlockId, x: number, y: number, z: number) {
-    const wall = this.tallWallAt(x, y);
+  private dressWallHang(image: Phaser.GameObjects.Image, id: BlockId, x: number, y: number, z: number) {
+    const wall = this.hangWallAt(x, y);
     const ext = hangExtent(id);
-    if (!wall || !ext || wall.z >= z) return image.setVisible(false);
+    const hang = wall ? hangOnWall(id, wall.height) : null;
+    if (!wall || !ext || hang === null || wall.z >= z) return image.setVisible(false);
     ensureWallDecorTexture(this);
-    const lift = this.world.supportOf(x, y, wall.z).lift;
+    const lift = this.world.supportOf(x, y, wall.z).lift + hang - ext.low;
     const base = wall.axis === 'x' ? gridToWorld(x, y + WALL_FACE) : gridToWorld(x + WALL_FACE, y);
     if (!placeWallDecorAt(image, id, wall.axis === 'x' ? 'right' : 'left', { x: base.x, y: base.y - lift })) return image.setVisible(false);
     image.setVisible(true);
@@ -3794,7 +3730,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 화면 점 (wx, wy)가 가리키는 천장에 매단 것의 놓은 칸. 줄 위 끝(76px)부터 가장 낮은 곳까지를 본다. */
   private ceilAtPoint(wx: number, wy: number): Tile | null {
-    if (!WALL_DECOR_MAPS.has(this.mapId)) return null;
+    if (!CEIL_MAPS.has(this.mapId)) return null;
     for (const h of [44, 52, 60, 68, 76]) {
       const g = worldToGrid(wx, wy + h);
       const hit = this.world.ceilAt(Math.floor(g.gx), Math.floor(g.gy));
@@ -3850,6 +3786,86 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         } else this.nextDoorAt = Math.min(this.nextDoorAt, door.closeAt);
       }
     }
+  }
+
+  /**
+   * 걸어서 지나가는 문(빈방·발코니의 발코니 문)을 여닫는다: 넘어가는 중이거나, 막 넘어와 잠시 열어 두는 동안이거나,
+   * 문 앞 칸에서 문 쪽(dy < 0)을 보는 사람(나와 보이는 남)이 있으면 열고, 아니면 닫는다. 프레임 넘기기는 WalkDoor가 70ms마다 한다.
+   * 이 맵에 문이 없으면 바로 끝나고, 있어도 칸·방향 비교 몇 번이다.
+   */
+  private updateWalkDoor(time: number) {
+    const door = this.walkDoor;
+    if (!door) return;
+    const facing = (a: Avatar) => !a.isHidden && a.gridFacing.dy < 0 && door.portalInFront(a.tile) !== undefined;
+    let open = this.doorPass !== null || door.held(time) || facing(this.me);
+    if (!open) {
+      for (const avatar of this.others.values()) {
+        if (facing(avatar)) {
+          open = true;
+          break;
+        }
+      }
+    }
+    door.want(open, time);
+    door.update(time);
+  }
+
+  /** 문 앞 칸에서 문으로 넘어가기 시작한다(문을 보고 선다). 문이 다 열리면 advanceDoorPass가 들어간다. */
+  private startDoorPass(portal: Portal) {
+    this.clearRoute();
+    this.workGoal = null;
+    this.advPending = null;
+    this.doorGoal = null;
+    this.stopWork();
+    this.me.face(portal.x - this.me.tile.x, portal.y - this.me.tile.y);
+    this.doorPass = portal;
+  }
+
+  /**
+   * 문으로 넘어가는 중(advancePlayer가 매 프레임 부름): 문이 다 열리면 문 칸으로 한 걸음 들어가며 화면을 어둡게 하고 맵을 옮긴다.
+   * 건너편에서는 짝 문(같은 차례의 문 칸)에 나타나 문이 열린 채로 문 앞 칸까지 한 걸음 걸어 나오고, 250ms 뒤 문이 닫힌다(디자인 balcony-door.json).
+   * 서버에 저장하는 내 자리는 건너편 문 앞 칸이다.
+   */
+  private advanceDoorPass() {
+    const portal = this.doorPass!;
+    const door = this.walkDoor;
+    const back = portalsOf(portal.to as MapId).filter((p) => p.door && p.to === this.mapId);
+    if (!door || !back.length) {
+      this.doorPass = null;
+      return;
+    }
+    if (this.me.moving || !door.isOpen) return;
+    const other = back[Math.min(door.portals.indexOf(portal), back.length - 1)];
+    this.moveTo({ x: portal.x, y: portal.y }, WALK_DOOR_STEP_MS, 'walk');
+    this.travel(
+      portal.to as MapId,
+      () => {
+        this.doorPass = null;
+        this.me.teleport({ x: other.x, y: other.y });
+        this.walkDoor?.showOpen(this.time.now + WALK_DOOR_STEP_MS + WALK_DOOR_HOLD_MS);
+        this.moveTo(other.landing, WALK_DOOR_STEP_MS, 'walk');
+        this.me.face(other.landing.x - other.x, other.landing.y - other.y);
+      },
+      other.landing,
+    );
+  }
+
+  /**
+   * 휴대폰에서 문 그림을 눌렀다: 그 문 칸(누른 곳에 가까운 쪽)의 문 앞 칸으로 걸어가 넘어간다. 이미 문 앞 칸이면 바로 넘어간다. 문을 눌렀으면 true
+   */
+  private tapWalkDoor(wx: number, wy: number) {
+    const door = this.walkDoor;
+    if (!door || !door.contains(wx, wy)) return false;
+    const here = door.portalInFront(this.me.tile);
+    if (here) {
+      this.startDoorPass(here);
+      return true;
+    }
+    const near = (p: Portal) => Math.abs(tileCenter(p.landing.x, p.landing.y).x - wx);
+    const goal = [...door.portals].sort((a, b) => near(a) - near(b))[0];
+    this.walkTo(goal.landing);
+    if (this.route.length) this.doorGoal = goal;
+    return true;
   }
 
   /** 문을 열거나 닫는다: 반쯤 열린 그림을 0.15초 보인 뒤 끝 그림으로 바꾼다. 총알은 바로 그 상태를 따른다. */
@@ -4149,9 +4165,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (art.kind === 'paper' || art.kind === 'hang') {
       const cell = wallCellAt(this.mapId, x, y);
       if (!cell && art.kind === 'paper') return this.dressPaperedWall(image, id, x, y, z);
-      if (!cell) return this.dressTallWallHang(image, id, x, y, z);
+      if (!cell) return this.dressWallHang(image, id, x, y, z);
       ensureWallDecorTexture(this);
-      placeWallDecor(image, id, cell);
+      const low = art.kind === 'hang' ? backWallHang(this.mapId, id, cell) : null;
+      placeWallDecor(image, id, cell, low === null || art.kind !== 'hang' ? 0 : low - art.hang);
       // 벽지는 늘 맨 뒤, 벽걸이는 나중에 건 것(z 큰 것)이 앞이고 z가 같으면 벽을 따라 뒤 칸이 앞이다(room-rules.md 13.1).
       const along = cell.side === 'right' ? cell.x : cell.y;
       return keepDepth(image, art.kind === 'paper' ? DEPTH_WALLPAPER : DEPTH_WALL_HANG + z * 0.0005 + along * 0.000002);
@@ -4559,7 +4576,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   onBlocksLoaded(blocks: PlacedBlock[]) {
-    this.hideoutBlocks.clear();
     const wanted = new Set(blocks.map(({ x, y, z }) => `${x},${y},${z}`));
     for (const key of [...this.blockImages.keys()]) {
       if (wanted.has(key)) continue;
@@ -4576,11 +4592,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   onBlockPlaced({ x, y, z, id }: PlacedBlock) {
-    // 숨은 방 안의 것은 따로 두고, 방이 열려 있을 때만 그린다.
-    if (this.inHideoutHere(x, y)) {
-      this.hideoutBlocks.set(`${x},${y},${z}`, { x, y, z, id });
-      if (!this.hideoutShown) return;
-    }
     // 벽지·벽걸이는 뒤쪽 벽 칸(바닥 밖)에만, 다른 것은 바닥에만 그린다. 층 구조가 바뀌어 벽이나 바닥 밖이 된 칸의 옛 블록은 그리지 않는다.
     // 벽지는 뒤쪽 벽 칸이나 바닥의 놓는 벽 위에 있다.
     // 벽지·벽걸이는 뒤쪽 벽 칸이나 바닥의 놓는 벽(벽걸이는 높은 벽) 위에 있다.
@@ -4594,8 +4605,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 놓인 블록의 id가 바뀌었다(등 켜고 끄기, 커튼 여닫기). 그 그림만 바꿔 끼우고 빛을 다시 고른다. */
   onBlockChanged({ x, y, z, id }: PlacedBlock) {
-    const key = `${x},${y},${z}`;
-    if (this.hideoutBlocks.has(key)) this.hideoutBlocks.set(key, { x, y, z, id });
     const placed = this.world.blockAtLevel(x, y, z);
     if (!placed || placed === id) return;
     this.removeBlockAt(x, y, z);
@@ -4603,7 +4612,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   onBlockRemoved(x: number, y: number, z: number) {
-    this.hideoutBlocks.delete(`${x},${y},${z}`);
     this.removeBlockAt(x, y, z);
   }
 

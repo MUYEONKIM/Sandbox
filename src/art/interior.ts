@@ -5,7 +5,6 @@ import {
   CAFE,
   EXCHANGE_TICKERS,
   FLOORS,
-  HIDEOUT,
   LADDER_BOARD_X,
   MART_PROPS,
   ODDEVEN_BOARD_X,
@@ -515,6 +514,7 @@ const FLOOR_SHADERS: Record<string, (painter: Painter, plan: FloorPlan) => Floor
   casino: casinoFloor,
   exchange: exchangeFloor,
   plain: plainFloor,
+  hideout: hideoutFloor,
   mart: martFloor,
   smithy: smithyFloor,
   labor: laborFloor,
@@ -1181,6 +1181,7 @@ const SHOP_WALLS: Partial<Record<string, (painter: Painter) => void>> = {
   labor: paintLaborWalls,
   farmcoop: paintFarmcoopWalls,
   plain: paintPlainWalls,
+  hideout: paintHideoutWalls,
 };
 
 /** 가장 먼저 그리는 벽면: 사무실 벽, 1층 로비 벽, 옥상 난간 */
@@ -1424,6 +1425,7 @@ const EDGE_COLORS: Record<string, number[]> = {
   casino: [0x3a1418, 0x2a0e12],
   exchange: [0x232a36, 0x1a1f29],
   plain: [0x8a8476, 0x77726a],
+  hideout: [0x5a3e28, 0x4a3220],
   mart: [0x5b626c, 0x4a505a],
   smithy: [0x3e3a35, 0x2f2c28],
   labor: [0x5a3a20, 0x4a3018],
@@ -1486,81 +1488,48 @@ export function interiorOrigin(id: TowerId, corner: { x: number; y: number }) {
   return originOf(FLOORS[id].area, corner);
 }
 
-export function hideoutOrigin(corner: { x: number; y: number }) {
-  return originOf(HIDEOUT.area, corner);
-}
-
-/** 숨은 방 통로 한 칸의 자리 */
-const PASSAGE: Area = [HIDEOUT.passage.x, HIDEOUT.passage.y, HIDEOUT.passage.x, HIDEOUT.passage.y];
-
-export function hideoutPassageOrigin(corner: { x: number; y: number }) {
-  return originOf(PASSAGE, corner);
-}
-
 /** 두 색을 t만큼 섞는다. */
 function mix(a: Color, b: Color, t: number): Color {
   const channel = (shift: number) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t);
   return (channel(16) << 16) | (channel(8) << 8) | channel(0);
 }
 
-/** 숨은 방 바닥: 짙은 나무 바닥. 가구 없이 비워 두고 플레이어가 꾸민다(2026-11-15 사용자 요청). */
-export function paintHideoutFloor(): HTMLCanvasElement {
-  const painter = new Painter(HIDEOUT.area);
-  paintSlab(
-    painter,
-    (gx, gy) => {
-      const row = Math.floor(gy * 2);
-      const seam = Math.floor((gx + (row % 3) * 1.3) / 2.6);
-      const onSeam = (gy * 2) % 1 < 0.12 || ((gx + (row % 3) * 1.3) / 2.6) % 1 < 0.03;
-      return onSeam ? 0x5e3f24 : shade(PLANK[Math.floor(hash2(row, seam) * PLANK.length)], 0.82);
-    },
-    [0x5a3e28, 0x4a3220],
-  );
-  painter.p.outlineOuter(OUTLINE);
-  return painter.p.toCanvas();
+/** 숨은 방 바닥: 짙은 나무 바닥. 가구 없이 비워 두고 플레이어가 꾸민다(2026-11-15 사용자 요청). 2026-11-27부터 따로 된 맵의 바닥 무늬다. */
+function hideoutFloor(): FloorShader {
+  return (gx, gy) => {
+    const row = Math.floor(gy * 2);
+    const seam = Math.floor((gx + (row % 3) * 1.3) / 2.6);
+    const onSeam = (gy * 2) % 1 < 0.12 || ((gx + (row % 3) * 1.3) / 2.6) % 1 < 0.03;
+    return onSeam ? 0x5e3f24 : shade(PLANK[Math.floor(hash2(row, seam) * PLANK.length)], 0.82);
+  };
 }
 
-/** 바닥 끝과 숨은 방을 잇는 통로 한 칸: 방 바닥과 같은 나무판 */
-export function paintHideoutPassage(): HTMLCanvasElement {
-  const painter = new Painter(PASSAGE);
-  paintSlab(
-    painter,
-    (gx, gy) => {
-      const row = Math.floor(gy * 2);
-      const onSeam = (gy * 2) % 1 < 0.12 || gx < 0.04;
-      return onSeam ? 0x5e3f24 : shade(PLANK[Math.floor(hash2(row, 7) * PLANK.length)], 0.82);
-    },
-    [0x5a3e28, 0x4a3220],
-  );
-  painter.p.outlineOuter(OUTLINE);
-  return painter.p.toCanvas();
-}
-
-/** 숨은 방 뒤쪽 벽: 줄무늬 벽지, 노을 지는 창, 작은 전구 줄. 칸보다 뒤에 그려야 해서 바닥과 따로 그린다. */
-export function paintHideoutWall(): HTMLCanvasElement {
-  const painter = new Painter(HIDEOUT.area);
-  const height = 52;
+/**
+ * 숨은 방 뒤쪽 두 벽: 줄무늬 벽지, 노을 지는 창, 작은 전구 줄(2026-11-15 그림을 벽 높이 76에 맞춰 양쪽 벽으로 늘림, 2026-11-27).
+ * 따로 된 맵이 되면서 벽지·벽걸이를 붙일 수 있어 4·7·8층과 같은 높이로 그린다.
+ */
+function paintHideoutWalls(painter: Painter) {
+  for (const wall of ['left', 'right'] as Wall[]) {
+    painter.wallRect(wall, 0, painter.length(wall), 0, WALL_H, (u, v) => {
+      if (v < 5) return 0x5a3e28;
+      if (v >= WALL_H - 3) return 0xf3ead8;
+      return u % 6 === 0 ? 0xe2cfae : 0xefe0c2;
+    });
+  }
   const length = painter.length('right');
-  painter.wallRect('right', 0, length, 0, height, (u, v) => {
-    if (v < 5) return 0x5a3e28;
-    if (v >= height - 3) return 0xf3ead8;
-    return u % 6 === 0 ? 0xe2cfae : 0xefe0c2;
-  });
-  const [w0, w1, b, t] = [8, length - 8, 18, 42];
+  const [w0, w1, b, t] = [8, Math.min(length - 8, 120), 18, 50];
   const sunset = [0x7a5c8f, 0xe07a5f, 0xf6b26b];
   painter.wallRect('right', w0, w1, b, t, (u, v) => {
     if (u === w0 || u === w1 - 1 || v === b || v === t - 1 || u === Math.floor((w0 + w1) / 2)) return 0x6a4a30;
-    if (Math.hypot(u - (w1 - 10), v - 26) < 3.2) return 0xfff1c4;
+    if (Math.hypot(u - (w1 - 10), v - 30) < 3.2) return 0xfff1c4;
     const k = Math.floor(u / 4);
     if (v - b < 3 + hash2(k, 5) * 6) return 0x3d3350;
     return ramp(sunset, (v - b) / (t - b), u, v);
   });
   for (let u = 3; u < length - 2; u += 6) {
-    const v = height - 8 - Math.round(Math.sin((u / length) * Math.PI) * 3);
+    const v = WALL_H - 10 - Math.round(Math.sin((u / length) * Math.PI) * 3);
     painter.wallRect('right', u, u + 2, v, v + 2, () => (u % 12 === 3 ? 0xffd98a : 0xff9fb0));
   }
-  painter.p.outlineOuter(OUTLINE);
-  return painter.p.toCanvas();
 }
 
 /** 바깥 계단 앞 줄의 난간 한 칸. 칸 가운데를 지나 x 방향으로 뻗는다. */

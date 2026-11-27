@@ -304,14 +304,35 @@ function enterGame(
     onGo: (to) => scene.rideElevator(to),
   });
 
+  /**
+   * 인터페이스 숨기기(U, 2026-11-27 사용자 "특정키 누르면 인터페이스들 다 안보이게"): #hud에 class 하나를 붙여 CSS로 숨긴다(display 바꾸기만).
+   * 포탈·가구로 여는 창(.office)과 확인 창은 그대로 보인다. 인벤토리·채팅·안내·지도 키를 누르면 먼저 다시 보인다. 휴대폰은 키가 없어 쓰지 않는다.
+   */
+  const setUiHidden = (hidden: boolean) => {
+    if (root.classList.contains('ui-hidden') === hidden) return;
+    root.classList.toggle('ui-hidden', hidden);
+    scene.setUiHidden(hidden);
+  };
+  const showUi = () => setUiHidden(false);
   const keys = new Keys({
     onScoreboard: (open) => (open ? void killBoard.show() : killBoard.hide()),
     onSlot: (index) => inventory.select(index),
     // 모험 맵에서는 I가 스텟 판과 장비창을 연다(2026-11-21 사용자 "인벤토리는 모험에서 어차피 안쓰니깐 p 대신 i 로 통일한다"). 마을 인벤토리는 모험에서 열지 않는다.
-    onInventory: () => (scene.inAdventure ? void scene.adventureStatsKey() : hud.toggle()),
-    onHelp: () => hud.toggleHelp(),
+    onInventory: () => {
+      showUi();
+      if (scene.inAdventure) void scene.adventureStatsKey();
+      else hud.toggle();
+    },
+    onHelp: () => {
+      showUi();
+      hud.toggleHelp();
+    },
     onRotate: () => scene.reloadOrRotate(),
-    onMap: () => scene.toggleChapterMap(),
+    onMap: () => {
+      showUi();
+      scene.toggleChapterMap();
+    },
+    onHideUi: () => setUiHidden(!root.classList.contains('ui-hidden')),
     onEscape: () => {
       if (anyModalOpen()) {
         closeTopModal();
@@ -337,6 +358,7 @@ function enterGame(
       casino.close();
     },
     onChat: () => {
+      showUi();
       const windowOpen =
         hud.isOpen || office.isOpen || dungeon.isOpen || adventureWindow.isOpen || coop.isOpen || shop.isOpen || forge.isOpen || castle.isOpen || fame.isOpen || board.isOpen || exchange.isOpen || elevator.isOpen || casino.isOpen || anyModalOpen();
       if (!windowOpen) chat.open();

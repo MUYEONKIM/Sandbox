@@ -7,6 +7,7 @@ import { gridToWorld, keepDepth, tileCenter } from '../iso';
 import { CEIL_Z } from '../config';
 import { ROOM_LIGHTS } from '../roomDecor';
 import { LIGHT_TONES, USE_LIGHTS } from '../roomUse';
+import { MORE_LIGHTS, MORE_TONES } from '../roomMore';
 import type { DayPhase } from './daylight';
 
 /**
@@ -235,13 +236,13 @@ export class Lights {
    * 아래 것들의 윗면 합, 2026-11-24 장식품 위 장식품)다. 방 꾸미기 조명은 그림마다 빛무리 높이가 따로 있다(ROOM_LIGHTS).
    */
   addBlock(id: string, x: number, y: number, z: number, depth: number, lift = z * BLOCK_HEIGHT) {
-    const use = USE_LIGHTS[id];
+    const use = USE_LIGHTS[id] ?? MORE_LIGHTS[id];
     const room = ROOM_LIGHTS[id] ?? use;
     const look = (room?.look as GlowLookId | undefined) ?? LIGHT_BLOCKS[id];
     if (!look || !this.enabled) return;
     const key = `${x},${y},${z}`;
     const shape = room ? { ...GLOW_LOOKS[look], head: room.head } : GLOW_LOOKS[look];
-    const tone = use && use.tone !== 'warm' ? (LIGHT_TONES[use.tone] ?? null) : null;
+    const tone = use && use.tone !== 'warm' ? (LIGHT_TONES[use.tone] ?? MORE_TONES[use.tone] ?? null) : null;
     this.blocks.set(key, { key, look, x, y, z, depth, tint: tone, ...lightSpot(id, shape, x, y, lift) });
     this.queueChoose();
   }

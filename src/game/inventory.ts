@@ -1,6 +1,8 @@
 import { BLOCK_IDS, blockArt, isCube, isFurniture, rotatedBlock, type BlockId } from '../blocks';
 import { ROOM_DECOR_TAB, ROOM_FURNITURE_TAB } from '../roomDecor';
 import { USE_TAB_DECOR, USE_TAB_FURNITURE, USE_TAB_PAPER, USE_TAB_TILE, USE_TAB_WALL } from '../roomUse';
+import { MORE_TAB_DECOR, MORE_TAB_FURNITURE, MORE_TAB_WALL } from '../roomMore';
+import { furnitureKindOf, type FurnitureKind } from './furnitureKinds';
 import {
   gearIdOf,
   gearRef,
@@ -76,6 +78,13 @@ const ROOM_LIST = ROOM_FURNITURE_TAB as readonly BlockId[];
 const FLOOR_TILE_IDS = ROOM_LIST.filter((id) => blockArt(id).kind === 'ftile');
 const PLACED_WALL_IDS = ROOM_LIST.filter((id) => blockArt(id).kind === 'pwall');
 const ROOM_FURNITURE_IDS = ROOM_LIST.filter((id) => blockArt(id).kind === 'room');
+/** 난간(낮은 나무 난간과 방향 없는 난간 다섯): 2026-11-27 가구 탭의 단상·계단·난간 분류로 옮김(PM이 정한 분류) */
+const isRailing = (id: BlockId) => {
+  const art = blockArt(id);
+  return art.kind === 'pwall' && (art.axis === 'none' || art.style === 'rd_wall_rail');
+};
+const USE_WALLS = (USE_TAB_WALL as readonly BlockId[]).filter((id) => !isRailing(id));
+const RAILINGS = (USE_TAB_WALL as readonly BlockId[]).filter(isRailing);
 
 function isSlot(value: unknown): value is Stack {
   const stack = value as Partial<Stack> | null;
@@ -223,15 +232,27 @@ export class Inventory {
     if (tab === 'seed') return SEED_IDS;
     // 가구는 방향마다 블록이 따로 있어서 종류마다 첫 방향만 보이고, 단축키 칸에서 돌린다(rotateSelected).
     // 2026-11-24 방 꾸미기: 옛 가구(f_)는 탭에서 숨기고(놓인 것은 그대로 보이고 회수됨), 새 가구를 낸다. 놓는 벽은 벽 탭, 바닥 타일은 타일 탭.
-    // 2026-11-27 새 거리: 가구 탭 끝에 단·계단, 벽 탭 끝에 높은 벽·난간·문·창문·커튼, 장식품 탭의 방 꾸미기 것 뒤에 천장 것
-    if (tab === 'furniture') return [...ROOM_FURNITURE_IDS, ...(USE_TAB_FURNITURE as readonly BlockId[])];
-    if (tab === 'wall') return [...PLACED_WALL_IDS, ...(USE_TAB_WALL as readonly BlockId[])];
+    // 2026-11-27 새 거리: 가구 탭 끝에 단·계단, 벽 탭 끝에 높은 벽·문·창문·커튼, 장식품 탭의 방 꾸미기 것 뒤에 천장 것.
+    // 난간은 같은 날 가구 탭(단상·계단·난간 분류)으로 옮겼다.
+    // 4차·연말 묶음(roomMore.ts)은 각 탭의 방 꾸미기 것 끝에 붙인다(러그·탁자·트리 → 가구, 벽걸이·소품·천장 것 → 장식품, 창문 → 벽).
+    if (tab === 'furniture') return [...ROOM_FURNITURE_IDS, ...(USE_TAB_FURNITURE as readonly BlockId[]), ...RAILINGS, ...(MORE_TAB_FURNITURE as readonly BlockId[])];
+    if (tab === 'wall') return [...PLACED_WALL_IDS, ...USE_WALLS, ...(MORE_TAB_WALL as readonly BlockId[])];
     if (tab === 'decor')
-      return [...(ROOM_DECOR_TAB as readonly BlockId[]).filter((id) => tabOf(id) === 'decor'), ...(USE_TAB_DECOR as readonly BlockId[]), ...OUTDOOR_IDS];
+      return [
+        ...(ROOM_DECOR_TAB as readonly BlockId[]).filter((id) => tabOf(id) === 'decor'),
+        ...(USE_TAB_DECOR as readonly BlockId[]),
+        ...(MORE_TAB_DECOR as readonly BlockId[]),
+        ...OUTDOOR_IDS,
+      ];
     if (tab === 'paper') return [...(ROOM_DECOR_TAB as readonly BlockId[]).filter((id) => tabOf(id) === 'paper'), ...(USE_TAB_PAPER as readonly BlockId[])];
     // 타일: 상자 블록 뒤에 바닥 타일
     if (tab === 'tile') return [...BLOCK_IDS.filter((id) => isCube(id)), ...FLOOR_TILE_IDS, ...(USE_TAB_TILE as readonly BlockId[])];
     return BLOCK_IDS.filter((id) => tabOf(id) === tab);
+  }
+
+  /** 가구 탭의 작은 분류 하나에 든 것(가구 탭 차례 그대로, furnitureKinds.ts) */
+  furnitureOf(kind: FurnitureKind): ItemId[] {
+    return this.catalog('furniture').filter((id) => furnitureKindOf(id, itemName(id)) === kind);
   }
 
   /** 고른 칸의 가구를 다음 방향으로 돌린다. 돌릴 것이 없으면 false */

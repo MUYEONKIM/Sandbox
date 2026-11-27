@@ -248,6 +248,15 @@ export const MAPS: Record<MapId, MapInfo> = {
     accent: 0xc9b8ff,
     links: {},
   },
+  // 4층 숨은 방(2026-11-27부터 따로 된 방, tower.ts HIDEOUT). 4층 바닥 끝 숨은 입구를 밟으면 온다.
+  hideout: {
+    name: '???',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0x5a3e28,
+    accent: 0xffd98a,
+    links: {},
+  },
   // 그 방의 발코니(2026-11-27). 맵 밖은 밤 도시 야경이다(src/game/cityView.ts).
   balcony: {
     name: '???',
@@ -646,6 +655,13 @@ export interface Portal {
   label?: string;
   /** 이름표를 달지 않는다(두 칸짜리 문의 둘째 칸). */
   quiet?: boolean;
+  /**
+   * 걸어서 지나가는 문(2026-11-27, 빈방 ↔ 발코니): x·y는 문 칸(벽 칸), landing은 문 앞 바닥 칸이다. 포탈 그림·이름표가 없고 밟아서 타지 않는다.
+   * 문 앞 칸에서 문 쪽으로 걸으면 문이 열리고 한 걸음 들어가며 맵이 바뀐다(GameScene.startDoorPass, src/game/walkDoor.ts).
+   */
+  door?: true;
+  /** 숨은 입구(2026-11-27, 4층 숨은 방): 그림·이름표·미니맵 점이 없고, 밟으면 탄다. */
+  secret?: true;
   /** 포탈 색. 없으면 가는 곳의 색이다. */
   color?: Color;
   /**

@@ -1,9 +1,9 @@
 import { paintMemoPadIcon } from '../art/drops';
-import { BLOCK_IDS } from '../blocks';
+import { FURNITURE_KIND_IDS, FURNITURE_KINDS, type FurnitureKind } from '../game/furnitureKinds';
 import { HOTBAR_SIZE, MEMO_SLOT, TABS, type Inventory, type TabId } from '../game/inventory';
 import { formatNumber, levelNeed } from '../game/level';
 import { goldText, type Gold } from '../game/gold';
-import { isPotion, isSeed, paintItem, POTION_IDS, SEED_IDS, TORCH, WEAPON_IDS, type GearRef, type ItemId, type PotionId, type SeedId } from '../items';
+import { isPotion, isSeed, paintItem, type GearRef, type ItemId, type PotionId, type SeedId } from '../items';
 import { element } from './dom';
 import { foldButton } from './fold';
 import type { MyStatus } from './info';
@@ -11,12 +11,18 @@ import { COUNT, countUp, type Counting } from './countUp';
 import { LevelBar, type LevelPlayOptions } from './levelUpAnim';
 import './touch.css';
 
-/** 이미지를 읽은 뒤에 그릴 수 있어서 Hud를 만들 때 준비한다. */
-function paintIcons() {
-  return Object.fromEntries([...BLOCK_IDS, ...WEAPON_IDS, ...POTION_IDS, ...SEED_IDS, TORCH].map((id) => [id, paintItem(id).toDataURL()])) as Record<
-    Exclude<ItemId, GearRef>,
-    string
-  >;
+/**
+ * 아이콘 그림 주소. 처음 보일 때 한 번 그려 둔다(2026-11-27 코드 세션 7: 블록이 1,500개를 넘어 Hud를 만들 때 모두 그리면 1.7초 걸려서).
+ * 그림을 읽은 뒤(Hud를 만든 뒤)에만 부른다.
+ */
+const iconCache = new Map<string, string>();
+function iconUrl(id: Exclude<ItemId, GearRef>) {
+  let url = iconCache.get(id);
+  if (!url) {
+    url = paintItem(id).toDataURL();
+    iconCache.set(id, url);
+  }
+  return url;
 }
 
 const TOAST_MS = 3500;
@@ -33,6 +39,7 @@ const HELP_ROWS: [string, string[], string?][] = [
   ['회수', ['우클릭']],
   ['재장전 · 가구 돌리기', ['R']],
   ['맵 이동', ['귀퉁이 포탈']],
+  ['인터페이스 숨기기', ['U']],
   ['이 안내 닫기', ['H']],
 ];
 
@@ -124,11 +131,15 @@ export class Hud {
   private readonly tabButtons = new Map<BagTab, HTMLButtonElement>();
   private readonly groupButtons = new Map<BagGroup, HTMLButtonElement>();
   private readonly subTabs: HTMLElement;
+  /** 가구 탭 안의 작은 분류 줄(2026-11-27 사용자 "가구도 내부에 탭이 나뉘어 지면 좋겠다", 분류는 PM이 정함) */
+  private readonly kindTabs: HTMLElement;
+  private readonly kindButtons = new Map<FurnitureKind, HTMLButtonElement>();
+  /** 가구 탭에서 고른 분류(이번 접속 동안 기억, 처음은 침대) */
+  private kind: FurnitureKind = FURNITURE_KIND_IDS[0];
   private tab: BagTab = 'tile';
   private group: BagGroup = 'build';
   /** 큰 탭마다 마지막에 본 작은 탭(이번 접속 동안, PM이 정함) */
   private readonly lastTab = new Map<BagGroup, BagTab>();
-  private readonly icons = paintIcons();
   /** 가진 포션 개수(main에서 economy로 이음) */
   potionCount: (id: PotionId) => number = () => 0;
   /** 가진 씨앗 개수(main에서 economy로 이음) */
@@ -262,6 +273,19 @@ export class Hud {
         });
         this.tabButtons.set(id, button);
       }
+    }
+    // 가구 탭 안의 작은 분류: 받침 아래에 붙은 서랍 모양 줄(제가 정한 모양). 가구 탭일 때만 보인다.
+    this.kindTabs = element('bag-kinds', this.bagPane);
+    this.kindTabs.dataset.group = 'build';
+    for (const kind of FURNITURE_KIND_IDS) {
+      const button = element('bag-kind', this.kindTabs, 'button') as HTMLButtonElement;
+      button.type = 'button';
+      button.textContent = FURNITURE_KINDS[kind];
+      button.addEventListener('click', () => {
+        this.kind = kind;
+        this.render();
+      });
+      this.kindButtons.set(kind, button);
     }
     this.bag = element('slots bag', this.bagPane);
     this.memoPane = element('memo-bag', this.bagPane);
@@ -705,6 +729,10 @@ export class Hud {
     // 받침은 늘 보이고 큰 탭 색을 따른다. 작은 탭이 하나뿐이면 띠만 남는다(디자인 세션 5 inventory-tabs.md).
     this.subTabs.dataset.group = this.group;
     this.subTabs.classList.toggle('bare', group.tabs.length < 2);
+    const kinds = this.tab === 'furniture';
+    this.kindTabs.hidden = !kinds;
+    this.subTabs.classList.toggle('with-kinds', kinds);
+    for (const [kind, button] of this.kindButtons) button.classList.toggle('chosen', kind === this.kind);
     this.bag.replaceChildren();
     const memo = this.tab === 'memo';
     this.bag.hidden = memo;
@@ -714,7 +742,7 @@ export class Hud {
       this.renderMemos?.(this.memoPane);
       return;
     }
-    for (const id of this.inventory.catalog(this.tab)) {
+    for (const id of kinds ? this.inventory.furnitureOf(this.kind) : this.inventory.catalog(this.tab)) {
       const cell = element('slot', this.bag);
       cell.dataset.item = id;
       cell.title = this.inventory.nameOf(id);
@@ -766,7 +794,7 @@ export class Hud {
   }
 
   private iconOf(id: ItemId) {
-    return this.icons[this.inventory.iconKey(id)];
+    return iconUrl(this.inventory.iconKey(id));
   }
 
   private countText(id: ItemId) {

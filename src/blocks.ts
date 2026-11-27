@@ -5,6 +5,7 @@ import { BLOCK_HEIGHT } from './config';
 import { FURNITURE_BLOCKS, FURNITURE_NEXT } from './furniture';
 import { OUTDOOR_FRAMES, ROOM_BLOCKS, ROOM_NEXT, ROOM_WALL_FRAMES } from './roomDecor';
 import { USE_BLOCKS, USE_LAYER_FRAMES, USE_NEXT, USE_WALL_FRAMES, USE_WALL_HEIGHT, USE_WALL_SHEET } from './roomUse';
+import { MORE_BLOCKS, MORE_LAYER_FRAMES, MORE_NEXT } from './roomMore';
 
 /** tiles.png는 32×32 칸이 가로 11개씩 놓인 그림이다. */
 const TILE_CELL = 32;
@@ -33,7 +34,7 @@ export type Frame = readonly [number, number, number, number, number, number, nu
  * door: 문(곧은 벽 칸 하나, 문 구멍 벽 + 문 두 겹, 가까이 가면 열림). window: 끼우는 창문(창 구멍 벽 + 창문, 낮·밤).
  * curtain: 창문 칸 바로 위 z에 얹는 커튼·블라인드(열림·닫힘은 짝 id).
  */
-export type RoomSheet = 'room/room-decor' | 'room/room-decor-more' | 'room/room-decor-3' | 'room/new-decor';
+export type RoomSheet = 'room/room-decor' | 'room/room-decor-more' | 'room/room-decor-3' | 'room/new-decor' | 'room/room-decor-4' | 'room/room-decor-xmas';
 export type BlockArt =
   | { kind: 'cube'; texture: number; side?: number }
   | { kind: 'sprite'; sprite: SpriteName }
@@ -41,7 +42,7 @@ export type BlockArt =
   | { kind: 'furniture'; frame: Frame }
   | { kind: 'room'; sheet: RoomSheet; slot: 'floor' | 'rug' | 'top' | 'ceil'; frame: Frame }
   | { kind: 'paper'; sheet: 'room/wall-textures' | 'room/wall-textures-more' | 'room/wall-textures-3'; frame: readonly [number, number, number, number] }
-  | { kind: 'hang'; sheet: RoomSheet; frame: Frame; hang: number; span: number }
+  | { kind: 'hang'; sheet: RoomSheet; frame: Frame; hang: number; span: number; low?: number | null }
   | { kind: 'pwall'; style: string; axis: 'x' | 'y' | 'none' }
   | { kind: 'door'; door: string; axis: 'x' | 'y' }
   | { kind: 'window'; win: string; axis: 'x' | 'y' }
@@ -74,6 +75,8 @@ interface BlockInfo {
   off?: boolean;
   /** 꺼진 그림이 따로 없어 켠 그림을 어둡게 칠해 쓰는 꺼진 등 */
   dim?: boolean;
+  /** 커튼을 달지 않는 창문(4차 내닫이창, 유리가 벽 앞으로 나옴) */
+  noCurtain?: boolean;
 }
 
 /** 바깥용 장식품 21개(2026-11-24 같은 id·크기·막힘에 새 그림, 디자인 세션 3). 맵에 박힌 고정 장식은 옛 그림 그대로다. */
@@ -161,6 +164,8 @@ export const BLOCKS = {
   ...ROOM_BLOCKS,
   // 2026-11-27 방 꾸미기 새 거리(src/roomUse.ts)
   ...USE_BLOCKS,
+  // 2026-11-27 방 꾸미기 4차(rd4_)와 연말·크리스마스 묶음(rdx_, src/roomMore.ts)
+  ...MORE_BLOCKS,
 } as const satisfies Record<string, BlockInfo>;
 
 export type BlockId = keyof typeof BLOCKS;
@@ -327,7 +332,7 @@ export function canStackOn(below: BlockId, id: BlockId) {
   if (isCurtain(id)) {
     const a = BLOCKS[below].art;
     const c = BLOCKS[id].art;
-    return a.kind === 'window' && c.kind === 'curtain' && a.axis === c.axis;
+    return a.kind === 'window' && c.kind === 'curtain' && a.axis === c.axis && !infoOf(below).noCurtain;
   }
   // 천장 것은 천장 자리에만(쌓지 않음), 커튼 위에는 아무것도 얹지 않는다.
   if (isCeil(id) || isCeil(below) || isCurtain(below)) return false;
@@ -371,7 +376,7 @@ export function isLarge(id: BlockId) {
 
 /** 가구를 돌렸을 때(R) 바뀌는 다음 방향. 방향이 하나뿐이거나 가구가 아니면 null */
 export function rotatedBlock(id: BlockId): BlockId | null {
-  return ((FURNITURE_NEXT[id] ?? ROOM_NEXT[id] ?? USE_NEXT[id]) as BlockId | undefined) ?? null;
+  return ((FURNITURE_NEXT[id] ?? ROOM_NEXT[id] ?? USE_NEXT[id] ?? MORE_NEXT[id]) as BlockId | undefined) ?? null;
 }
 
 /** tile 블록이 칸 (x, y)에서 쓰는 tiles.png 번호 */
@@ -405,14 +410,15 @@ export function wallStyleHeight(style: string) {
   return USE_WALL_HEIGHT[style] ?? 36;
 }
 
-/** 겹 그림이 든 시트: 구멍 벽은 벽 시트, 문·창문·커튼은 room-openings */
-export function layerSheet(name: string): 'room/room-walls-3' | 'room/room-openings' {
-  return name.startsWith('slot:') || name.startsWith('winslot:') ? 'room/room-walls-3' : 'room/room-openings';
+/** 겹 그림이 든 시트: 구멍 벽은 벽 시트, 문·창문·커튼은 room-openings, 4차 창문은 room-openings-4 */
+export function layerSheet(name: string): 'room/room-walls-3' | 'room/room-openings' | 'room/room-openings-4' {
+  if (name.startsWith('slot:') || name.startsWith('winslot:')) return 'room/room-walls-3';
+  return MORE_LAYER_FRAMES[name] ? 'room/room-openings-4' : 'room/room-openings';
 }
 
-/** 문·창문·커튼 겹 그림(roomUse.ts USE_LAYER_FRAMES). 없으면 null */
+/** 문·창문·커튼 겹 그림(roomUse.ts USE_LAYER_FRAMES, 4차 창문은 roomMore.ts MORE_LAYER_FRAMES). 없으면 null */
 export function layerFrame(name: string): Frame | null {
-  return (USE_LAYER_FRAMES[name] as unknown as Frame | undefined) ?? null;
+  return ((USE_LAYER_FRAMES[name] ?? MORE_LAYER_FRAMES[name]) as unknown as Frame | undefined) ?? null;
 }
 
 /** 놓는 벽이 제 방향으로 늘 뻗는 이음 비트(x면 +x|−x, y면 +y|−y, 난간은 없음) */

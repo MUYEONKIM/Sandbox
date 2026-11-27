@@ -18,6 +18,7 @@ export type TowerId =
   | 'casino'
   | 'exchange'
   | 'annex'
+  | 'hideout'
   | 'balcony'
   | 'mart'
   | 'smithy'
@@ -89,7 +90,7 @@ export interface Partition {
 export interface FloorPlan {
   /** 층 번호. 옥상, 바깥 계단, 엘리베이터 안은 null */
   number: number | null;
-  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange' | 'plain' | 'mart' | 'smithy' | 'labor' | 'farmcoop';
+  style: 'lobby' | 'office' | 'roof' | 'stairs' | 'cabin' | 'casino' | 'exchange' | 'plain' | 'mart' | 'smithy' | 'labor' | 'farmcoop' | 'hideout';
   /** 바닥이 있는 칸 */
   area: Area;
   doorways: Doorway[];
@@ -132,20 +133,19 @@ export const LOBBY_FURNITURE: Furniture[] = [
  * "8*12로 바꾸고 사물을 뺀다", "자유롭게 꾸밀 수 있게"). 옮긴 거리는 에이전트가 정했다.
  * 크기는 10×14칸이다(2026-11-27 사용자 "8*12 가 아닌 10*14 로"). 예전 8×12칸(x 44~51, y 16~27)을 모두 품게
  * 통로 반대쪽(x)으로 두 칸, 앞뒤(y)로 한 칸씩 늘려서 이미 놓인 블록이 그 자리에 남는다(늘린 쪽은 에이전트가 정함).
+ * 같은 날 사용자 "4층 비밀의 방도 벽꾸미기나 이런것들이 안되니깐 해당 비밀의방 입구를 밟으면 비밀의 방으로 이동하는걸로 한다":
+ * 4층 안의 구역에서 따로 된 방(맵 'hideout')으로 옮겼다. 4층 바닥 끝 trigger 칸은 그림 없는 숨은 입구(Portal.secret)라 밟으면 방으로 가고,
+ * 방 안 아래쪽 꼭짓점 칸의 포탈로 나오면 trigger 바로 안쪽(back)에 선다. 방 칸 좌표(area)는 4층 때와 같아서
+ * 놓인 블록·상자 안 물건·떨어진 것은 맵 이름만 바꿔 옮긴다(supabase/migrations/20261127100000_hideout_room.sql).
  */
 export const HIDEOUT = {
-  map: 'tower4' as const,
   trigger: { x: 42, y: 21 },
-  passage: { x: 43, y: 21 },
+  back: { x: 41, y: 21 },
   area: [44, 15, 53, 28] as Area,
   title: '진우씨가 유일하게 맘 편히 쉬었던 안식처',
 };
-
-/** 숨은 방이 열려 있는 동안 걸을 수 있는 칸: 통로와 방 */
-export function inHideout(x: number, y: number) {
-  const [x0, y0, x1, y1] = HIDEOUT.area;
-  return (x === HIDEOUT.passage.x && y === HIDEOUT.passage.y) || (x >= x0 && x <= x1 && y >= y0 && y <= y1);
-}
+/** 숨은 방에서 4층으로 나가는 포탈: 방 아래쪽 꼭짓점 칸(7층 이름 없는 방과 같게, 제가 정한 것). 들어오면 대각선 두 칸 안쪽에 선다. */
+const HIDEOUT_EXIT = { x: HIDEOUT.area[2], y: HIDEOUT.area[3] };
 
 /** 한 줄로 늘어선 난간 칸 */
 function railRow(xa: number, xb: number, y: number): Tile[] {
@@ -467,12 +467,19 @@ export const LABOR_FURNITURE: Furniture[] = [{ sprite: 'plant', x: 15, y: 28 }];
  * ("벽도 다 치워라, 벽도 내가 알아서 다 세울 수 있지 않나", 고른 것 "사이 벽만 치움", "넓이는 두고 바닥은 한 가지로").
  */
 export const ANNEX: Area = [16, 16, 39, 35];
-const ANNEX_EXIT = { x: 36, y: ANNEX[3] };
+/**
+ * 7층으로 나가는 포탈: 방 마름모의 아래쪽 꼭짓점 칸(화면에서 가장 아래, 2026-11-27 사용자 "비밀의 방 들어오면 입구 위치를 아래쪽 꼭지점으로").
+ * 맨 앞 칸이라 무엇에도 가려지지 않는다. 들어오면 그 칸에서 방 안쪽으로 대각선 두 칸(ANNEX_ENTRY)에 선다(제가 정한 것). 예전 자리는 (36, 35)였다.
+ */
+const ANNEX_EXIT = { x: ANNEX[2], y: ANNEX[3] };
+const ANNEX_ENTRY = { x: ANNEX_EXIT.x - 2, y: ANNEX_EXIT.y - 2 };
 /**
  * 빈방 뒤쪽 오른쪽 벽의 발코니 문(2026-11-27 사용자 "문 열고 나가면 발코니", 자리와 그림은 디자인 세션 8): 벽을 따라 칸 x 27·28에 걸친
- * 유리 두 짝 문이고, 문 앞 두 칸이 발코니로 나가는 포탈이다. 문 그림은 벽 모서리에서 177px부터 30px 폭, 높이 50px이다(디자인 balcony.json).
+ * 유리 두 짝 문이다. 문 그림은 벽 모서리에서 u px부터 30px 폭, 높이 top px이다(디자인 balcony.json).
+ * 같은 날 사용자 "비밀의 방 발코니 가는 포탈은 놓지 않는다 … 문으로 가면 문열리는 애니메이션과 함께 자연스럽게 발코니로 나가진다":
+ * 포탈 원을 없애고 걸어서 지나가는 문(Portal.door)으로 바꿨다. 문 앞 두 칸(y 16)에서 문 쪽으로 걸으면 열리며 넘어간다.
  */
-export const ANNEX_DOOR = { x: [27, 28] as const, u: 177 };
+export const ANNEX_DOOR = { x: [27, 28] as const, u: 177, top: 50 };
 /**
  * 발코니(같은 날, 6판): x 12칸 × y 5칸. 뒤쪽 오른쪽 변이 건물 외벽(가운데 칸 x 5·6 앞에 문), 나머지 세 변은 유리 난간이다.
  * 바닥·외벽·뒤 왼쪽 난간·아래층 외벽은 그림 한 장(balcony-base)이고, 앞 두 변 난간은 칸 조각으로 캐릭터 앞에 그린다.
@@ -486,6 +493,10 @@ const BALCONY_DOOR = [BALCONY[0] + 5, BALCONY[0] + 6] as const;
  * 카메라 범위의 오른쪽 끝을 바닥 뒤 모서리 x + right(건물 오른쪽 끝)에 묶어 넓은 화면에서 건물 오른쪽에 하늘이 보이지 않게 한다.
  */
 export const BALCONY_VIEW = { left: 80, top: 461, playerAt: [0.6, 0.62] as const, right: 226 };
+/** 발코니 건물 외벽에 그려진 벽등 둘(바탕 그림, 외벽 칸 3·8, 바닥에서 34~50px): 그 칸에 거는 벽걸이는 등 위로 올린다(roomArt). */
+export const BALCONY_LAMPS = { x: [BALCONY[0] + 3, BALCONY[0] + 8] as const, top: 50 };
+/** 발코니 쪽 문 여닫힘 그림(30 × 65 한 장)의 왼쪽 위 = 바닥 뒤 모서리 + (x, y)(디자인 세션 8 balcony-door.json) */
+export const BALCONY_DOOR_ART = { x: 81, y: -10 };
 /** 발코니 앞 난간 칸: [x, y, 조각]. 그 칸에 설 수 있고 난간은 캐릭터 앞에 그린다. */
 export const BALCONY_RAILS: readonly (readonly [number, number, 'x' | 'y' | 'corner'])[] = [
   ...Array.from({ length: BALCONY[2] - BALCONY[0] }, (_, i) => [BALCONY[0] + i, BALCONY[3], 'x'] as const),
@@ -535,7 +546,7 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'office',
     area: UPPER,
     doorways: [elevator],
-    portals: [wallPortal(UPPER, elevator, 'elevator')],
+    portals: [wallPortal(UPPER, elevator, 'elevator'), { ...HIDEOUT.trigger, to: 'hideout', secret: true, landing: HIDEOUT.back }],
   },
   tower7: {
     number: 7,
@@ -635,11 +646,19 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'plain',
     area: ANNEX,
     doorways: [],
-    // 첫 포탈(7층)이 쓰러진 뒤 일어나는 칸이다. 발코니 문 앞 두 칸은 발코니로 나간다.
+    // 첫 포탈(7층)이 쓰러진 뒤 일어나는 칸이다. 발코니 문(두 칸)은 걸어서 지나가는 문이다.
     portals: [
-      { ...ANNEX_EXIT, to: 'tower7', label: '7층', landing: { x: ANNEX_EXIT.x, y: ANNEX_EXIT.y - 2 } },
-      ...ANNEX_DOOR.x.map((x, n): Portal => ({ x, y: ANNEX[1], to: 'balcony', label: '발코니', quiet: n > 0, landing: { x, y: ANNEX[1] + 2 } })),
+      { ...ANNEX_EXIT, to: 'tower7', label: '7층', landing: ANNEX_ENTRY },
+      ...ANNEX_DOOR.x.map((x): Portal => ({ x, y: ANNEX[1] - 1, to: 'balcony', door: true, landing: { x, y: ANNEX[1] } })),
     ],
+  },
+  hideout: {
+    ...plain,
+    number: null,
+    style: 'hideout',
+    area: HIDEOUT.area,
+    doorways: [],
+    portals: [{ ...HIDEOUT_EXIT, to: 'tower4', label: '4층', landing: { x: HIDEOUT_EXIT.x - 2, y: HIDEOUT_EXIT.y - 2 } }],
   },
   balcony: {
     ...plain,
@@ -647,7 +666,8 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'plain',
     area: BALCONY,
     doorways: [],
-    portals: BALCONY_DOOR.map((x, n): Portal => ({ x, y: BALCONY[1], to: 'annex', label: '방', quiet: n > 0, landing: { x, y: BALCONY[1] + 2 } })),
+    // 방으로 들어가는 문(걸어서 지나감). 첫 칸 앞이 쓰러진 뒤 일어나는 칸이다.
+    portals: BALCONY_DOOR.map((x): Portal => ({ x, y: BALCONY[1] - 1, to: 'annex', door: true, landing: { x, y: BALCONY[1] } })),
   },
   elevator: {
     ...plain,
