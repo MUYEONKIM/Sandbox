@@ -3,6 +3,7 @@ import { GAMES, SNAIL_COLORS } from '../game/casino';
 import type { Economy } from '../game/economy';
 import type { Color } from '../art/pixels';
 import { animate, BetWindow, css, GOLD, loadImage, OUTLINE, STAGE_W, wait, type PlaceBet } from './bet';
+import { sound } from '../sound/engine';
 
 /** 사용자가 준 경주 배경(1344×796)과 같은 비율 */
 const STAGE_H = 190;
@@ -208,6 +209,9 @@ export class SnailWindow extends BetWindow {
     const finishes = [0, 1, 2].map((lane) => (lane === winner ? RACE_MS : RACE_MS + gaps[k++]));
     const courses = finishes.map((ms) => SnailWindow.course(ms));
     const last = Math.max(...finishes) + 200;
+    sound.play('race_start');
+    // 1등이 들어오는 때(창을 닫아도 소리는 하나뿐이라 그대로 둔다)
+    window.setTimeout(() => sound.play('race_finish'), RACE_MS);
     await animate(last, (t) => {
       const ms = t * last;
       this.drawRace(

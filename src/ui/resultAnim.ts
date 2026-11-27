@@ -10,6 +10,7 @@
 // 가벼움: 애니메이션 동안만 rAF. 프레임마다 막대 transform·번쩍 opacity와 바뀐 글자만 고친다. Level up과 무기는 CSS 애니메이션(많아야 21개, 끝나면 지움).
 import { reducedMotion } from '../game/battleIntro';
 import { popLevel } from './levelUpAnim';
+import { sound } from '../sound/engine';
 
 export const RES = {
   /** 처음 다섯 레벨의 한 레벨 길이(차기 + 번쩍·+1). 여섯째부터는 몰아치기 */
@@ -202,6 +203,8 @@ export function playResult(el: ResEls, v: ResValues): ResultAnim {
   let upIdx = 0;
   const levelUp = (quick: boolean) => {
     popLevel(el.level);
+    // 눈금마다 조금씩 높게(sound-plan.md 3-4: 1 + 0.04 × n). 몰아치기는 눈금이 많아 2배에서 멈춘다(에이전트가 정함).
+    sound.play('level_tick', { rate: Math.min(2, 1 + upIdx * 0.04) });
     const tag = document.createElement('span');
     tag.className = quick ? 'lvup-tag quick' : 'lvup-tag';
     tag.textContent = 'Level up';
@@ -217,6 +220,7 @@ export function playResult(el: ResEls, v: ResValues): ResultAnim {
       if (animate) {
         d.style.animationDelay = `${i * RES.dropStagger}ms`;
         d.classList.add('show');
+        window.setTimeout(() => sound.play('item_drop'), i * RES.dropStagger);
       } else {
         d.classList.remove('show');
         d.classList.add('shown');

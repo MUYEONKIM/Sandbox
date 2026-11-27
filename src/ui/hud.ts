@@ -10,6 +10,7 @@ import type { MyStatus } from './info';
 import { COUNT, countUp, type Counting } from './countUp';
 import { LevelBar, type LevelPlayOptions } from './levelUpAnim';
 import './touch.css';
+import { sound } from '../sound/engine';
 
 /**
  * 아이콘 그림 주소. 처음 보일 때 한 번 그려 둔다(2026-11-27 코드 세션 7: 블록이 1,500개를 넘어 Hud를 만들 때 모두 그리면 1.7초 걸려서).
@@ -350,6 +351,8 @@ export class Hud {
 
   /** 끊겼으면 이유를 문구 옆에 작게 쓴다. 원인을 알아보는 데 쓴다. */
   setConnected(connected: boolean, reason: string | null = null) {
+    // 이어져 있다가 끊긴 때만(처음 붙는 중에는 내지 않는다)
+    if (!connected && this.connection.hidden) sound.play('disconnect');
     this.connection.hidden = connected;
     this.connection.textContent = reason ? `서버에 연결하는 중입니다 (${reason})` : '서버에 연결하는 중입니다';
   }
@@ -563,6 +566,7 @@ export class Hud {
       this.gold.textContent = goldText(to);
       return;
     }
+    sound.play('gold_get');
     this.goldCount = countUp([{ el: this.gold, from, to, fmt: (n) => goldText(n) }], ms, { lockWidth: true, pop: true });
   }
 
@@ -604,11 +608,13 @@ export class Hud {
 
   toggle() {
     this.panel.hidden = !this.panel.hidden;
+    sound.play(this.panel.hidden ? 'ui_close' : 'ui_open');
     this.cancelDrag();
     this.render();
   }
 
   close() {
+    if (!this.panel.hidden) sound.play('ui_close');
     this.panel.hidden = true;
     this.cancelDrag();
     this.bagButton.classList.remove('chosen');

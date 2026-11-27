@@ -8,6 +8,8 @@ import { adventureAssign, adventureBuy, adventureBuySlot, adventureEquip, advent
 import { bigOf, COUNT, countUp, type Counter } from './countUp';
 import { element } from './dom';
 import { Modal } from './modal';
+import { sound } from '../sound/engine';
+import type { SfxKey } from '../sound/catalog';
 
 /**
  * 모험 창(2026-11-17, 기획 docs/balance/dungeon-rework.md 3장, 디자인 세션 시안 adventure-ui.md 4장).
@@ -102,12 +104,14 @@ export function button(cls: string, parent: HTMLElement, text: string, onClick: 
 }
 
 /** 서버 함수를 부르고 값을 바꾼다. 실패하면 say로 이유를 보인다. */
-export async function adventureCall(adventure: Adventure, call: () => Promise<AdvView | string>, say: (text: string) => void, done = '') {
+export async function adventureCall(adventure: Adventure, call: () => Promise<AdvView | string>, say: (text: string) => void, done = '', okSound?: SfxKey) {
   const view = await call();
   if (typeof view === 'string') {
+    sound.play('deny');
     say(failText(view));
     return false;
   }
+  if (okSound) sound.play(okSound);
   adventure.set(view);
   say(done);
   return true;
@@ -144,7 +148,7 @@ export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvVie
     const on = buttons.filter((b) => !b.disabled);
     for (const b of on) b.disabled = true;
     const args = Object.fromEntries(ADV_STATS.map((k) => [k, assignArg(values[k] ?? 0n)])) as Record<AdvStat, number | string>;
-    void adventureCall(adventure, () => adventureAssign(args), say, done).then((ok) => {
+    void adventureCall(adventure, () => adventureAssign(args), say, done, 'stat_up').then((ok) => {
       if (!ok) for (const b of on) b.disabled = false;
     });
   };
@@ -257,6 +261,7 @@ export class AdventureWindow {
     this.tab = tab;
     if (tab === 'enter') void this.loadRanking();
     this.message.textContent = '';
+    if (this.root.hidden) sound.play('ui_open');
     this.root.hidden = false;
     this.shownKey = '';
     this.render();
@@ -267,6 +272,7 @@ export class AdventureWindow {
   }
 
   close() {
+    if (!this.root.hidden) sound.play('ui_close');
     this.root.hidden = true;
   }
 
@@ -394,7 +400,7 @@ export class AdventureWindow {
     if (price === null) line('', slots, ['장신구 칸 ', [String(view.slots), 'b'], ` / ${MAX_SLOTS} · 모두 열렸습니다`]);
     else line('', slots, ['장신구 칸 ', [String(view.slots), 'b'], ` / ${MAX_SLOTS} · 다음 칸(${view.slots + 1}번째) `, [goldText(price), 'adv-gold']]);
     const lockedSlot = view.slots >= cap;
-    button('adv-btn', slots, '칸 늘리기', () => void adventureCall(this.adventure, adventureBuySlot, this.say, '칸을 늘렸습니다.'), price === null || lockedSlot || !atGate);
+    button('adv-btn', slots, '칸 늘리기', () => void adventureCall(this.adventure, adventureBuySlot, this.say, '칸을 늘렸습니다.', 'buy'), price === null || lockedSlot || !atGate);
 
     const ownCount = (id: string) => view.owned.filter((o) => o.item === id).length;
     element('adv-section', this.body).textContent = '보석 · 그 스텟 고정 수치 (여러 개 껴도 됨)';
@@ -430,7 +436,7 @@ export class AdventureWindow {
   }
 
   private buy(item: AdvItem) {
-    return adventureCall(this.adventure, () => adventureBuy(item.id), this.say, `${item.name} ${item.tier}단계를 샀습니다.`);
+    return adventureCall(this.adventure, () => adventureBuy(item.id), this.say, `${item.name} ${item.tier}단계를 샀습니다.`, 'buy');
   }
 
   private renderGear(view: AdvView) {
@@ -459,14 +465,14 @@ export class AdventureWindow {
       itemCard(items, item, `${item.name} ${item.tier}단계`, o.slot ? 'owned' : '', (foot) => {
         if (o.slot) {
           element('', foot, 'span').textContent = `${o.slot}번 칸에 낌`;
-          button('adv-btn', foot, '빼기', () => void adventureCall(this.adventure, () => adventureEquip(o.slot!, null), this.say), !atGate);
+          button('adv-btn', foot, '빼기', () => void adventureCall(this.adventure, () => adventureEquip(o.slot!, null), this.say, '', 'equip'), !atGate);
         } else {
           button('adv-btn gold', foot, '끼기', () => {
             const used = new Set(view.owned.map((x) => x.slot));
             let free = 0;
             for (let s = 1; s <= view.slots && !free; s++) if (!used.has(s)) free = s;
             if (!free) this.say('빈 칸이 없습니다. 먼저 하나를 빼 주세요.');
-            else void adventureCall(this.adventure, () => adventureEquip(free, o.id), this.say);
+            else void adventureCall(this.adventure, () => adventureEquip(free, o.id), this.say, '', 'equip');
           }, !atGate);
         }
         button('adv-btn', foot, `팔기 ${goldText(BigInt(o.paid) / 2n)}`, () => void adventureCall(this.adventure, () => adventureSell(o.id), this.say, '팔았습니다.'), !atGate);
@@ -499,7 +505,7 @@ export class AdventureWindow {
       if (!show || foot.hidden) return;
       const on = show.id === view.mainWeapon;
       weaponCard(foot, adv, show, on ? 'equipped' : 'pick', () => {
-        void adventureCall(adv, () => adventureEquipWeapon(on ? null : show.id), this.say).then((ok) => {
+        void adventureCall(adv, () => adventureEquipWeapon(on ? null : show.id), this.say, '', 'equip').then((ok) => {
           if (!ok) return;
           this.chosenWeapon = null;
           this.rerender();
@@ -687,6 +693,7 @@ export function showAdventureResult(root: HTMLElement, result: AdvResult, advent
   const pose = result.reason === 'bp' ? 4 : 0;
   if (art) g.drawImage(art.heroes, pose * m.cell.w, 3 * m.cell.h, m.cell.w, m.cell.h, 80 - m.foot.x, 50 - m.foot.y, m.cell.w, m.cell.h);
   element('adv-end-title', modal.box).textContent = result.reason === 'bp' ? '당신은 죽었습니다.' : '마을로 돌아왔습니다.';
+  sound.play(result.reason === 'bp' ? 'run_dead' : 'run_home');
   const rows = element('adv-end-rows', modal.box);
   const row = (k: string, fill: (v: HTMLElement) => void) => {
     element('adv-end-key', rows).textContent = k;

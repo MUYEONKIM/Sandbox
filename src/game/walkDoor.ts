@@ -67,12 +67,13 @@ export class WalkDoor {
     this.image.setFrame(String(OPEN));
   }
 
-  /** 열거나 닫기로 한다. 바뀌는 중이면 지금 장에서 이어 간다. */
+  /** 열거나 닫기로 한다. 바뀌는 중이면 지금 장에서 이어 간다. 여닫기가 새로 정해졌으면 true(문 소리를 낸다). */
   want(open: boolean, time: number) {
     const target = open ? OPEN : 0;
-    if (target === this.target) return;
+    if (target === this.target) return false;
     this.target = target;
     if (this.frame !== target && !this.nextAt) this.nextAt = time + FRAME_MS;
+    return true;
   }
 
   /** 바꿀 때가 됐으면 한 장 넘긴다. */

@@ -4,6 +4,7 @@ import type { Color } from '../art/pixels';
 import { element } from './dom';
 import { PurchaseWindow } from './purchase';
 import { goldText } from '../game/gold';
+import { sound } from '../sound/engine';
 
 export type PlaceBet = (game: GameId, pick: string, amount: number) => Promise<BetResult | null>;
 
@@ -192,6 +193,7 @@ export abstract class BetWindow extends PurchaseWindow {
     this.say('');
     this.render();
     try {
+      sound.play('chip');
       const result = await this.placeBet(this.game, pick.id, amount);
       if (!result) {
         this.say('판이 엎어졌습니다. 잠시 후 다시 걸어 주세요.', 'lose');
@@ -200,6 +202,9 @@ export abstract class BetWindow extends PurchaseWindow {
       this.economy.setGold(result.gold - BigInt(result.payout));
       await this.play(result.outcome);
       const text = this.describe(result.outcome);
+      // 이김·짐, 걸은 돈의 2.5배를 넘게 받으면 큰돈 소리도(에이전트가 정함: 달팽이 1등 2.97배, 사다리 두 줄 맞히기)
+      sound.play(result.payout > 0 ? 'casino_win' : 'casino_lose');
+      if (result.payout > amount * 2.5) sound.play('gold_big');
       if (result.payout > 0) this.say(`${text} · ${goldText(result.payout)}를 받았습니다!`, 'win');
       else this.say(`${text} · ${goldText(amount)}를 잃었습니다`, 'lose');
       this.economy.setGold(result.gold);

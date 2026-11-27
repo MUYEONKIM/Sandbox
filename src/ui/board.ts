@@ -1,6 +1,7 @@
 import { NOTICE_TITLE, UPDATES } from '../updates';
 import { element } from './dom';
 import { byInput } from './touch';
+import { sound } from '../sound/engine';
 
 /** 글의 말머리. 서버 board_posts.category와 같다. */
 export type PostCategory = 'general' | 'suggestion';
@@ -170,6 +171,7 @@ export class BoardWindow {
   }
 
   open() {
+    if (this.root.hidden) sound.play('ui_open');
     this.root.hidden = false;
     this.root.scrollTop = 0;
     this.say('');
@@ -180,6 +182,7 @@ export class BoardWindow {
   }
 
   close() {
+    if (!this.root.hidden) sound.play('ui_close');
     this.root.hidden = true;
     this.input.blur();
     window.clearInterval(this.refreshTimer);

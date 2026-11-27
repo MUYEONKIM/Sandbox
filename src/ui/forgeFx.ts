@@ -1,6 +1,11 @@
 import type { ForgeOutcome } from '../game/forge';
 import { element } from './dom';
 import './forgeFx.css';
+import { sound } from '../sound/engine';
+import type { SfxKey } from '../sound/catalog';
+
+/** 번개마다 나는 소리: 망치질, 마지막은 결과 소리 */
+const BOLT_SFX: Record<BoltKind, SfxKey> = { strike: 'anvil', success: 'forge_success', keep: 'forge_keep', drop: 'forge_drop', destroy: 'forge_break' };
 
 /**
  * 망치질 번개 연출(2026-11-16 사용자 "망치질 순간의 이펙트는 따로 화면에 전체적인 이펙트를 띄우면서 번개치는 느낌으로").
@@ -190,6 +195,7 @@ export class ForgeFx {
     const world = this.world;
     const stage = this.stage;
     if (!world || !stage) return;
+    sound.play(BOLT_SFX[kind]);
     const parts: HTMLElement[] = [];
     const bolt = element('forge-fx-bolt', world, 'img') as HTMLImageElement;
     bolt.src = boltUrl(kind, this.shape);

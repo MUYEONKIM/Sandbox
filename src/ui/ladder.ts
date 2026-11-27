@@ -2,6 +2,7 @@ import { assetUrl } from '../assetUrl';
 import type { Economy } from '../game/economy';
 import { animate, BetWindow, loadImage, STAGE_W, wait, type PlaceBet } from './bet';
 import { ellipse, makeCanvas, once, OUT, piece, rect, stamp, textArt } from './pixelArt';
+import { sound } from '../sound/engine';
 
 /** 판 높이. 2026-11-16 새 모습에서 다른 두 게임처럼 190으로 키웠다(예전 160). */
 const STAGE_H = 190;
@@ -119,6 +120,7 @@ export class LadderWindow extends BetWindow {
     await this.assets;
     const start = outcome[0] === 'L' ? 0 : 1;
     const lines = Number(outcome[1]);
+    sound.play('ladder_open');
     await animate(500, (t) => this.drawBoard(lines, t, null, null, 0, null));
 
     // 금화가 지나는 길: 세로로 내려가다 가로줄에서 건너간다.
@@ -133,6 +135,7 @@ export class LadderWindow extends BetWindow {
     const lengths = points.slice(1).map(([x, y], i) => Math.hypot(x - points[i][0], y - points[i][1]));
     const total = lengths.reduce((a, b) => a + b, 0);
     let frame = 0;
+    sound.play('ladder_run');
     await animate(2600, (t) => {
       let left = t * total;
       const path: [number, number][] = [points[0]];

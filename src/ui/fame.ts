@@ -3,6 +3,7 @@ import type { RankEntry } from '../net/session';
 import { element } from './dom';
 import { byInput } from './touch';
 import { FoldBox } from './fold';
+import { sound } from '../sound/engine';
 
 type LoadRanking = () => Promise<RankEntry[] | null>;
 
@@ -48,6 +49,7 @@ export class FameWindow {
   }
 
   async open() {
+    if (this.root.hidden) sound.play('ui_open');
     this.root.hidden = false;
     this.list.textContent = '불러오는 중입니다.';
     const entries = await this.load();
@@ -56,6 +58,7 @@ export class FameWindow {
   }
 
   close() {
+    if (!this.root.hidden) sound.play('ui_close');
     this.root.hidden = true;
   }
 }

@@ -186,7 +186,7 @@ export function gearWindow(win: HTMLElement, adv: Adventure, view: AdvView, ui: 
     // 되면 서버 값이 바뀌어 창을 다시 그린다. 그때 카드는 닫혀 있게 먼저 고르기를 푼다(안 되면 되돌림).
     const before = ui.sel;
     ui.sel = null;
-    void adventureCall(adv, () => adventureEquipWeapon(on ? null : w.id), say).then((ok) => {
+    void adventureCall(adv, () => adventureEquipWeapon(on ? null : w.id), say, '', 'equip').then((ok) => {
       if (!ok) ui.sel = before;
     });
   };

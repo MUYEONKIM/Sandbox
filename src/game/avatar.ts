@@ -4,6 +4,7 @@ import { depthOf, gridToWorld, keepDepth } from '../iso';
 import { WEAPONS, type WeaponId } from '../items';
 import { ensureTorchTexture, TORCH_FLAME, TORCH_FRAME_MS, TORCH_GRIP, TORCH_HAND, TORCH_ORDER, TORCH_TEXTURE } from '../art/torch';
 import type { Tile } from './world';
+import type { SfxKey } from '../sound/catalog';
 
 /** 캐릭터 시트의 칸 크기와, 칸 안에서 발이 닿는 높이 */
 export const TEAM_W = 22;
@@ -75,6 +76,8 @@ export class Avatar {
   /** 손에 든 횃불(2026-11-24, 디자인 torch.md 2절). 처음 들 때 만든다. */
   private torch: Phaser.GameObjects.Image | null = null;
   private torchOn = false;
+  /** 이 사람의 소리(착지, 횃불). GameScene이 내 것·남의 것에 맞춰 단다. 없으면 소리를 내지 않는다. */
+  sounds: ((key: SfxKey) => void) | null = null;
   /** 불꽃 가운데(월드 좌표). 횃불이 보일 때만 맞는 값이다. */
   readonly flame = { x: 0, y: 0 };
   private readonly firstFrame: number;
@@ -165,6 +168,7 @@ export class Avatar {
   setTorch(on: boolean) {
     if (on === this.torchOn) return;
     this.torchOn = on;
+    this.sounds?.(on ? 'torch_on' : 'torch_off');
     if (on && !this.torch) {
       ensureTorchTexture(this.scene);
       this.torch = this.scene.add.image(0, 0, TORCH_TEXTURE, 'torch-l0').setOrigin(TORCH_GRIP.x / 7, TORCH_GRIP.y / 22);
@@ -353,7 +357,10 @@ export class Avatar {
 
   update(delta: number) {
     if (this.t < 1) this.t = Math.min(1, this.t + delta / this.ms);
-    if (this.t >= 1) this.airborne = false;
+    if (this.t >= 1 && this.airborne) {
+      this.airborne = false;
+      this.sounds?.('land');
+    }
     if (this.knockT < 1) this.knockT = Math.min(1, this.knockT + delta / KNOCK_MS);
     if (this.swingT < 1) this.swingT = Math.min(1, this.swingT + delta / SWING_MS);
     if (this.scene.time.now >= this.lowerGunAt) this.lowerGun();

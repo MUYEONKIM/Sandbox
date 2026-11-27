@@ -1,0 +1,86 @@
+/* 소리 설정(2026-11-27, soundPanel.ts). 계정 줄 아래에 붙는 작은 판. 크기와 자리는 에이전트가 정함. */
+.sound-host {
+  position: relative;
+}
+
+.account-sound {
+  padding: 2px 8px;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sound-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 7;
+  display: grid;
+  gap: 6px;
+  min-width: 250px;
+  padding: 4px 6px;
+  color: var(--text);
+  background: none;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 10px;
+  border-image: url('./skin/panel.png') 5 fill / 10px / 0 stretch;
+  image-rendering: pixelated;
+  pointer-events: auto;
+}
+
+.sound-panel[hidden] {
+  display: none;
+}
+
+.sound-row {
+  display: grid;
+  grid-template-columns: 52px 1fr 32px;
+  align-items: center;
+  gap: 8px;
+}
+
+.sound-label {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sound-range {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  accent-color: #8a5a34;
+  cursor: pointer;
+}
+
+.sound-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sound-mute {
+  justify-self: end;
+  padding: 2px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* 휴대폰: 손가락으로 잡기 쉽게 줄을 높인다 */
+@media (pointer: coarse), (max-width: 620px) {
+  .sound-panel {
+    min-width: 230px;
+  }
+
+  .sound-row {
+    grid-template-columns: 48px 1fr 30px;
+  }
+
+  .sound-range {
+    height: 32px;
+  }
+
+  .sound-mute {
+    padding: 4px 18px;
+  }
+}

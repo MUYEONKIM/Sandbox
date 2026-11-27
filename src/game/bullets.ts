@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import { depthOf, gridToWorld } from '../iso';
+import { sound } from '../sound/engine';
 
 /** 총알이 땅에서 떠 있는 높이 (아트 픽셀) */
 export const BULLET_HEIGHT = 14;
@@ -105,7 +106,10 @@ export class Bullets {
 
       const inside = this.world.inBounds(Math.floor(bullet.x), Math.floor(bullet.y));
       if (!inside || bullet.left <= 0) return false;
-      if (this.world.isSolid(Math.floor(bullet.x), Math.floor(bullet.y))) return false;
+      if (this.world.isSolid(Math.floor(bullet.x), Math.floor(bullet.y))) {
+        sound.play('bullet_wall', { at: { x: bullet.x, y: bullet.y } });
+        return false;
+      }
 
       for (const target of this.world.targets()) {
         if (target.id === bullet.ownerId) continue;

@@ -2,6 +2,7 @@ import type { ChatMessage } from '../net/session';
 import { element } from './dom';
 import { foldButton, isFolded, saveFolded, showFoldButton } from './fold';
 import { TOUCH } from './touch';
+import { sound } from '../sound/engine';
 
 const MAX_MESSAGES = 50;
 /** 입력창에서 Tab으로 바꾸는 채팅 모드. 일반은 같은 맵, 전체는 모든 맵이다(2026-11-12 사용자 요청). */
@@ -117,7 +118,10 @@ export class ChatBox {
   /** 쓴 글을 보내고 입력창을 닫는다(Enter, 휴대폰은 보내기 버튼). */
   private submit() {
     const text = this.input.value.trim();
-    if (text) this.send(text, MODES[this.mode].everyone);
+    if (text) {
+      sound.play('chat_send');
+      this.send(text, MODES[this.mode].everyone);
+    }
     this.close();
   }
 

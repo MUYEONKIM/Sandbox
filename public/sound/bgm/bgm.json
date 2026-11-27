@@ -1,0 +1,86 @@
+{
+  "village_day": {
+    "file": "village_day.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 76.099979,
+    "lufs": -20.0
+  },
+  "boss": {
+    "file": "boss.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 57.226833,
+    "lufs": -19.0
+  },
+  "secret": {
+    "file": "secret.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 79.338938,
+    "lufs": -21.0
+  },
+  "village_night": {
+    "file": "village_night.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 58.1,
+    "lufs": -20.0
+  },
+  "fields": {
+    "file": "fields.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 48.538354,
+    "lufs": -20.0
+  },
+  "indoor": {
+    "file": "indoor.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 57.158271,
+    "lufs": -20.0
+  },
+  "casino": {
+    "file": "casino.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 72.500271,
+    "lufs": -20.0
+  },
+  "battlefield": {
+    "file": "battlefield.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 53.268167,
+    "lufs": -20.0
+  },
+  "adv_gate": {
+    "file": "adv_gate.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 62.430042,
+    "lufs": -20.0
+  },
+  "adv_wild": {
+    "file": "adv_wild.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 69.072104,
+    "lufs": -20.0
+  },
+  "adv_fire": {
+    "file": "adv_fire.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 55.368146,
+    "lufs": -20.0
+  },
+  "adv_sky": {
+    "file": "adv_sky.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 55.681792,
+    "lufs": -20.0
+  },
+  "adv_deep": {
+    "file": "adv_deep.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 86.9,
+    "lufs": -20.0
+  },
+  "adv_ruin": {
+    "file": "adv_ruin.m4a",
+    "loopStart": 0.5,
+    "loopEnd": 58.09425,
+    "lufs": -20.0
+  }
+}

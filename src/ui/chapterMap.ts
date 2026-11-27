@@ -1,6 +1,7 @@
 import { advMap, loadChapterLayout, type AdvMapData, type ChapterLayout } from '../game/adventureMaps';
 import type { Tile } from '../game/world';
 import { element } from './dom';
+import { sound } from '../sound/engine';
 
 /**
  * 모험 지역 전체지도(2026-11-25 사용자 "m 키를 누르던, 미니맵에 +버튼을 만들던 해서, 현재 챕터 전체지도 보이게", 디자인 세션 6 minimap-v8.md 3·4절 "넘겨").
@@ -158,6 +159,7 @@ export class ChapterMap {
     this.state = state;
     if (!this.open) {
       this.open = true;
+      if (this.root.hidden) sound.play('ui_open');
       this.root.hidden = false;
       this.onToggle?.(true);
     }
@@ -192,6 +194,7 @@ export class ChapterMap {
   close() {
     if (!this.open) return;
     this.open = false;
+    if (!this.root.hidden) sound.play('ui_close');
     this.root.hidden = true;
     this.onToggle?.(false);
   }

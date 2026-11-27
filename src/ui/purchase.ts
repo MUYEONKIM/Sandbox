@@ -2,6 +2,7 @@ import type { Economy } from '../game/economy';
 import { element } from './dom';
 import { byInput } from './touch';
 import { goldText } from '../game/gold';
+import { sound } from '../sound/engine';
 
 /** 골드를 내는 창의 공통 틀: 보유 골드 표시, 결제 중 버튼 잠금, 나가기 버튼 */
 export abstract class PurchaseWindow {
@@ -42,10 +43,12 @@ export abstract class PurchaseWindow {
 
   open() {
     this.render();
+    if (this.root.hidden) sound.play('ui_open');
     this.root.hidden = false;
   }
 
   close() {
+    if (!this.root.hidden) sound.play('ui_close');
     this.root.hidden = true;
   }
 

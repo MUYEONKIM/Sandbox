@@ -101,7 +101,7 @@ export class GroundUi {
 
   /** 메모 쓰기 창. place가 실패 문구를 돌려주면 창을 닫지 않고 그 문구를 보인다. */
   openWriter(place: (body: string) => Promise<string | null>) {
-    const modal = new Modal(this.root, 'memo-writer', '메모 쓰기');
+    const modal = new Modal(this.root, 'memo-writer', '메모 쓰기', 'paper');
     element('modal-note', modal.box).textContent = '지금 선 자리에 놓습니다. 주운 사람이 읽고 가져갑니다.';
     const area = element('memo-input', modal.box, 'textarea') as HTMLTextAreaElement;
     area.maxLength = MEMO_MAX;
@@ -133,7 +133,7 @@ export class GroundUi {
 
   /** 메모를 읽는 창. 막 주웠으면 picked, 인벤토리에서 열었으면 '여기에 놓기' 버튼을 단다. */
   showMemo(memo: HeldMemo, picked: boolean) {
-    const modal = new Modal(this.root, 'memo-reader', `${memo.author}의 메모`);
+    const modal = new Modal(this.root, 'memo-reader', `${memo.author}의 메모`, 'paper');
     element('memo-body', modal.box).textContent = memo.body;
     if (picked) element('modal-note', modal.box).textContent = '주운 메모는 인벤토리 "메모" 탭에 들어갔습니다.';
     const error = element('modal-error', modal.box);

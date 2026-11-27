@@ -1,4 +1,6 @@
 import { element } from './dom';
+import { sound } from '../sound/engine';
+import type { SfxKey } from '../sound/catalog';
 
 /**
  * 화면 가운데 작은 창(새 소식, 메모 쓰기와 읽기, 골드 버리기). 열 때 만들고 닫을 때 지운다.
@@ -19,7 +21,8 @@ export class Modal {
   private readonly backdrop: HTMLElement;
   private onClose: (() => void) | null = null;
 
-  constructor(root: HTMLElement, className: string, title: string) {
+  /** openSound·closeSound: 열고 닫을 때 소리(메모 창은 paper, 상자 창은 box_open·box_close) */
+  constructor(root: HTMLElement, className: string, title: string, openSound: SfxKey = 'ui_open', private readonly closeSound: SfxKey = 'ui_close') {
     this.backdrop = element('modal-backdrop', root);
     this.box = element(`modal ${className}`, this.backdrop);
     element('modal-title', this.box).textContent = title;
@@ -30,6 +33,7 @@ export class Modal {
       this.close();
     });
     open.push(this);
+    sound.play(openSound);
   }
 
   /** 아래쪽 버튼. 누르면 onClick이 false를 돌려주지 않는 한 창을 닫는다. */
@@ -61,6 +65,7 @@ export class Modal {
     const at = open.indexOf(this);
     if (at < 0) return;
     open.splice(at, 1);
+    sound.play(this.closeSound);
     this.backdrop.remove();
     this.onClose?.();
   }

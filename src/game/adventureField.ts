@@ -13,6 +13,7 @@ import { bpDots } from './adventureBattle';
 import { lightAt, monsterArt, monstersOf, type AdvMapData, type FieldMonster, type MonsterFrame, type MonsterSheet } from './adventureMaps';
 import { formatNumber } from './level';
 import type { Tile } from './world';
+import { sound } from '../sound/engine';
 
 /**
  * 모험 맵 필드(2026-11-18 맵 위 몬스터, 기획 19장 '몬스터를 맵 위에 두며 바뀌는 것'·'몬스터 한 마리씩, 맵 나누기, 부딪히면 싸움, 레벨업 스텟 창').
@@ -287,10 +288,13 @@ export class AdventureField {
   syncBeaten() {
     const done = this.adventure.view?.runBosses ?? [];
     let changed = false;
+    let cleared = false;
     for (const f of this.floats) {
       if (!f.m.once) continue;
       const gone = done.includes(f.m.once);
       if (gone === f.gone) continue;
+      // 보스·수문장을 잡아 새 포탈이 열림(맵에 들어와 처음 맞출 때는 내지 않는다)
+      if (gone && this.beatenSynced && (f.m.kind === 'boss' || f.m.gate)) cleared = true;
       f.gone = gone;
       f.shown = !gone;
       f.image.setVisible(!gone);
@@ -299,8 +303,13 @@ export class AdventureField {
       changed = true;
     }
     if (changed) this.refreshBossDots();
+    if (cleared) sound.play('boss_clear');
+    this.beatenSynced = true;
     return changed;
   }
+
+  /** syncBeaten을 한 번 했음(그 뒤로 잡힌 것만 boss_clear) */
+  private beatenSynced = false;
 
   /** 들어온 칸에서 시작한다(맵에 들어올 때, 되돌림 칸으로 옮겼을 때). */
   enter(tile: Tile) {
@@ -365,6 +374,7 @@ export class AdventureField {
       this.closeStats();
       return;
     }
+    sound.play('ui_open');
     this.sheet.hidden = false;
     this.panelVersion = -1;
     this.gearShown = '';
@@ -379,6 +389,7 @@ export class AdventureField {
    */
   closeStats() {
     if (this.levelUp || this.sheet.hidden) return false;
+    sound.play('ui_close');
     this.sheet.hidden = true;
     this.clearGear();
     return true;
@@ -423,6 +434,7 @@ export class AdventureField {
     this.gear.hidden = true;
     this.sheet.classList.add('levelup');
     this.panel.classList.add('levelup');
+    sound.play('ui_open');
     this.sheet.hidden = false;
     this.panelVersion = -1;
     this.paintPanel();
@@ -437,6 +449,7 @@ export class AdventureField {
     if (assign && up.recommend && !up.recommend.disabled) up.recommend.click();
     this.panel.classList.remove('levelup');
     this.sheet.classList.remove('levelup');
+    sound.play('ui_close');
     this.sheet.hidden = true;
     this.gear.hidden = false;
     this.panel.replaceChildren();

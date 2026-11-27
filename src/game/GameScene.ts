@@ -219,6 +219,9 @@ import type { CoopWindow } from '../ui/coop';
 import { Modal } from '../ui/modal';
 import { element } from '../ui/dom';
 import { byInput } from '../ui/touch';
+import { sound } from '../sound/engine';
+import { bgmForMap, isBossYard, toggleSfx, weaponSfx, zoneBgm, type SfxKey } from '../sound/catalog';
+import { BGM_FADE } from '../sound/engine';
 
 /** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
 const WORK_TICK_MS = 250;
@@ -427,6 +430,12 @@ function slideOptions({ dx, dy }: Dir): Dir[] {
 export class GameScene extends Phaser.Scene implements SessionEvents {
   world!: World;
   private mapId: MapId;
+  /** 보스를 잡은 뒤 지역 곡으로 돌아갈 타이머 */
+  private bossBgmTimer = 0;
+  /** 이때까지는 남이 나타나도 포탈 소리를 내지 않는다(맵에 막 들어옴) */
+  private quietArrivalsUntil = 0;
+  /** 사람마다 걸음 수(발소리는 두 칸에 한 번, 1→2→3 돌아가며) */
+  private readonly steps = new Map<string, number>();
   /** 모험 필드에 있을 때의 조우 게이지·띠 표시(2026-11-17) */
   private advField: AdventureField | null = null;
   /** 남겨 둔 모험 바닥 그림 키(최근 것이 앞, keepAdventureGround) */
@@ -675,6 +684,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.daylight.onPhase = (phase, fade) => {
       this.glows.setPhase(phase, fade);
       this.setDayPhase(phase);
+      // 시간대가 바뀌면 시작마을 곡을 낮·밤으로 3초 겹쳐 바꾼다(sound-plan.md 1절 2번).
+      if (fade && this.mapId === 'plains') this.syncBgm(3);
     };
     // 블록 덩어리가 화면을 다시 볼 때 켤 플레이어 조명을 다시 고른다.
     this.blockChunks.onView = (view) => this.glows.setView(view);
@@ -685,10 +696,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 옥상·바깥 계단·4층 발코니 풍경도 같은 자리에 깐다(cityViews.ts).
     this.phaseArt = new PhaseArt(this, this.daylight.current);
     this.skyline = new Skyline(this, this.phaseArt, DEPTH_GROUND - 1);
+    // 남의 행동 소리는 내 칸과의 거리로 줄인다(소리를 낼 때만 묻는다).
+    sound.setListener(() => this.me?.tile ?? null);
+    this.workFx.myId = this.session.profile.id;
+    // 게임에 들어왔으니 효과음 묶음을 뒤에서 받는다(소리가 켜져 있으면 바로, 아니면 첫 입력 때).
+    sound.enterGame();
     this.showMap(this.mapId);
     this.market.onChange(() => this.paintTickers());
     // 모험 맵: 보스를 처음 잡아 다음 지역이 열리면 포탈을 세우고, 스텟이 바뀌면 입구 맵 포탈 이름표 색을 다시 칠한다.
     this.adventure.onChange(() => this.syncAdventurePortals());
+    // 보스 마당에서 보스를 잡았으면 지역 곡으로 돌아간다(새 판이면 보스 곡으로).
+    this.adventure.onChange(() => {
+      if (!isBossYard(this.mapId)) return;
+      if (this.bossBeatenHere()) this.watchBossBgm();
+      else this.syncBgm(1);
+    });
     // 모험 맵에서는 정보 칸과 내 이름표가 판 레벨이다(값이 바뀔 때만 다시 그림).
     this.adventure.onChange(() => this.refreshRunLevel());
     // 레벨 업 막대가 도는 동안 내 이름표 레벨 숫자도 정보 칸과 같은 때에 바뀌고 튄다(다른 사람 이름표는 끝 레벨만, 디자인 adventure-ui.md 15절).
@@ -709,6 +731,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const { id, nickname, hp, max_hp: maxHp, skin } = this.session.profile;
     this.me = new Avatar(this, id, this.startTile(), hp, skin, maxHp);
     this.me.floorLift = this.floorLiftAt;
+    this.me.sounds = (key) => sound.play(key);
     this.tags.add(id, nickname);
     this.tags.setHp(id, hp, maxHp);
     this.showLevel(id, this.level);
@@ -1056,6 +1079,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 맵 하나를 화면에 올린다. 블록과 다른 플레이어는 서버에서 받아 채운다. */
   private showMap(id: MapId) {
     this.mapId = id;
+    // 맵마다 곡을 바꾸고(같은 곡이면 그대로 이어 틂, 보스 마당은 1초 겹침).
+    window.clearTimeout(this.bossBgmTimer);
+    this.syncBgm(isBossYard(id) ? 1 : BGM_FADE);
+    // 들어오며 이미 있던 사람들이 한꺼번에 '나타남' 포탈 소리를 내지 않게 잠깐 막는다(에이전트가 정함, 2초).
+    this.quietArrivalsUntil = performance.now() + 2000;
     const info = MAPS[id];
     // 4층 숨은 방은 2026-11-27부터 따로 된 방(맵)이다. 들어오면 방 이름 글을 띄운다(예전 4층 안에서 드러날 때와 같음).
     if (id === 'hideout') this.hud.announce(HIDEOUT.title);
@@ -1542,6 +1570,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.hush.tried = true;
     void openHush(this.hush.place).then((found) => {
       if (!found || !isMapId(found.map) || this.traveling || place !== this.hush?.place) return;
+      sound.play('secret');
       this.travel(found.map, () => this.hud.popup(found.popup));
     });
   }
@@ -2217,6 +2246,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   private moveTo(to: Tile, ms: number, motion: Motion = 'walk') {
     this.stopWork();
+    if (motion === 'jump') sound.play('jump');
+    else this.footstep(this.session.profile.id, to, true);
     if (motion === 'jump') this.me.jumpTo(to, ms);
     else if (motion === 'run') this.me.runTo(to, ms);
     else this.me.stepTo(to, ms);
@@ -2415,6 +2446,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const view = cam.worldView;
     const at = body ? { x: (body.x - view.x) / view.width, y: (body.y - view.y) / view.height } : { x: 0.5, y: 0.5 };
     const intro = new BattleIntro(this.game, swirlKind(frame?.role ?? (monster.kind === 'normal' ? 'normal' : 'boss'), this.advClosedAt), at);
+    sound.play(monster.kind === 'normal' ? 'battle_start' : 'battle_boss');
     const [battle] = await Promise.all([request, intro.done]);
     if (typeof battle === 'string') {
       this.game.loop.wake();
@@ -2428,6 +2460,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         if (result && typeof result !== 'string') this.showAdventureResult(result);
         return;
       }
+      sound.play('deny');
       this.hud.toast('싸우지 못했습니다', failText(battle));
       return;
     }
@@ -2487,6 +2520,44 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
+  /** 발소리: 두 칸에 한 번, 1→2→3 돌아가며. 건물 안(층·방·발코니)은 바닥 소리(sound-plan.md 3-5). */
+  private footstep(id: string, at: Tile, mine: boolean) {
+    const n = (this.steps.get(id) ?? 0) + 1;
+    this.steps.set(id, n);
+    if (n % 2) return;
+    const k = ((n / 2 - 1) % 3) + 1;
+    const key = `step_${isTower(this.mapId) ? 'floor' : 'grass'}_${k}` as SfxKey;
+    sound.play(key, mine ? {} : { at, who: id });
+  }
+
+  /**
+   * 지금 맵에 맞는 곡을 튼다(sound-plan.md 1절): 시작마을은 KST 낮·밤, 숨은 방(맵 hideout)은 비밀 방 곡,
+   * 보스 마당은 이번 판에 그 지역 보스를 잡았으면 지역 곡. 같은 곡이면 그대로 이어 튼다.
+   */
+  private syncBgm(fade = BGM_FADE) {
+    const id = this.mapId;
+    const phase = this.daylight?.current;
+    let key = bgmForMap(id, phase === 'evening' || phase === 'dawn');
+    if (isBossYard(id) && this.bossBeatenHere()) key = zoneBgm(id);
+    sound.playBgm(key, fade);
+  }
+
+  /** 이번 판에 이 보스 마당 지역의 보스를 잡았는지 */
+  private bossBeatenHere() {
+    const zone = this.adventure.zoneOfMap(this.mapId)?.id;
+    return zone !== undefined && !!this.adventure.view?.runBosses.includes(zone);
+  }
+
+  /** 보스 마당에서 보스를 잡으면 2초 뒤 지역 곡으로 2초 겹쳐 돌아간다(sound-plan.md 1절 13번). */
+  private watchBossBgm() {
+    if (!isBossYard(this.mapId) || !this.bossBeatenHere()) return;
+    window.clearTimeout(this.bossBgmTimer);
+    const map = this.mapId;
+    this.bossBgmTimer = window.setTimeout(() => {
+      if (this.mapId === map) this.syncBgm(2);
+    }, 2000);
+  }
+
   /** 모험 맵(입구 맵 포함)인지. 그 맵에서는 I가 마을 인벤토리 대신 스텟 판과 장비창을 연다. */
   get inAdventure() {
     return isAdventure(this.mapId);
@@ -2521,6 +2592,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const before = this.economy.gold;
     const gold = await this.session.sellAll();
     if (gold === null) {
+      sound.play('deny');
       this.hud.toast('정산에 실패했습니다', '잠시 후 다시 시도해 주세요');
       return;
     }
@@ -2532,9 +2604,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   async buyTool({ id, name }: ShopTool) {
     const gold = await this.session.buyTool(id);
     if (gold === null) {
+      sound.play('deny');
       this.hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
       return;
     }
+    sound.play('buy');
     this.economy.setToolBought(id, gold);
     this.hud.toast(`${name} 구매 완료`, '가지고 있으면 자동으로 적용됩니다');
   }
@@ -2543,9 +2617,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   async buyStat(id: StatId, amount: number) {
     const bought = await this.session.buyStat(id, amount);
     if (!bought) {
+      sound.play('deny');
       this.hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
       return;
     }
+    sound.play('stat_up');
     this.economy.setStatBought(id, bought.value, bought.gold);
     if (id === 'hp') this.raiseMaxHp(maxHpOf(bought.value));
   }
@@ -2641,6 +2717,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const info = this.economy.lootItem(result.item);
     if (!info) return;
     const rare = this.economy.isRare(info);
+    // 보통 자원은 얻음 소리, 귀한 자원은 WorkFx.finish가 resource_rare를 낸다.
+    if (!rare) sound.play('resource_get');
     this.workFx.finish(this.session.profile.id, rare, true);
     this.session.sendHarvest(rare);
     this.economy.add(result.item, result.count);
@@ -2670,6 +2748,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 레벨이 오르면 정보 칸 막대가 돌고, 그동안 내 이름표 숫자는 막대(showAnimatedLevel)가 맞춘다.
     const animated = this.hud.setLevel(level, exp, leveled);
     if (!leveled) return;
+    sound.play('level_up');
     this.session.refreshPresence();
     if (!animated) this.showLevel(this.session.profile.id, level);
     this.hud.toast(`레벨 업! Lv. ${formatNumber(level)}`, `다음 레벨까지 경험치 ${formatNumber(levelNeed(level))}`);
@@ -2728,8 +2807,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.traveling = true;
     this.stopWork();
     this.dropSeat();
+    // 엘리베이터(아이티공간, 빌라)에서 층으로 가면 층에 닿을 때 엘리베이터 소리, 그 밖은 떠날 때 포탈 소리
+    const riding = this.mapId === 'elevator' || this.mapId === 'villa_lift';
+    if (!riding && !this.doorPass) sound.play(to === 'hideout' ? 'secret' : 'portal');
     const cam = this.cameras.main;
     cam.once('camerafadeoutcomplete', () => {
+      if (riding) sound.play('elevator');
       const tile = arrival ?? arrivalFor(to, this.mapId);
       this.clearMap();
       this.showMap(to);
@@ -2960,6 +3043,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     const myId = this.session.profile.id;
     const healed = result.hp - this.me.hp;
+    sound.play('potion');
     this.economy.setPotionCount(id, result.count);
     if (healed > 0) this.tags.float(myId, `+${healed}`, 'heal');
     this.onHp(myId, result.hp, null);
@@ -2968,6 +3052,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private notice(title: string, detail: string) {
     if (this.time.now < this.nextNoticeAt) return;
     this.nextNoticeAt = this.time.now + NOTICE_MS;
+    sound.play('deny');
     this.hud.toast(title, detail);
   }
 
@@ -2992,6 +3077,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const found = this.magOf(arm);
     if (!found || found.mag.reloadUntil || found.mag.left >= found.size) return false;
     found.mag.reloadUntil = this.time.now + (this.economy.weapon(arm.kind)?.reloadMs ?? 0);
+    sound.play('reload_out');
     this.showAmmo();
     return true;
   }
@@ -3024,6 +3110,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const reloading = found?.mag.reloadUntil ? found.mag.reloadUntil : 0;
     if (!reloading) {
       if (this.reloadStep >= 0) {
+        // 장전 끝(링을 그리던 중이었음)
+        if (found) sound.play('reload_in');
         this.reloadRing?.clear();
         this.reloadStep = -1;
         this.showAmmo();
@@ -3056,6 +3144,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     this.stopWork();
     this.nextShotAt = this.time.now + this.economy.cooldownOf(weapon);
+    sound.play(weaponSfx(weapon));
 
     const { x, y } = this.me.position();
     const fromX = x + 0.5;
@@ -3154,6 +3243,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     const avatar = id === this.session.profile.id ? this.me : this.others.get(id);
     if (!avatar) return;
+    if (avatar !== this.me) sound.play('hit_other', { at: avatar.tile });
     const screenX = (dx - dy) * (TILE_W / 2);
     const screenY = (dx + dy) * (TILE_H / 2);
     const length = Math.hypot(screenX, screenY);
@@ -3181,6 +3271,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.stopWork();
     this.dropSeat();
     this.clearRoute();
+    sound.play('down');
     this.hud.showDown(true);
     this.time.delayedCall(RESPAWN_MS, () => void this.respawn());
   }
@@ -3194,6 +3285,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.me.teleport(tile);
     this.setMyHp(this.me.maxHp);
     this.down = false;
+    sound.play('respawn');
     this.hud.showDown(false);
     this.drawRange();
     this.session.sendMove(tile.x, tile.y, 0);
@@ -3398,6 +3490,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     this.drops.remove(item.id);
+    // 줍기. 골드면 계정 줄 골드가 오르며 gold_get이 따라 난다(Hud).
+    sound.play('pickup');
     if (result.kind === 'gold') {
       this.economy.setGold(result.gold);
       this.hud.toast(`${goldText(result.amount)} 줍줍`, '주인은 지금쯤 땅을 치고 있습니다', true);
@@ -3428,6 +3522,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const { x, y } = this.me.tile;
     const result = await this.session.dropGold(amount, x, y);
     if (!result.ok) return dropFailText(result.reason);
+    sound.play('gold_drop');
     this.economy.setGold(result.gold);
     this.drops.add(result.item);
     this.hud.toast(`${goldText(amount)}를 버렸습니다`, '발밑에서 반짝입니다. 먼저 줍는 사람이 임자');
@@ -3732,6 +3827,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 블록은 무제한이라 가방에서 빼지 않는다. 먼저 화면에 놓고, 다른 사람이 먼저 놓아 실패하면 되돌린다.
     const { mapId } = this;
     this.spawnBlock(spot, z, id);
+    sound.play('block_place');
     void this.session.placeBlock(x, y, z, id).then((placed) => {
       if (placed || mapId !== this.mapId) return;
       this.removeBlockAt(x, y, z);
@@ -3776,6 +3872,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!removed) return;
     if (mapId !== this.mapId) return;
     this.removeBlockAt(x, y, z);
+    sound.play('block_remove');
   }
 
   private spawnBlock({ x, y }: Tile, z: number, id: BlockId) {
@@ -4020,7 +4117,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
           }
         }
       }
-      door.want(open, time);
+      // 여닫기가 새로 정해지면 문 소리(내 근처 2칸이면 내 소리, 아니면 문 칸에서 거리로). 문마다 따로 센다.
+      if (door.want(open, time)) {
+        const at = door.portals[0];
+        const who = at ? `walk-door:${at.x},${at.y}` : 'walk-door';
+        sound.play(open ? 'door_open' : 'door_close', at && !inReach(this.me.tile, at.landing, 2) ? { at, who } : { who });
+      }
       door.update(time);
     }
   }
@@ -4116,6 +4218,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 문을 열거나 닫는다: 반쯤 열린 그림을 0.15초 보인 뒤 끝 그림으로 바꾼다. 총알은 바로 그 상태를 따른다. */
   private setDoor(door: { x: number; y: number; z: number; open: boolean; half: boolean }, open: boolean) {
     door.open = open;
+    const who = `door:${door.x},${door.y}`;
+    sound.play(open ? 'door_open' : 'door_close', inReach(this.me.tile, door) ? { who } : { at: door, who });
     door.half = true;
     this.world.setDoorOpen(door.x, door.y, open);
     const redress = () => {
@@ -4210,6 +4314,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.seated = { kind, from: { ...this.me.tile }, seat: { ...seat } };
     this.me.face(seat.x - this.me.tile.x, seat.y - this.me.tile.y);
     this.me.teleport(seat);
+    sound.play('sit');
     this.applyPose(this.me, kind);
     this.session.sendMove(seat.x, seat.y, 0);
     this.drawRange();
@@ -4307,7 +4412,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (now - this.lastToggleAt < TOGGLE_GAP_MS) return true;
     this.lastToggleAt = now;
     const { mapId } = this;
+    sound.play(toggleSfx(next));
+    this.togglingMine = true;
     this.onBlockChanged({ x, y, z, id: next });
+    this.togglingMine = false;
     void this.session.toggleBlock(x, y, z, next).then((ok) => {
       if (!ok && mapId === this.mapId) void this.session.syncBlocks();
     });
@@ -4646,6 +4754,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         this.otherPoses.set(id, pose);
         this.applyPose(avatar, pose);
       }
+      const shown = avatar;
+      shown.sounds = (key) => sound.play(key, { at: shown.tile, who: id });
+      // 남이 이 맵에 나타남(×0.5, 3초에 한 번, 내가 막 들어온 때는 빼고)
+      if (performance.now() > this.quietArrivalsUntil) sound.play('portal', { at: { x, y }, who: id });
       this.tags.add(id, nickname);
       this.tags.setHp(id, hp, maxHp);
       this.showLevel(id, level);
@@ -4663,6 +4775,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 가구에 앉았거나 누웠다: 그 가구 칸으로 옮겨 그 자세로 그린다. 일어났으면 자세를 풀고 선 칸으로 옮긴다.
     if (pose) {
       avatar.teleport({ x, y });
+      if (this.otherPoses.get(id) !== pose) sound.play('sit', { at: { x, y }, who: id });
       this.otherPoses.set(id, pose);
       this.applyPose(avatar, pose);
       return;
@@ -4676,12 +4789,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const reachable = inReach(tile, { x, y }, JUMP_TILES + 1);
     if (motion === 'jump' && reachable) {
       avatar.jumpTo({ x, y }, ms);
+      sound.play('jump', { at: { x, y }, who: id });
       return;
     }
     if (tile.x === x && tile.y === y) return;
     if (!reachable) avatar.teleport({ x, y });
-    else if (motion === 'run') avatar.runTo({ x, y }, ms);
-    else avatar.stepTo({ x, y }, ms);
+    else {
+      if (motion === 'run') avatar.runTo({ x, y }, ms);
+      else avatar.stepTo({ x, y }, ms);
+      this.footstep(id, { x, y }, false);
+    }
   }
 
   onShot({ id, weapon, fromX, fromY, toX, toY }: PlayerShot) {
@@ -4689,7 +4806,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!avatar) return;
     avatar.setWeapon(weapon);
     const { melee, auto, range } = WEAPONS[weapon];
+    const key = weaponSfx(weapon);
+    const by = () => ({ at: avatar.tile, who: id });
     if (melee) {
+      sound.play(key, by());
       this.slash(id, avatar, weapon, { x: fromX, y: fromY }, { x: toX, y: toY }, REMOTE_AIM_MS);
       return;
     }
@@ -4700,6 +4820,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     const pellets = this.economy.weapon(weapon)?.pellets ?? 1;
     if (pellets > 1) {
+      sound.play(key, by());
       for (const p of this.fan(weapon, pellets, fromX, fromY, toX, toY)) this.bullets.fire(id, fromX, fromY, p.x, p.y, range);
       return;
     }
@@ -4707,6 +4828,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (let i = 0; i < (auto ? BURST : 1); i++) {
       this.time.delayedCall(i * cooldown, () => {
         if (this.others.get(id) !== avatar) return;
+        // 3발 묶음은 받은 쪽이 한 발마다 낸다
+        sound.play(key, by());
         const shot = this.scatter(weapon, fromX, fromY, toX, toY);
         this.bullets.fire(id, fromX, fromY, shot.x, shot.y, range);
       });
@@ -4717,7 +4840,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const mine = id === this.session.profile.id;
     const avatar = mine ? this.me : this.others.get(id);
     if (!avatar) return;
-    if (hp < avatar.hp) this.tags.float(id, `-${avatar.hp - hp}`, 'damage');
+    if (hp < avatar.hp) {
+      this.tags.float(id, `-${avatar.hp - hp}`, 'damage');
+      // 내가 맞음. 남이 맞는 소리는 총알·칼이 닿을 때(playHit) 낸다. 남이 쓰러지는 것은 체력 0이 보일 때.
+      if (mine) sound.play('hit_me');
+      else if (hp <= 0) sound.play('down', { at: avatar.tile, who: id });
+    }
     if (max !== null) avatar.maxHp = max;
     if (mine) {
       this.setMyHp(hp);
@@ -4759,6 +4887,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   onNotice(notice: Notice) {
     this.notices.show(notice);
+    if (notice.kind === 'kill' && notice.killer === this.session.profile.nickname) sound.play('kill');
     this.chat.system(noticeText(notice));
     // 누가 쓰러지면 악업이 바뀌므로 현상범 명단을 다시 읽는다.
     if (notice.kind === 'kill') void this.wanted.refresh();
@@ -4774,6 +4903,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .filter(Boolean)
       .join('와 ');
     if (killer === me) {
+      sound.play('gold_big');
       for (const { item, count } of items) this.economy.add(item, count);
       this.economy.setGold(this.economy.gold + gold);
       this.hud.toast('현상금 획득!', what ? `${what}를 받았습니다` : '현상범 주머니가 텅 비어 있었습니다', true);
@@ -4785,7 +4915,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   onDodge(id: string) {
-    if (id === this.session.profile.id || this.others.has(id)) this.tags.float(id, '회피!', 'dodge');
+    const avatar = id === this.session.profile.id ? null : this.others.get(id);
+    if (id === this.session.profile.id || avatar) {
+      this.tags.float(id, '회피!', 'dodge');
+      sound.play('dodge', avatar ? { at: avatar.tile } : {});
+    }
   }
 
   onLevel(id: string, level: bigint, exp: number) {
@@ -4797,6 +4931,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.monsters?.setRoster(ids);
     for (const [id, avatar] of this.others) {
       if (ids.has(id)) continue;
+      sound.play('portal', { at: avatar.tile, who: id });
       this.workFx.stop(id);
       avatar.destroy();
       this.others.delete(id);
@@ -4808,6 +4943,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   onChat(message: ChatMessage) {
     this.chat.show(message);
+    if (message.id !== this.session.profile.id) sound.play('chat_get');
     // 말풍선은 같은 맵에 보이는 사람에게만 뜬다(다른 맵에서 온 전체 채팅은 기록에만 남음).
     this.tags.say(message.id, message.text);
   }
@@ -4832,13 +4968,21 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.removeBlockAt(x, y, z);
     }
     // 아래층부터 놓아야 위층이 받침 높이에 선다(큰 가구가 덮은 칸의 소품은 가구가 놓일 때 다시 입힌다).
+    // 맵을 처음 불러오며 그리는 블록은 소리를 내지 않는다(sound-plan.md 3-4).
+    this.loadingBlocks = true;
     for (const block of [...blocks].sort((a, b) => a.z - b.z)) this.onBlockPlaced(block);
+    this.loadingBlocks = false;
     // 블록보다 먼저 온 접속 명단으로 앉혀 둔 사람의 높이를 가구에 다시 맞춘다.
     for (const [id, pose] of this.otherPoses) {
       const avatar = this.others.get(id);
       if (avatar) this.applyPose(avatar, pose);
     }
   }
+
+  /** onBlocksLoaded가 블록을 한꺼번에 그리는 중 */
+  private loadingBlocks = false;
+  /** 내가 등·커튼을 바꾸는 중(소리는 toggleBlock이 냄) */
+  private togglingMine = false;
 
   onBlockPlaced({ x, y, z, id }: PlacedBlock) {
     // 벽지·벽걸이는 뒤쪽 벽 칸(바닥 밖)에만, 다른 것은 바닥에만 그린다. 층 구조가 바뀌어 벽이나 바닥 밖이 된 칸의 옛 블록은 그리지 않는다.
@@ -4847,7 +4991,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const onWall = !!wallCellAt(this.mapId, x, y);
     if (isWallDecor(id) ? !onWall && !this.world.isOpenGround(x, y) : !this.world.isOpenGround(x, y)) return;
     const placed = this.world.blockAtLevel(x, y, z);
-    if (!placed) this.spawnBlock({ x, y }, z, id);
+    if (!placed) {
+      this.spawnBlock({ x, y }, z, id);
+      if (!this.loadingBlocks) sound.play('block_place', { at: { x, y } });
+    }
     // 같은 자리의 id가 바뀌었다(다시 읽는 사이 누가 등을 켜고 끔).
     else if (placed !== id) this.onBlockChanged({ x, y, z, id });
   }
@@ -4856,11 +5003,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   onBlockChanged({ x, y, z, id }: PlacedBlock) {
     const placed = this.world.blockAtLevel(x, y, z);
     if (!placed || placed === id) return;
+    if (!this.loadingBlocks && !this.togglingMine) sound.play(toggleSfx(id), { at: { x, y } });
     this.removeBlockAt(x, y, z);
     this.spawnBlock({ x, y }, z, id);
   }
 
   onBlockRemoved(x: number, y: number, z: number) {
+    if (this.world.blockAtLevel(x, y, z)) sound.play('block_remove', { at: { x, y } });
     this.removeBlockAt(x, y, z);
   }
 
@@ -4914,6 +5063,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private queueKillClaim(kind: MonsterKind) {
     // 처치 골드 = 몬스터 골드 × (1 + LUK/300)(서버 kill_monster와 같은 식)
     const gold = this.economy.killGold(kind.gold);
+    sound.play('kill');
     this.economy.setGold(this.economy.gold + gold);
     this.hud.toast(`${kind.name} 처치 · ${goldText(gold)}`, `경험치 +${kind.exp.toLocaleString()}`);
     this.killClaims = this.killClaims.then(() => this.claimKill(kind, gold));
@@ -5044,6 +5194,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.notice('심지 못했습니다', left === 'no seed' ? '씨앗이 없습니다.' : '내 빈 땅인지 확인해 주세요.');
       return;
     }
+    sound.play('plant');
     this.economy.setSeedCount(crop, left);
     this.farm?.upsert({ ...plot, crop, plantedAt: Date.now(), praise: 0, blame: 0 });
   }
@@ -5057,6 +5208,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.notice('거두지 못했습니다', result === 'not ripe' ? '아직 다 자라지 않았습니다.' : '잠시 후 다시 시도해 주세요.');
       return;
     }
+    sound.play('crop_harvest');
     this.economy.addCrop(result.crop, result.grade, result.count);
     this.farm?.upsert({ ...plot, crop: null, plantedAt: null, praise: 0, blame: 0 });
     const name = this.economy.cropInfo(result.crop)?.name ?? '작물';

@@ -1,5 +1,6 @@
 import { WEAPONS, type WeaponId } from '../items';
 import { element } from './dom';
+import { sound } from '../sound/engine';
 
 /** 서버가 모두에게 보내는 알림 */
 export type Notice =
@@ -65,6 +66,7 @@ export class NoticeBar {
   }
 
   show(notice: Notice) {
+    sound.play('notice');
     const line = element(`notice notice-${notice.kind}`, this.root);
     line.textContent = noticeText(notice);
     while (this.root.childElementCount > MAX_NOTICES) this.root.firstElementChild?.remove();

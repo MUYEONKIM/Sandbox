@@ -4,6 +4,11 @@ import { tileCenter } from '../iso';
 import type { Avatar } from './avatar';
 import type { WorkId } from './maps';
 import type { Tile } from './world';
+import { sound } from '../sound/engine';
+import type { SfxKey } from '../sound/catalog';
+
+/** 작업장마다 도구가 닿는 소리(낚시는 던질 때 fish_cast) */
+const STRIKE_SFX: Record<Exclude<WorkId, 'fishing'>, SfxKey> = { quarry: 'strike_stone', logging: 'strike_wood', gathering: 'strike_gather' };
 
 const PIXEL = 'work-pixel';
 const FISH = 'work-fish';
@@ -83,6 +88,10 @@ interface Job {
   place: WorkId;
   avatar: Avatar;
   spot: Tile;
+  /** 일하는 사람(플레이어 id) */
+  id: string;
+  /** 찌가 물린 동안(물림 소리를 주기마다 한 번 내려고) */
+  biting: boolean;
   /** 손에 든 도구와 낚싯줄. 일하는 사람마다 따로 있다. */
   toolImage: Phaser.GameObjects.Image;
   line: Phaser.GameObjects.Graphics;
@@ -112,7 +121,15 @@ export class WorkFx {
   private particles: Particle[] = [];
   private readonly pool: Phaser.GameObjects.Image[] = [];
 
+  /** 내 플레이어 id(내 일 소리는 거리로 줄이지 않는다) */
+  myId = '';
+
   constructor(private readonly scene: Phaser.Scene) {}
+
+  /** 소리 낼 때 누구 것인지: 내 것이면 그대로, 남의 것이면 그 칸 */
+  private from(job: Job) {
+    return job.id === this.myId ? {} : { at: job.spot, who: job.id };
+  }
 
   private texture(key: string, paint: () => HTMLCanvasElement) {
     if (!this.scene.textures.exists(key)) this.scene.textures.addCanvas(key, paint());
@@ -134,6 +151,8 @@ export class WorkFx {
     const toolImage = this.scene.add.image(0, 0, key).setOrigin(tool.grip.x / tool.canvas.width, tool.grip.y / tool.canvas.height);
 
     this.jobs.set(id, {
+      id,
+      biting: false,
       place,
       avatar,
       spot,
@@ -189,6 +208,8 @@ export class WorkFx {
     if (!job) return;
     const { x, y } = job.place === 'fishing' ? job.base : job.center;
     const from = { x, y: y - 8 };
+    // 귀한 자원(내 것과 남의 것 12칸). 보통 자원은 GameScene.collectResource가 resource_get을 낸다(내 것만).
+    if (rare) sound.play('resource_rare', this.from(job));
     if (job.place === 'fishing') {
       this.burst(from.x, from.y, { colors: WATER, count: 22, speed: 90, up: 120, life: 620, floor: y, size: 3 });
       this.ring(x, y, 46, WATER);
@@ -246,6 +267,7 @@ export class WorkFx {
   private impact(job: Job) {
     const { x, y } = job.center;
     const foot = job.avatar.sprite;
+    if (job.place !== 'fishing') sound.play(STRIKE_SFX[job.place], this.from(job));
     if (job.place === 'quarry') {
       this.burst(x, y - 10, { colors: STONE, count: 10, speed: 80, up: 95, size: 3, floor: y + 8, life: 520 });
       this.burst(x, y - 10, { colors: SPARK, count: 6, speed: 110, up: 60, life: 260, gravity: 60, size: 2 });
@@ -283,6 +305,7 @@ export class WorkFx {
     const { elapsed, gatherMs, base, target, avatar } = job;
     if (!job.cast && elapsed >= CAST_MS) {
       job.cast = true;
+      sound.play('fish_cast', this.from(job));
       this.burst(base.x, base.y, { colors: WATER, count: 12, speed: 50, up: 85, life: 440, floor: base.y, size: 2 });
       this.ring(base.x, base.y, 30, WATER);
     }
@@ -293,6 +316,9 @@ export class WorkFx {
     if (biting) bob = 3 * Math.abs(Math.sin(elapsed / 55));
     target?.setPosition(base.x, Math.round(base.y + bob));
 
+    // 찌가 물림: 주기마다 한 번, 내 낚시만(남 것은 안 남)
+    if (biting && !job.biting && job.id === this.myId) sound.play('fish_bite');
+    job.biting = biting;
     if (biting) job.nextRipple = Math.min(job.nextRipple, elapsed + BITE_RIPPLE_MS);
     if (job.cast && elapsed >= job.nextRipple) {
       job.nextRipple = elapsed + (biting ? BITE_RIPPLE_MS : RIPPLE_MS);

@@ -1,6 +1,7 @@
 import { ELEVATOR_STOPS, VILLA_ELEVATOR_STOPS, type TowerId } from '../game/tower';
 import { element } from './dom';
 import { byInput } from './touch';
+import { sound } from '../sound/engine';
 
 interface ElevatorActions {
   onGo(to: TowerId): void;
@@ -79,10 +80,12 @@ export class ElevatorWindow {
     this.villaPanel.hidden = !villa;
     this.exit.textContent = villa ? (villaStop?.exit ?? '내리기') : stop ? `${stop.floor}층에서 내리기` : '내리기';
     this.say('');
+    if (this.root.hidden) sound.play('ui_open');
     this.root.hidden = false;
   }
 
   close() {
+    if (!this.root.hidden) sound.play('ui_close');
     this.root.hidden = true;
   }
 

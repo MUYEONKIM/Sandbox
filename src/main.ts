@@ -45,6 +45,11 @@ import { openRenameDialog } from './ui/rename';
 import { showWhatsNew } from './ui/whatsNew';
 import { byInput } from './ui/touch';
 import { WeaponTip } from './ui/weaponTip';
+import { sound } from './sound/engine';
+import { SoundPanel } from './ui/soundPanel';
+
+/** 탭·고르기 버튼(누르면 ui_tab): 인벤토리 큰·작은 탭, I 창 보기, 게시판·모험 탭, 고르는 칸(대장간 탭·수량), 도박 걸 곳 */
+const TAB_BUTTONS = '.bag-tab, .panel-view, .board-tab, .adv-tab, .shop-amount, .casino-pick';
 
 /** 명예의 전당 창과 미니맵 밑 패널에 보여 줄 인원 */
 const FAME_SIZE = 50;
@@ -76,6 +81,8 @@ function enterGame(
     location.reload();
   });
   session.onOnline = (count) => hud.setOnline(count);
+  // 소리 설정(2026-11-27): 계정 줄의 '소리' 버튼
+  const soundPanel = new SoundPanel(side.querySelector<HTMLElement>('.account')!);
   hud.setHp(profile.hp, profile.max_hp);
   hud.setLevel(BigInt(profile.level), profile.exp);
 
@@ -163,9 +170,11 @@ function enterGame(
     onBuySeeds: async (crop, amount) => {
       const bought = await session.buySeeds(crop, amount);
       if (typeof bought === 'string') {
+        sound.play('deny');
         hud.toast('살 수 없습니다', farmFailText[bought] ?? '잠시 후 다시 시도해 주세요');
         return;
       }
+      sound.play('buy');
       economy.setGold(bought.gold);
       economy.setSeedCount(crop, bought.count);
       hud.toast(`${economy.cropInfo(crop)?.name ?? ''} 씨앗 ${amount}개 구매`, byInput('인벤토리(I)의 씨앗 탭에서 단축키 칸에 넣고, 농장의 내 땅을 좌클릭해 심습니다', '인벤토리의 씨앗 탭에서 단축키 칸에 넣고, 농장의 내 땅을 눌러 심습니다'));
@@ -173,6 +182,7 @@ function enterGame(
     onSellCrops: async () => {
       const sold = await session.sellCrops();
       if (!sold) {
+        sound.play('deny');
         hud.toast('팔지 못했습니다', '잠시 후 다시 시도해 주세요');
         return;
       }
@@ -185,6 +195,7 @@ function enterGame(
     buyPlots: async (cells) => {
       const result = await session.buyPlots(cells);
       if (typeof result === 'string') return farmFailText[result] ?? '사지 못했습니다';
+      sound.play('buy');
       economy.setGold(result.gold);
       hud.toast(`땅 ${cells.length}칸을 샀습니다 (-${goldText(result.cost)})`, `내 땅 ${result.owned}칸`);
       return null;
@@ -207,6 +218,7 @@ function enterGame(
     buy: async (kind) => {
       const bought = await session.buyGear(kind);
       if (typeof bought === 'string') return bought;
+      sound.play('buy');
       economy.setGold(bought.gold);
       const placed = inventory.addGear(bought.gear);
       hud.toast(`+0 ${WEAPONS[kind].name} 구매 (-${goldText(bought.paid)})`, placed ? '단축키 칸에 넣었습니다' : byInput('인벤토리(I)의 무기 탭에 있습니다', '인벤토리의 무기 탭에 있습니다'));
@@ -243,9 +255,11 @@ function enterGame(
     onBuyPotion: async (id, amount) => {
       const bought = await session.buyPotion(id, amount);
       if (!bought) {
+        sound.play('deny');
         hud.toast('살 수 없습니다', '골드가 모자라거나 잠시 문제가 있습니다');
         return;
       }
+      sound.play('buy');
       economy.setGold(bought.gold);
       economy.setPotionCount(id, bought.count);
       hud.toast(`${economy.potion(id)?.name ?? '포션'} ${amount}개 구매`, `가진 것 ${bought.count}개 · 인벤토리${byInput('(I)', '')}의 포션 탭에서 단축키 칸에 넣습니다`);
@@ -253,9 +267,11 @@ function enterGame(
     onBuyRenameTicket: async () => {
       const bought = await session.buyRenameTicket();
       if (!bought) {
+        sound.play('deny');
         hud.toast('살 수 없습니다', '잠시 후 다시 시도해 주세요');
         return;
       }
+      sound.play('buy');
       economy.setRenameTickets(bought.tickets, bought.gold);
       hud.toast('닉네임 변경권을 샀습니다', `가진 변경권 ${bought.tickets.toLocaleString()}장. ${byInput('I 창', '인벤토리의')} 정보창에서 씁니다.`);
     },
@@ -283,9 +299,11 @@ function enterGame(
           shares: ['가진 주식이 모자랍니다', '없는 주식은 팔 수 없습니다'],
           failed: ['거래하지 못했습니다', '잠시 후 다시 시도해 주세요'],
         }[result.reason];
+        sound.play('deny');
         hud.toast(title, detail);
         return;
       }
+      if (amount > 0) sound.play('buy');
       economy.setGold(result.gold);
       market.setTraded(stock, result.shares, result.cost, result.price);
       const count = Math.abs(amount).toLocaleString();
@@ -334,6 +352,10 @@ function enterGame(
     },
     onHideUi: () => setUiHidden(!root.classList.contains('ui-hidden')),
     onEscape: () => {
+      if (soundPanel.isOpen) {
+        soundPanel.close();
+        return;
+      }
       if (anyModalOpen()) {
         closeTopModal();
         return;
@@ -388,12 +410,14 @@ function enterGame(
     backgroundColor: '#2c6f93',
     pixelArt: true,
     scale: { mode: Phaser.Scale.RESIZE },
+    // 소리는 src/sound/engine.ts가 맡는다. Phaser가 오디오를 따로 만들지 않게 끈다.
+    audio: { noAudio: true },
     scene,
   });
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { weaponTip, scene, inventory, hud, chat, session, economy, office, dungeon, coop, shop, forge, castle, fame, board, exchange, market, elevator, casino, groundUi, adventure, adventureWindow } });
+    Object.assign(window, { sandbox: { sound, weaponTip, scene, inventory, hud, chat, session, economy, office, dungeon, coop, shop, forge, castle, fame, board, exchange, market, elevator, casino, groundUi, adventure, adventureWindow } });
   }
 }
 
@@ -403,6 +427,16 @@ async function main() {
     return;
   }
 
+  // 로그인 창은 곡이 없다(sound-plan.md 1절). 게임에 들어간 뒤 첫 클릭·키 입력 때 그 맵 곡을 튼다.
+  // 화면 버튼 누르는 소리는 창마다 붙이지 않고 여기 한 곳에서 낸다(막힌 버튼은 click이 오지 않음). 탭·고르기 버튼은 ui_tab.
+  document.addEventListener(
+    'click',
+    (e) => {
+      const button = e.target instanceof Element ? e.target.closest('button') : null;
+      if (button) sound.click(button.matches(TAB_BUTTONS) ? 'ui_tab' : 'ui_click');
+    },
+    { capture: true, passive: true },
+  );
   const user = (await currentUser()) ?? (await showLogin(document.body));
   let profile = await loadProfile(user.id);
   if (!profile) {

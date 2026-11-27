@@ -4,6 +4,7 @@ import type { MonsterMessage } from '../net/session';
 import type { BulletTarget } from './bullets';
 import type { MonsterKind } from './dungeon';
 import { MONSTER_ART } from './monsterArt';
+import { sound } from '../sound/engine';
 import type { Tile } from './world';
 
 /**
@@ -355,6 +356,7 @@ export class MonsterField {
       const target = players.find((p) => p.id === hit.target);
       if (!m || m.state === 'dead' || !target) continue;
       if (dist(m.x, m.y, target.x, target.y) > m.kind.reach * DODGE_SLACK) continue;
+      sound.play('monster_attack', { at: { x: this.shownX(m), y: this.shownY(m) } });
       if (hit.target === this.hooks.myId) this.hooks.onHitMe(m.kind);
       else this.hooks.send({ event: 'matk', id: m.id, kind: m.kind.id, target: hit.target });
     }
@@ -400,6 +402,7 @@ export class MonsterField {
     if (m.hp === 0) {
       m.state = 'dead';
       m.deadAt = now;
+      sound.play('monster_die', { at: { x: this.shownX(m), y: this.shownY(m) } });
       this.respawns.push({ kind: m.kind, at: now + RESPAWN_MS });
       if (by === this.hooks.myId) this.claim(m);
       else this.hooks.send({ event: 'mdead', id: m.id, kind: m.kind.id, by });
@@ -445,13 +448,16 @@ export class MonsterField {
     m.state = 'dead';
     m.deadAt = now;
     m.predictedUntil = now + PREDICT_MS;
+    sound.play('monster_die', { at: { x: this.shownX(m), y: this.shownY(m) } });
     this.seeKill(m, true);
   }
 
   /** 누가 쏜 총알이든 몬스터에 닿으면 번쩍인다. */
   flash(targetId: string) {
     const m = this.monsters.get(Number(targetId.slice(2)));
-    if (m) m.flashUntil = performance.now() + HURT_MS;
+    if (!m) return;
+    m.flashUntil = performance.now() + HURT_MS;
+    sound.play('hit_other', { at: { x: this.shownX(m), y: this.shownY(m) } });
   }
 
   onMessage(message: MonsterMessage) {
@@ -467,6 +473,7 @@ export class MonsterField {
         if (m && m.state !== 'dead') {
           m.state = 'dead';
           m.hp = 0;
+          sound.play('monster_die', { at: { x: this.shownX(m), y: this.shownY(m) } });
         }
         if (message.by === this.hooks.myId && !this.claimed.has(message.id)) {
           if (m) this.claim(m);
@@ -478,12 +485,16 @@ export class MonsterField {
         }
         break;
       }
-      case 'matk':
+      case 'matk': {
+        // 호스트가 알린 몬스터 공격이 닿음(호스트 화면은 resolveAttacks에서 냄)
+        const m = this.monsters.get(message.id);
+        if (m) sound.play('monster_attack', { at: { x: this.shownX(m), y: this.shownY(m) } });
         if (message.target === this.hooks.myId) {
           const kind = this.kinds.find((k) => k.id === message.kind);
           if (kind) this.hooks.onHitMe(kind);
         }
         break;
+      }
     }
   }
 

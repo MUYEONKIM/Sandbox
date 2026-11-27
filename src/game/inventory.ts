@@ -23,6 +23,7 @@ import {
   type WeaponId,
 } from '../items';
 import type { Gear } from './forge';
+import { sound } from '../sound/engine';
 
 export const HOTBAR_SIZE = 9;
 /** 0번 키 칸: 언제나 메모장이다(2026-11-13 사용자 요청). 단축키 칸 0~8 뒤의 번호로 고르고, 다른 것을 넣거나 뺄 수 없다. */
@@ -262,6 +263,7 @@ export class Inventory {
     const next = id && !isWeapon(id) && !isGearRef(id) && !isPotion(id) && !isSeed(id) && !isTool(id) ? rotatedBlock(id) : null;
     if (!next) return false;
     this.slots[this.selected] = { id: next, count: 1 };
+    sound.play('ui_tab');
     this.changed();
     return true;
   }
@@ -272,6 +274,7 @@ export class Inventory {
   }
 
   select(index: number) {
+    if (index !== this.selected) sound.play('ui_tab');
     this.selected = index;
     this.changed();
   }

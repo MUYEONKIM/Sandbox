@@ -8,6 +8,7 @@ import { formatNumber } from './level';
 import { bigText } from './adventure';
 import { monsterArt, type MonsterFrame, type MonsterRole } from './adventureMaps';
 import { BP_RUN } from './adventureRules';
+import { sound } from '../sound/engine';
 
 /**
  * 모험 2D 전투 화면(2026-11-17, 기획 5장, 디자인 세션 시안 adventure-ui.md 2장, 바탕은 art-source/adventure/ui/battle.ts).
@@ -236,11 +237,14 @@ class Stage {
     if (live) {
       while (this.spawned < plan.events.length && plan.events[this.spawned].hit <= t) {
         const e = plan.events[this.spawned++];
+        sound.play(e.by === 'hero' ? (e.crit || (e.combo ?? 1) > 1 ? 'adv_crit' : 'adv_hit') : 'adv_hurt');
+        if (e.heal || e.endure) sound.play('adv_heal');
         this.spawnFloats(e);
         this.log.push(e);
       }
       if (ended && !this.logEnded) {
         this.logEnded = true;
+        sound.play(fight.win ? 'battle_win' : 'battle_lose');
         this.log.end(fight.win, fight.role);
       }
     } else {

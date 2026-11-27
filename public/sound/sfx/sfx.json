@@ -1,0 +1,487 @@
+{
+ "resources": [
+  "sfx.m4a"
+ ],
+ "spritemap": {
+  "block_place": {
+   "start": 0.1,
+   "end": 0.322,
+   "loop": false
+  },
+  "step_grass_1": {
+   "start": 0.372,
+   "end": 0.6252,
+   "loop": false
+  },
+  "step_grass_2": {
+   "start": 0.6752,
+   "end": 0.9796,
+   "loop": false
+  },
+  "step_grass_3": {
+   "start": 1.0296,
+   "end": 1.3053,
+   "loop": false
+  },
+  "gun_pistol": {
+   "start": 1.3553,
+   "end": 1.5304,
+   "loop": false
+  },
+  "hit_me": {
+   "start": 1.5804,
+   "end": 1.7446,
+   "loop": false
+  },
+  "portal": {
+   "start": 1.7946,
+   "end": 2.929,
+   "loop": false
+  },
+  "level_up": {
+   "start": 2.979,
+   "end": 4.1138,
+   "loop": false
+  },
+  "gold_get": {
+   "start": 4.1638,
+   "end": 4.5916,
+   "loop": false
+  },
+  "ui_click": {
+   "start": 4.6416,
+   "end": 4.722,
+   "loop": false
+  },
+  "elevator": {
+   "start": 4.772,
+   "end": 5.5033,
+   "loop": false
+  },
+  "secret": {
+   "start": 5.5533,
+   "end": 6.6577,
+   "loop": false
+  },
+  "respawn": {
+   "start": 6.7077,
+   "end": 7.537,
+   "loop": false
+  },
+  "resource_get": {
+   "start": 7.587,
+   "end": 7.7645,
+   "loop": false
+  },
+  "resource_rare": {
+   "start": 7.8145,
+   "end": 8.4431,
+   "loop": false
+  },
+  "dodge": {
+   "start": 8.4931,
+   "end": 8.7012,
+   "loop": false
+  },
+  "kill": {
+   "start": 8.7512,
+   "end": 9.1839,
+   "loop": false
+  },
+  "gold_drop": {
+   "start": 9.2339,
+   "end": 9.6055,
+   "loop": false
+  },
+  "pickup": {
+   "start": 9.6555,
+   "end": 9.8139,
+   "loop": false
+  },
+  "battle_start": {
+   "start": 9.8639,
+   "end": 10.3221,
+   "loop": false
+  },
+  "adv_heal": {
+   "start": 10.3721,
+   "end": 10.8033,
+   "loop": false
+  },
+  "battle_win": {
+   "start": 10.8533,
+   "end": 11.7471,
+   "loop": false
+  },
+  "battle_lose": {
+   "start": 11.7971,
+   "end": 12.997,
+   "loop": false
+  },
+  "level_tick": {
+   "start": 13.047,
+   "end": 13.133,
+   "loop": false
+  },
+  "item_drop": {
+   "start": 13.183,
+   "end": 13.5241,
+   "loop": false
+  },
+  "boss_clear": {
+   "start": 13.5741,
+   "end": 14.9815,
+   "loop": false
+  },
+  "run_dead": {
+   "start": 15.0315,
+   "end": 16.7723,
+   "loop": false
+  },
+  "run_home": {
+   "start": 16.8223,
+   "end": 17.9449,
+   "loop": false
+  },
+  "stat_up": {
+   "start": 17.9949,
+   "end": 18.1869,
+   "loop": false
+  },
+  "gold_big": {
+   "start": 18.2369,
+   "end": 18.9406,
+   "loop": false
+  },
+  "buy": {
+   "start": 18.9906,
+   "end": 19.3366,
+   "loop": false
+  },
+  "deny": {
+   "start": 19.3866,
+   "end": 19.6549,
+   "loop": false
+  },
+  "forge_success": {
+   "start": 19.7049,
+   "end": 20.5195,
+   "loop": false
+  },
+  "forge_keep": {
+   "start": 20.5695,
+   "end": 21.2038,
+   "loop": false
+  },
+  "forge_drop": {
+   "start": 21.2538,
+   "end": 21.9169,
+   "loop": false
+  },
+  "marble": {
+   "start": 21.9669,
+   "end": 22.0795,
+   "loop": false
+  },
+  "ladder_run": {
+   "start": 22.1295,
+   "end": 24.6724,
+   "loop": false
+  },
+  "race_start": {
+   "start": 24.7224,
+   "end": 25.2936,
+   "loop": false
+  },
+  "race_finish": {
+   "start": 25.3436,
+   "end": 25.8149,
+   "loop": false
+  },
+  "casino_win": {
+   "start": 25.8649,
+   "end": 26.6971,
+   "loop": false
+  },
+  "casino_lose": {
+   "start": 26.7471,
+   "end": 27.1871,
+   "loop": false
+  },
+  "notice": {
+   "start": 27.2371,
+   "end": 27.6716,
+   "loop": false
+  },
+  "disconnect": {
+   "start": 27.7216,
+   "end": 28.1759,
+   "loop": false
+  },
+  "ui_tab": {
+   "start": 28.2259,
+   "end": 28.2936,
+   "loop": false
+  },
+  "ui_open": {
+   "start": 28.3436,
+   "end": 28.4804,
+   "loop": false
+  },
+  "ui_close": {
+   "start": 28.5304,
+   "end": 28.6501,
+   "loop": false
+  },
+  "chat_send": {
+   "start": 28.7001,
+   "end": 28.8071,
+   "loop": false
+  },
+  "chat_get": {
+   "start": 28.8571,
+   "end": 29.0612,
+   "loop": false
+  },
+  "step_floor_1": {
+   "start": 29.1112,
+   "end": 29.4012,
+   "loop": false
+  },
+  "step_floor_2": {
+   "start": 29.4512,
+   "end": 29.7412,
+   "loop": false
+  },
+  "jump": {
+   "start": 29.7912,
+   "end": 30.0812,
+   "loop": false
+  },
+  "land": {
+   "start": 30.1312,
+   "end": 30.3732,
+   "loop": false
+  },
+  "door_open": {
+   "start": 30.4232,
+   "end": 30.9532,
+   "loop": false
+  },
+  "door_close": {
+   "start": 31.0032,
+   "end": 31.2912,
+   "loop": false
+  },
+  "sit": {
+   "start": 31.3412,
+   "end": 31.7912,
+   "loop": false
+  },
+  "block_remove": {
+   "start": 31.8412,
+   "end": 32.024,
+   "loop": false
+  },
+  "switch_on": {
+   "start": 32.074,
+   "end": 32.2165,
+   "loop": false
+  },
+  "switch_off": {
+   "start": 32.2665,
+   "end": 32.4445,
+   "loop": false
+  },
+  "curtain": {
+   "start": 32.4945,
+   "end": 33.1045,
+   "loop": false
+  },
+  "box_open": {
+   "start": 33.1545,
+   "end": 33.6845,
+   "loop": false
+  },
+  "box_close": {
+   "start": 33.7345,
+   "end": 33.9261,
+   "loop": false
+  },
+  "torch_on": {
+   "start": 33.9761,
+   "end": 34.5669,
+   "loop": false
+  },
+  "torch_off": {
+   "start": 34.6169,
+   "end": 35.1469,
+   "loop": false
+  },
+  "strike_stone": {
+   "start": 35.1969,
+   "end": 35.3048,
+   "loop": false
+  },
+  "strike_wood": {
+   "start": 35.3548,
+   "end": 35.5426,
+   "loop": false
+  },
+  "strike_gather": {
+   "start": 35.5926,
+   "end": 35.9626,
+   "loop": false
+  },
+  "fish_cast": {
+   "start": 36.0126,
+   "end": 36.3758,
+   "loop": false
+  },
+  "fish_bite": {
+   "start": 36.4258,
+   "end": 36.7893,
+   "loop": false
+  },
+  "plant": {
+   "start": 36.8393,
+   "end": 37.0549,
+   "loop": false
+  },
+  "crop_harvest": {
+   "start": 37.1049,
+   "end": 37.4883,
+   "loop": false
+  },
+  "gun_mg": {
+   "start": 37.5383,
+   "end": 37.7163,
+   "loop": false
+  },
+  "gun_sniper": {
+   "start": 37.7663,
+   "end": 38.3954,
+   "loop": false
+  },
+  "gun_shotgun": {
+   "start": 38.4454,
+   "end": 39.0554,
+   "loop": false
+  },
+  "swing_light": {
+   "start": 39.1054,
+   "end": 39.3058,
+   "loop": false
+  },
+  "swing_heavy": {
+   "start": 39.3558,
+   "end": 39.5895,
+   "loop": false
+  },
+  "reload_out": {
+   "start": 39.6395,
+   "end": 40.0095,
+   "loop": false
+  },
+  "reload_in": {
+   "start": 40.0595,
+   "end": 40.3421,
+   "loop": false
+  },
+  "bullet_wall": {
+   "start": 40.3921,
+   "end": 40.5701,
+   "loop": false
+  },
+  "hit_other": {
+   "start": 40.6201,
+   "end": 40.8301,
+   "loop": false
+  },
+  "monster_attack": {
+   "start": 40.8801,
+   "end": 41.1529,
+   "loop": false
+  },
+  "monster_die": {
+   "start": 41.2029,
+   "end": 41.5309,
+   "loop": false
+  },
+  "paper": {
+   "start": 41.5809,
+   "end": 41.9755,
+   "loop": false
+  },
+  "adv_hit": {
+   "start": 42.0255,
+   "end": 42.1935,
+   "loop": false
+  },
+  "adv_hurt": {
+   "start": 42.2435,
+   "end": 42.4855,
+   "loop": false
+  },
+  "equip": {
+   "start": 42.5355,
+   "end": 42.7666,
+   "loop": false
+  },
+  "anvil": {
+   "start": 42.8166,
+   "end": 43.3867,
+   "loop": false
+  },
+  "chip": {
+   "start": 43.4367,
+   "end": 43.6749,
+   "loop": false
+  },
+  "bowl_shake": {
+   "start": 43.7249,
+   "end": 44.8249,
+   "loop": false
+  },
+  "bowl_lift": {
+   "start": 44.8749,
+   "end": 45.112,
+   "loop": false
+  },
+  "ladder_open": {
+   "start": 45.162,
+   "end": 45.7512,
+   "loop": false
+  },
+  "step_floor_3": {
+   "start": 45.8012,
+   "end": 46.1178,
+   "loop": false
+  },
+  "down": {
+   "start": 46.1678,
+   "end": 46.8363,
+   "loop": false
+  },
+  "potion": {
+   "start": 46.8863,
+   "end": 47.4624,
+   "loop": false
+  },
+  "battle_boss": {
+   "start": 47.5124,
+   "end": 48.8424,
+   "loop": false
+  },
+  "adv_crit": {
+   "start": 48.8924,
+   "end": 49.1985,
+   "loop": false
+  },
+  "forge_break": {
+   "start": 49.2485,
+   "end": 50.3458,
+   "loop": false
+  }
+ }
+}

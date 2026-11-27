@@ -3,6 +3,7 @@ import type { DungeonId } from '../game/maps';
 import { element } from './dom';
 import { byInput } from './touch';
 import { goldText, type Gold } from '../game/gold';
+import { sound } from '../sound/engine';
 
 interface DungeonActions {
   onGo(dungeon: DungeonId): void;
@@ -60,6 +61,7 @@ export class DungeonWindow {
   open() {
     // 받는 골드 = 몬스터 골드 × (1 + LUK/300)(서버 kill_monster와 같은 식)
     for (const { line, kinds } of this.rates) line.textContent = kinds.map((m) => `${m.name} ${goldText(this.actions.goldOf(m.gold))}`).join(' · ');
+    if (this.root.hidden) sound.play('ui_open');
     this.root.hidden = false;
     void this.showRoster();
     window.clearInterval(this.rosterTimer);
@@ -67,6 +69,7 @@ export class DungeonWindow {
   }
 
   close() {
+    if (!this.root.hidden) sound.play('ui_close');
     this.root.hidden = true;
     window.clearInterval(this.rosterTimer);
   }

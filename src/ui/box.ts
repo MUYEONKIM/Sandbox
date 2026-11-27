@@ -30,7 +30,7 @@ export class BoxUi {
   ) {}
 
   open(name: string, x: number, y: number, z: number) {
-    const modal = new Modal(this.root, 'box-window', name);
+    const modal = new Modal(this.root, 'box-window', name, 'box_open', 'box_close');
     const count = element('box-count', modal.box);
     const list = element('box-list', modal.box);
     const error = element('modal-error', modal.box);

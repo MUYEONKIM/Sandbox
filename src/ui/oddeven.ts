@@ -2,6 +2,7 @@ import { assetUrl } from '../assetUrl';
 import type { Economy } from '../game/economy';
 import { animate, BetWindow, loadImage, STAGE_W, wait, type PlaceBet } from './bet';
 import { ellipse, once, OUT, piece, rect, ring, stamp, textArt } from './pixelArt';
+import { sound } from '../sound/engine';
 
 const STAGE_H = 190;
 /**
@@ -185,10 +186,12 @@ export class OddEvenWindow extends BetWindow {
     await this.assets;
     const count = Number(outcome);
     const scene = { ...RESTING };
+    sound.play('bowl_shake');
     await animate(1000, (t) => {
       const wobble = Math.sin(t * Math.PI * 12);
       this.draw({ ...scene, bowlX: BOWL_DOWN.x + wobble * 6 * (1 - t * 0.4), tilt: wobble * 0.08 });
     });
+    sound.play('bowl_lift');
     await animate(450, (t) => {
       const k = easeOut(t);
       this.draw({
@@ -202,6 +205,7 @@ export class OddEvenWindow extends BetWindow {
     const lifted = { ...scene, bowlX: BOWL_UP.x, bowlY: BOWL_UP.y, tilt: 0.3, marbles: count };
     for (let counted = 1; counted <= count; counted++) {
       this.draw({ ...lifted, counted });
+      sound.play('marble', { rate: 1 + 0.03 * (counted - 1) });
       await wait(170);
     }
     const result = count % 2 ? 0 : 1;

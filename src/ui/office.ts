@@ -3,6 +3,7 @@ import type { WorkId } from '../game/maps';
 import { spriteUrl } from '../art/sprites';
 import { element } from './dom';
 import { byInput } from './touch';
+import { sound } from '../sound/engine';
 
 /** 작업장 버튼에 붙이는 그림 */
 export const PLACE_ICONS: Record<WorkId, string> = {
@@ -65,6 +66,7 @@ export class OfficeWindow {
   }
 
   open() {
+    if (this.root.hidden) sound.play('ui_open');
     this.root.hidden = false;
     void this.showRoster();
     window.clearInterval(this.rosterTimer);
@@ -72,6 +74,7 @@ export class OfficeWindow {
   }
 
   close() {
+    if (!this.root.hidden) sound.play('ui_close');
     this.root.hidden = true;
     window.clearInterval(this.rosterTimer);
   }

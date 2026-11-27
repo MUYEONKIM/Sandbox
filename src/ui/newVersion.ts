@@ -1,4 +1,5 @@
 import { element } from './dom';
+import { sound } from '../sound/engine';
 
 /** 새 배포가 있는지 보는 간격 */
 const CHECK_MS = 60_000;
@@ -37,6 +38,7 @@ export function watchNewVersion(root: HTMLElement) {
       if (latest && latest !== running) {
         found = true;
         banner.hidden = false;
+        sound.play('notice');
       }
     } catch {
       // 잠깐 끊긴 것이면 다음 확인 때 다시 본다.
