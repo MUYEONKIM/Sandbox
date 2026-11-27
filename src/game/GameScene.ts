@@ -48,6 +48,7 @@ import {
 } from '../blocks';
 import { isStore, seatKind, toggleOf } from './furnitureUse';
 import { CityView } from './cityView';
+import { CITY_BLANK, CITY_PINNED, FLOOR_TINT, PhaseArt, Skyline, skylineArt, type CityArt } from './cityViews';
 import { ensureWalkDoorTexture, WalkDoor, WALK_DOOR_HOLD_MS, WALK_DOOR_STEP_MS } from './walkDoor';
 import { BALCONY_RAIL_ART, POSE_FRAMES, USE_SEATS } from '../roomUse';
 import type { DayPhase } from './daylight';
@@ -174,6 +175,7 @@ import {
   BALCONY_RAILS,
   BALCONY_VIEW,
   HIDEOUT,
+  TOWER4_DOOR,
   isTower,
   TICKER_LIFT,
   type PartitionKind,
@@ -337,7 +339,6 @@ const SOLID_PARTITIONS: Partial<Record<PartitionKind, { texture: number; height:
 };
 const WORLD_BACKGROUND = '#2c6f93';
 const INDOOR_BACKGROUND = '#14141c';
-const ROOF_BACKGROUND = '#8fcfee';
 /** 전쟁터처럼 늘 어두운 맵의 맵 바깥 색. 하늘색이면 어둠 밖이 밝게 튀어 보인다. */
 const DARK_BACKGROUND = '#07090f';
 
@@ -595,6 +596,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private city!: CityView;
   /** 발코니 카메라 자리를 마지막으로 맞춘 화면 크기·배율 */
   private balconyView = '';
+  /** 발코니(7층·4층)처럼 캐릭터를 화면 (60%, 62%)에 두고 따라가는 맵인지 */
+  private balconyCam = false;
+  /** 옥상·바깥 계단·4층 발코니의 도시 풍경 그림(지금 시간대 한 벌만 읽음)과 맵 밖 풍경 층(2026-11-27) */
+  private phaseArt!: PhaseArt;
+  private skyline!: Skyline;
+  /** 시간대 색을 곱하는 층 그림·소품(옥상·바깥 계단) */
+  private floorTinted: Phaser.GameObjects.Image[] = [];
   /** 놓인 끼우는 창문(밖 그림을 낮·밤으로 바꿔 끼움): 키 "x,y,z" */
   private readonly windows = new Set<string>();
   /** 창밖 그림의 시간대(한국 시간, 바깥 맵과 같음) */
@@ -662,6 +670,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.gloom = new Gloom(this, DEPTH_DAYLIGHT + 0.5);
     // 야경은 바닥 그림(0)보다 뒤에 깐다.
     this.city = new CityView(this, DEPTH_GROUND - 1);
+    // 옥상·바깥 계단·4층 발코니 풍경도 같은 자리에 깐다(cityViews.ts).
+    this.phaseArt = new PhaseArt(this, this.daylight.current);
+    this.skyline = new Skyline(this, this.phaseArt, DEPTH_GROUND - 1);
     this.showMap(this.mapId);
     this.market.onChange(() => this.paintTickers());
     // 모험 맵: 보스를 처음 잡아 다음 지역이 열리면 포탈을 세우고, 스텟이 바뀌면 입구 맵 포탈 이름표 색을 다시 칠한다.
@@ -710,7 +721,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     cam.setZoom(savedZoom());
     cam.startFollow(this.me.anchor, true);
     // 카메라가 이번 프레임의 화면 범위를 정한 직후, 그리기 전에 화면 밖 블록 덩어리를 숨기거나 보인다.
-    cam.on(Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE, (camera: Phaser.Cameras.Scene2D.Camera) => this.blockChunks.update(camera.worldView));
+    // 도시 풍경 층도 이때 카메라 가운데에 맞춘다(움직였을 때만 숫자를 바꿈).
+    cam.on(Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE, (camera: Phaser.Cameras.Scene2D.Camera) => {
+      this.blockChunks.update(camera.worldView);
+      this.skyline.update(camera);
+    });
     // 마우스 휠로 화면을 넓게 보거나 크게 본다(2026-11-15 사용자 요청). 도트가 뭉개지지 않게 정해 둔 단계로만 바꾸고 이 브라우저에 기억한다.
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
       if (dy !== 0) this.stepZoom(dy > 0 ? -1 : 1);
@@ -1039,6 +1054,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.ground.setTexture(this.groundTexture(id)).setPosition(rect.left, 0);
     // 발코니만 따라가는 자리가 다르다(updateBalconyCamera). 그 밖의 맵은 캐릭터를 화면 가운데에 둔다.
     this.cameras.main.setFollowOffset(0, 0);
+    this.balconyCam = false;
     this.cameras.main.setBounds(
       rect.left - CAMERA_PAD_X,
       -CAMERA_PAD_Y,
@@ -1058,11 +1074,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
           ? info.background
           : info.dark
           ? DARK_BACKGROUND
-          : id === 'rooftop' || id === 'stairs'
-            ? ROOF_BACKGROUND
-            : isTower(id)
-              ? INDOOR_BACKGROUND
-              : WORLD_BACKGROUND,
+          : isTower(id)
+            ? INDOOR_BACKGROUND
+            : WORLD_BACKGROUND,
     );
     // 바깥 맵은 KST 시간대 색을 덮고, 전쟁터는 늘 어둡고 손전등 빛만 보인다(2026-11-13 사용자 요청).
     // 모험 맵은 시간대 색을 덮지 않는다(2026-11-22 사용자 "모험에서 전체적으로 너무 안보인다", 밤 덮개 "없앰 (추천)"). 지옥 분위기 색(mood)은 그대로 덮는다.
@@ -1094,6 +1108,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (info.mood) this.gloom.show(this.world.map.walls.filter((wall) => wall.id === 'lava'), isAdventure(id));
     else this.gloom.clear();
     this.chimneySmoke = [];
+    const tintFrom = this.mapImages.length;
     for (const building of this.world.map.buildings) {
       const { left, top } = this.showBuilding(building);
       const chimney = id === DEFAULT_MAP ? CHIMNEYS[building.sprite] : undefined;
@@ -1106,6 +1121,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (plain && id === DEFAULT_MAP) this.addSign(plain.name, left + plain.x, top + plain.y);
     }
     if (id === 'farm') this.showFences();
+    // 옥상 소품(바닥 그림과 같이 시간대 색을 곱함, 디자인 floorTint)
+    if (id === 'rooftop') this.floorTinted.push(...this.mapImages.slice(tintFrom));
+    this.tintFloor();
     // 등 빛: 시간대 덮개가 있는 바깥 맵만(건물 안, 전쟁터, 분위기 색 맵은 뺀다, lantern-glow.md 7-5)
     // 건물 안은 플레이어가 놓은 등만 늘 같은 진하기로 켠다(2026-11-27 room-rules.md 6절).
     this.glows.enter(!info.dark && !info.mood, this.world.map.buildings, isTower(id));
@@ -1238,13 +1256,29 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private showInterior(id: TowerId) {
     const [x0, y0] = FLOORS[id].area;
     const { left, top } = interiorOrigin(id, gridToWorld(x0, y0));
-    if (id === 'balcony') {
-      this.showBalcony(gridToWorld(x0, y0));
+    if (id === 'balcony' || id === 'balcony4') {
+      this.showBalcony(id, gridToWorld(x0, y0));
       return;
     }
     const key = `interior-${id}`;
     if (!this.textures.exists(key)) this.textures.addCanvas(key, paintInterior(id));
-    this.mapImages.push(this.add.image(left, top, key).setOrigin(0, 0).setDepth(DEPTH_INTERIOR));
+    const floor = this.add.image(left, top, key).setOrigin(0, 0).setDepth(DEPTH_INTERIOR);
+    this.mapImages.push(floor);
+    if (id === 'rooftop' || id === 'stairs') this.showCityView(id, gridToWorld(x0, y0), floor);
+    if (id === 'tower4') {
+      // 4층 발코니 문(2026-11-27): 7층 빈방 발코니 문과 같은 자리 셈·깊이. 그림은 그 시간대 바깥이 유리에 비친 한 벌만 읽는다.
+      const corner = gridToWorld(x0, y0);
+      this.phaseArt.use(['balcony4-door-room']);
+      const image = this.phaseArt.bind(
+        this.add
+          .image(corner.x + TOWER4_DOOR.u, corner.y + Math.floor(TOWER4_DOOR.u / 2) - TOWER4_DOOR.top, CITY_BLANK, '0')
+          .setOrigin(0, 0)
+          .setDepth(DEPTH_FLOOR_TILE - 0.01),
+        'balcony4-door-room',
+      );
+      this.mapImages.push(image);
+      this.walkDoor = new WalkDoor(image, this.world.portals.filter((p) => p.door));
+    }
     if (id === 'annex') {
       // 발코니 문: 뒤쪽 오른쪽 벽에 붙인 그림(여닫힘 네 장). 벽지·벽걸이(0.52~0.54)보다 앞, 바닥 타일(0.58)보다 뒤에 그린다.
       const corner = gridToWorld(x0, y0);
@@ -1256,7 +1290,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.mapImages.push(image);
       this.walkDoor = new WalkDoor(image, this.world.portals.filter((p) => p.door));
     }
-    for (const { x, y } of this.world.map.railings) this.addMapArt('railing', paintRailing, x, y);
+    for (const { x, y } of this.world.map.railings) {
+      const rail = this.addMapArt('railing', paintRailing, x, y);
+      // 바깥 계단 앞 난간도 계단 바닥과 같이 시간대 색을 곱한다(밤에 난간만 밝게 뜨지 않게, 제가 정한 것).
+      if (id === 'stairs') this.floorTinted.push(rail);
+    }
     this.showPartitions();
     if (id === 'tower1') {
       const sign = gridToWorld(CAFE_SIGN.x + 0.5, CAFE_SIGN.y);
@@ -1271,41 +1309,77 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /**
    * 발코니(2026-11-27): 바닥·외벽 그림 한 장을 층 그림 자리에 놓고, 앞 두 변의 유리 난간 조각을 칸마다 캐릭터 바로 앞 깊이로 세운다.
-   * 맵 밖에는 밤 도시 야경을 깐다. 난간 조각은 화면 밖이면 숨는 블록 덩어리에 넣는다.
+   * 난간 조각은 화면 밖이면 숨는 블록 덩어리에 넣는다.
+   * - 7층(balcony): 그림은 늘 밤 한 벌이고 맵 밖에는 밤 도시 야경을 깐다(cityView.ts).
+   * - 4층(balcony4, 같은 날 사용자 "7층 비밀의 방의 발코니와 같은 구조와 느낌으로, 대신 배경은 방금 만든 옥상배경느낌으로"): 칸·자리·카메라가 7층과 같고,
+   *   바탕·문·난간·풍경을 지금 시간대 한 벌만 읽어 끼운다(cityViews.ts, 읽는 동안은 투명).
    */
-  private showBalcony(corner: { x: number; y: number }) {
-    this.spriteTexture('balcony/balcony-base');
-    this.mapImages.push(
-      this.add
-        .image(corner.x - BALCONY_VIEW.left, corner.y - BALCONY_VIEW.top, 'balcony/balcony-base', '__BASE')
-        .setOrigin(0, 0)
-        .setDepth(DEPTH_INTERIOR),
-    );
+  private showBalcony(id: 'balcony' | 'balcony4', corner: { x: number; y: number }) {
+    const four = id === 'balcony4';
+    if (four) this.phaseArt.use(['balcony4-base', 'balcony4-door-balcony', 'balcony4-rail-x', 'balcony4-rail-y', 'balcony4-rail-corner', ...skylineArt('balcony4')]);
+    else this.spriteTexture('balcony/balcony-base');
+    const base = this.add
+      .image(corner.x - BALCONY_VIEW.left, corner.y - BALCONY_VIEW.top, four ? CITY_BLANK : 'balcony/balcony-base', four ? undefined : '__BASE')
+      .setOrigin(0, 0)
+      .setDepth(DEPTH_INTERIOR);
+    if (four) this.phaseArt.bind(base, 'balcony4-base');
+    this.mapImages.push(base);
     // 방으로 들어가는 문(여닫힘 네 장, 0번은 바탕에 그려진 문과 같음): 바닥 뒤 모서리 + (81, −10), 바탕 바로 위(캐릭터보다 뒤).
-    const doorName = ensureWalkDoorTexture(this, 'balcony/door-balcony-frames');
     const door = this.add
-      .image(corner.x + BALCONY_DOOR_ART.x, corner.y + BALCONY_DOOR_ART.y, doorName, '0')
+      .image(corner.x + BALCONY_DOOR_ART.x, corner.y + BALCONY_DOOR_ART.y, four ? CITY_BLANK : ensureWalkDoorTexture(this, 'balcony/door-balcony-frames'), '0')
       .setOrigin(0, 0)
       .setDepth(DEPTH_INTERIOR + 0.001);
+    if (four) this.phaseArt.bind(door, 'balcony4-door-balcony');
     this.mapImages.push(door);
     this.walkDoor = new WalkDoor(door, this.world.portals.filter((p) => p.door));
     // 카메라: 오른쪽 끝만 건물 오른쪽 끝에 묶는다(왼쪽과 세로는 묶지 않음). 따라가는 자리는 updateBalconyCamera가 화면 크기에 맞춘다.
     const far = 100_000;
     this.cameras.main.setBounds(corner.x + BALCONY_VIEW.right - far, -far, far, far * 2);
     this.balconyView = '';
+    this.balconyCam = true;
     for (const [x, y, kind] of BALCONY_RAILS) {
       const name = `balcony/rail-${kind}` as const;
-      this.spriteTexture(name);
+      if (!four) this.spriteTexture(name);
       const [w, h, ax, ay] = BALCONY_RAIL_ART[kind];
       const c = tileCenter(x, y);
       const image = this.add
-        .image(c.x, c.y, name, '__BASE')
+        .image(c.x, c.y, four ? CITY_BLANK : name, four ? undefined : '__BASE')
         .setOrigin(ax / w, ay / h)
         .setDepth(depthOf(x, y) + 1.2);
+      if (four) this.phaseArt.bind(image, `balcony4-rail-${kind}` as CityArt);
       this.mapImages.push(image);
       this.blockChunks.add(image, x, y);
     }
-    this.city.show();
+    if (four) this.skyline.show('balcony4', corner.y);
+    else this.city.show();
+  }
+
+  /**
+   * 옥상·바깥 계단 도시 풍경(2026-11-27 사용자 "우리 옥상과, 옥상 올라가는 계단 … 시티뷰를 구경할 수 있도록", 디자인 세션 9 city-views.md 0절):
+   * 맵 밖에 시간대 한 벌의 풍경 층을 깔고, 바닥 앞 변 아래에 우리 건물 바깥벽(계단은 유리벽) 조각을 붙이고, 바닥 그림에 시간대 색을 곱한다.
+   * 카메라 따라가기는 그대로(캐릭터 가운데)다.
+   */
+  private showCityView(id: 'rooftop' | 'stairs', corner: { x: number; y: number }, floor: Phaser.GameObjects.Image) {
+    const pinned = CITY_PINNED[id];
+    this.phaseArt.use([...skylineArt(id), ...new Set(pinned.map((piece) => piece.art))]);
+    this.skyline.show(id, corner.y);
+    for (const piece of pinned) {
+      const image = this.add
+        .image(piece.x, piece.y, CITY_BLANK, piece.frame)
+        .setOrigin(0, 0)
+        .setDepth(DEPTH_GROUND + 0.1);
+      this.mapImages.push(this.phaseArt.bind(image, piece.art, piece.frame));
+    }
+    this.floorTinted.push(floor);
+  }
+
+  /** 옥상·바깥 계단 바닥 그림과 소품에 지금 시간대 색을 곱한다(맵에 들어올 때와 시간대가 바뀔 때만). */
+  private tintFloor() {
+    const tint = FLOOR_TINT[this.mapId]?.[this.dayPhase];
+    for (const image of this.floorTinted) {
+      if (tint === undefined) image.clearTint();
+      else image.setTint(tint);
+    }
   }
 
   /**
@@ -1438,6 +1512,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const image of this.blockExtras.values()) image.destroy();
     this.blockExtras.clear();
     this.city.hide();
+    this.skyline.hide();
+    this.floorTinted = [];
     this.doors.clear();
     this.walkDoor = null;
     this.doorGoal = null;
@@ -1460,6 +1536,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.spotImages.clear();
     for (const image of this.mapImages) image.destroy();
     this.mapImages = [];
+    // 도시 풍경 그림은 그 맵에 있을 때만 GPU에 둔다(그림 물체를 지운 뒤에 지움).
+    this.phaseArt.leave();
     this.bullets.clear();
     this.drops.clear();
     this.stopMonsters();
@@ -1490,10 +1568,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.updateTorches(time);
     this.updateDoors(time);
     this.updateWalkDoor(time);
-    if (this.city.active) {
-      this.updateBalconyCamera();
-      this.city.update(delta);
-    }
+    if (this.balconyCam) this.updateBalconyCamera();
+    if (this.city.active) this.city.update(delta);
     this.updateReload();
     this.updateAutoFire();
     this.animatePortals(time);
@@ -3743,10 +3819,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return null;
   }
 
-  /** 시간대(새벽·낮·노을·밤)가 바뀌면 놓인 창문의 밖 그림만 바꿔 끼운다(하루 네 번). */
+  /** 시간대(새벽·낮·노을·밤)가 바뀌면 놓인 창문의 밖 그림과 도시 풍경(옥상·계단·4층 발코니와 그 문)을 바꿔 끼운다(하루 네 번). */
   private setDayPhase(phase: DayPhase) {
     if (phase === this.dayPhase) return;
     this.dayPhase = phase;
+    this.phaseArt.setPhase(phase);
+    this.tintFloor();
     for (const key of this.windows) {
       const [x, y, z] = key.split(',').map(Number);
       const id = this.world.blockAtLevel(x, y, z);
@@ -3998,8 +4076,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /**
    * 캐릭터를 그 칸 가구에 앉히거나 눕힌 모습으로 그린다. 자리는 디자인 세션 5의 자리 자료(USE_SEATS: 가구 기준점에서 화면 px, 앉는 면 높이, 보는 쪽),
-   * 그림은 디자인 세션 8의 자세 그림이다(앞·뒤 두 장을 뒤집어 네 방향, 앉는 면 5px 이하는 바닥에 앉은 그림).
-   * 자리 자료가 없는 가구(옛 가구)는 그 칸 가운데, 가구 윗면 높이에 앞모습으로 둔다. 깊이는 그 가구 바로 앞이다.
+   * 그림은 디자인 세션 10이 다시 그린 자세 그림이다(앞·뒤 두 장을 뒤집어 네 방향, 앉는 면 5px 이하는 바닥에 앉은 그림, 눕기는 천장을 보고 반듯이).
+   * 자리 자료가 없는 가구(옛 가구)는 그 칸 가운데, 가구 윗면 높이에 앞모습으로 둔다.
+   * 깊이는 그 가구 바로 앞이고, 뒤로(왼쪽 위·오른쪽 위를 보고) 앉으면 가구 바로 뒤라 등받이가 사람 앞에 온다(2026-11-27 사용자 "뒤로 앉으면 가구 뒤에 그리는 코드도 넣음").
+   * 코너 소파(뒤에 그리면 L자 반대쪽 등받이에 다 가려짐)와 드럼 세트(의자가 드럼보다 앞)는 뒤로 앉아도 앞에 그린다(디자인 poses-redo.md 1-2).
    */
   private applyPose(avatar: Avatar, kind: Posture) {
     const { x, y } = avatar.tile;
@@ -4008,7 +4088,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const owner = covered && this.world.isFlatStack(x, y) ? covered : { x, y, z: height - 1 };
     const id = this.world.blockAtLevel(owner.x, owner.y, owner.z);
     const seat = id ? USE_SEATS[id] : undefined;
-    const depth = (this.blockImages.get(`${owner.x},${owner.y},${owner.z}`)?.depth ?? depthOf(x, y)) + 0.5;
+    const furnitureDepth = this.blockImages.get(`${owner.x},${owner.y},${owner.z}`)?.depth ?? depthOf(x, y);
     let pose = kind === 'lie' ? 'lieHeadDown' : 'sit';
     let flip = false;
     let at = tileCenter(x, y);
@@ -4035,6 +4115,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         at = { x: c.x + spot.dx, y: base + spot.dy - spot.z };
       }
     }
+    const behind = pose.endsWith('Back') && !(id && /^rd_(sofa_corner|drum_set)_/.test(id));
+    const depth = furnitureDepth + (behind ? -0.5 : 0.5);
     const skin = Math.min(POSE_FRAMES.length - 1, avatar.skinIndex);
     const [, , w, h, ax, ay] = POSE_FRAMES[skin][pose];
     avatar.setPosture({ kind, frame: `${skin}:${pose}`, x: Math.round(at.x), y: Math.round(at.y), originX: (flip ? w - ax : ax) / w, originY: ay / h, flip, depth });

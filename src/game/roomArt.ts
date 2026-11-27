@@ -6,7 +6,7 @@ import { gridToWorld } from '../iso';
 import { OUTDOOR_FRAMES, ROOM_WALL_FRAMES } from '../roomDecor';
 import { USE_LAYER_FRAMES, USE_WALL_FRAMES } from '../roomUse';
 import { MORE_LAYER_FRAMES } from '../roomMore';
-import { ANNEX, ANNEX_DOOR, BALCONY, BALCONY_LAMPS, FLOORS, type TowerId } from './tower';
+import { ANNEX, ANNEX_DOOR, BALCONY, BALCONY4, BALCONY_LAMPS, FLOORS, TOWER4_DOOR, UPPER, type TowerId } from './tower';
 import type { Tile } from './world';
 
 /**
@@ -20,13 +20,13 @@ import type { Tile } from './world';
  * 벽지·벽걸이를 붙이는 맵(사용자가 정함: 4·7·8층과 7층으로 나가는 포탈이 있는 빈방).
  * 발코니는 2026-11-27 사용자 "발코니쪽 벽면에 장식품 마찬가지로 달 수 있게": 뒤쪽 건물 외벽(오른쪽 벽)에만 벽걸이를 건다(벽지는 바르지 않음, WALL_PAPER_OFF).
  */
-export const WALL_DECOR_MAPS: ReadonlySet<string> = new Set(['tower4', 'tower7', 'tower8', 'annex', 'balcony', 'hideout']);
+export const WALL_DECOR_MAPS: ReadonlySet<string> = new Set(['tower4', 'tower7', 'tower8', 'annex', 'balcony', 'balcony4', 'hideout']);
 /** 천장 것을 매다는 맵(지붕이 있는 맵). 발코니는 지붕이 없어 뺀다. */
 export const CEIL_MAPS: ReadonlySet<string> = new Set(['tower4', 'tower7', 'tower8', 'annex', 'hideout']);
-/** 한쪽 벽만 벽인 맵: 발코니는 뒤 왼쪽 변이 유리 난간이라 오른쪽 벽(건물 외벽)만 쓴다. */
-const WALL_SIDES: Readonly<Record<string, WallSide>> = { balcony: 'right' };
-/** 벽지를 바르지 않는 맵(제가 정한 것: 발코니 건물 외벽은 바탕 그림의 문·벽등을 덮지 않게 벽걸이만) */
-export const WALL_PAPER_OFF: ReadonlySet<string> = new Set(['balcony']);
+/** 한쪽 벽만 벽인 맵: 발코니(7층·4층)는 뒤 왼쪽 변이 유리 난간이라 오른쪽 벽(건물 외벽)만 쓴다. */
+const WALL_SIDES: Readonly<Record<string, WallSide>> = { balcony: 'right', balcony4: 'right' };
+/** 벽지를 바르지 않는 맵(제가 정한 것: 발코니 건물 외벽은 바탕 그림의 문·벽등을 덮지 않게 벽걸이만, 4층 발코니도 같음) */
+export const WALL_PAPER_OFF: ReadonlySet<string> = new Set(['balcony', 'balcony4']);
 
 export type WallSide = 'right' | 'left';
 
@@ -84,13 +84,18 @@ export function blockedWallCells(mapId: string): Set<string> {
  * 뒤쪽 벽 칸에 그려진, 가리면 안 되는 그림(빈방·발코니의 발코니 문, 발코니 벽등)의 위 끝 높이(px). 키는 벽 칸 "x,y".
  * 그 칸에 거는 벽걸이는 그 위로 올려 건다(backWallHang).
  */
+const balconyWall = ([x0, y0]: readonly number[]) =>
+  new Map(
+    [...ANNEX_DOOR.x.map((x) => x - ANNEX_DOOR.x[0] + x0 + 5), ...BALCONY_LAMPS.x.map((x) => x - BALCONY[0] + x0)].map(
+      (x) => [`${x},${y0 - 1}`, x - x0 === BALCONY_LAMPS.x[0] - BALCONY[0] || x - x0 === BALCONY_LAMPS.x[1] - BALCONY[0] ? BALCONY_LAMPS.top : ANNEX_DOOR.top] as const,
+    ),
+  );
 const WALL_DOOR_TOPS: Readonly<Record<string, ReadonlyMap<string, number>>> = {
   annex: new Map(ANNEX_DOOR.x.map((x) => [`${x},${ANNEX[1] - 1}`, ANNEX_DOOR.top] as const)),
-  balcony: new Map(
-    [...ANNEX_DOOR.x.map((x) => x - ANNEX_DOOR.x[0] + BALCONY[0] + 5), ...BALCONY_LAMPS.x].map(
-      (x) => [`${x},${BALCONY[1] - 1}`, x === BALCONY_LAMPS.x[0] || x === BALCONY_LAMPS.x[1] ? BALCONY_LAMPS.top : ANNEX_DOOR.top] as const,
-    ),
-  ),
+  balcony: balconyWall(BALCONY),
+  // 4층 발코니 외벽: 문(칸 5·6)과 벽등(칸 3·8) 자리가 7층과 같다(디자인 balcony4.json lamps). 4층 방 쪽은 발코니 문 두 칸.
+  balcony4: balconyWall(BALCONY4),
+  tower4: new Map(TOWER4_DOOR.x.map((x) => [`${x},${UPPER[1] - 1}`, TOWER4_DOOR.top] as const)),
 };
 
 /**

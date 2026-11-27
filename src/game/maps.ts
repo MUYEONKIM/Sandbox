@@ -267,6 +267,15 @@ export const MAPS: Record<MapId, MapInfo> = {
     background: '#05081a',
     links: {},
   },
+  // 4층 발코니(2026-11-27, 비밀 아님). 맵 밖은 시간대마다 바뀌는 도시 풍경이다(src/game/cityViews.ts).
+  balcony4: {
+    name: '아이티공간 4층 발코니',
+    floor: [],
+    floorTop: BLOCK_TOP,
+    color: 0xb89466,
+    accent: 0xbfe6ff,
+    links: {},
+  },
   // 상점 안(2026-11-15 사용자 요청). 시작마을 가게라 공격이 막힌다(에이전트가 정함, 서버 hit_player에도 있음).
   // 노동청 안과 농협 안(2026-11-16 사용자 "둘 다 만들어"). 시작마을 건물 안이라 공격이 막힌다(서버 hit_player도 막음).
   labor: {

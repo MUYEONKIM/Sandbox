@@ -20,6 +20,7 @@ export type TowerId =
   | 'annex'
   | 'hideout'
   | 'balcony'
+  | 'balcony4'
   | 'mart'
   | 'smithy'
   | 'labor'
@@ -36,7 +37,7 @@ export const UPPER: Area = [3, 3, 42, 42];
  */
 export const TOP_FLOORS: Area = [3, 3, 64, 82];
 /** 8층에서 옥상으로 오르는 바깥 계단. 건물 벽에 붙은 2칸 너비 계단이고 맨 앞 줄은 난간이다. */
-const STAIRS: Area = [6, 20, 39, 22];
+export const STAIRS: Area = [6, 20, 39, 22];
 /** 엘리베이터 안 */
 const CABIN: Area = [21, 21, 24, 24];
 
@@ -497,6 +498,14 @@ export const BALCONY_VIEW = { left: 80, top: 461, playerAt: [0.6, 0.62] as const
 export const BALCONY_LAMPS = { x: [BALCONY[0] + 3, BALCONY[0] + 8] as const, top: 50 };
 /** 발코니 쪽 문 여닫힘 그림(30 × 65 한 장)의 왼쪽 위 = 바닥 뒤 모서리 + (x, y)(디자인 세션 8 balcony-door.json) */
 export const BALCONY_DOOR_ART = { x: 81, y: -10 };
+/**
+ * 4층 발코니(2026-11-27 사용자 "4층에서 발코니처럼 나갈 수 있는 장소를 만든다. 7층 비밀의 방의 발코니와 같은 구조와 느낌으로, 대신 배경은 방금 만든 옥상배경느낌으로",
+ * 그림과 값은 디자인 세션 9 balcony4.json). 비밀이 아니다. 7층 발코니와 칸·그림 자리·카메라·문 여닫힘이 모두 같고(BALCONY_*을 그대로 씀),
+ * 그림은 시간대마다 따로 그린 한 벌을 읽고(cityViews.ts), 맵 밖은 옥상 하늘·지평선 + 가까운 시가지 판이다.
+ * 4층 문은 뒤쪽 오른쪽 벽 칸 x 14·15(화이트보드와 ITS 포스터 사이 빈 벽, 디자인 세션 9가 정함)다. 벽 모서리에서 u px, 높이 top px로 7층 빈방 문과 셈이 같다.
+ */
+export const BALCONY4: Area = BALCONY;
+export const TOWER4_DOOR = { x: [14, 15] as const, u: 177, top: 50 };
 /** 발코니 앞 난간 칸: [x, y, 조각]. 그 칸에 설 수 있고 난간은 캐릭터 앞에 그린다. */
 export const BALCONY_RAILS: readonly (readonly [number, number, 'x' | 'y' | 'corner'])[] = [
   ...Array.from({ length: BALCONY[2] - BALCONY[0] }, (_, i) => [BALCONY[0] + i, BALCONY[3], 'x'] as const),
@@ -546,7 +555,12 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'office',
     area: UPPER,
     doorways: [elevator],
-    portals: [wallPortal(UPPER, elevator, 'elevator'), { ...HIDEOUT.trigger, to: 'hideout', secret: true, landing: HIDEOUT.back }],
+    portals: [
+      wallPortal(UPPER, elevator, 'elevator'),
+      { ...HIDEOUT.trigger, to: 'hideout', secret: true, landing: HIDEOUT.back },
+      // 발코니 문(걸어서 지나감, 2026-11-27): 문 칸이 벽 칸 (x, 2), 문 앞 칸이 (x, 3)이다.
+      ...TOWER4_DOOR.x.map((x): Portal => ({ x, y: UPPER[1] - 1, to: 'balcony4', door: true, landing: { x, y: UPPER[1] } })),
+    ],
   },
   tower7: {
     number: 7,
@@ -668,6 +682,15 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     doorways: [],
     // 방으로 들어가는 문(걸어서 지나감). 첫 칸 앞이 쓰러진 뒤 일어나는 칸이다.
     portals: BALCONY_DOOR.map((x): Portal => ({ x, y: BALCONY[1] - 1, to: 'annex', door: true, landing: { x, y: BALCONY[1] } })),
+  },
+  balcony4: {
+    ...plain,
+    number: null,
+    style: 'plain',
+    area: BALCONY4,
+    doorways: [],
+    // 4층으로 들어가는 문(걸어서 지나감). 첫 칸 앞이 쓰러진 뒤 일어나는 칸이다.
+    portals: BALCONY_DOOR.map((x): Portal => ({ x, y: BALCONY4[1] - 1, to: 'tower4', door: true, landing: { x, y: BALCONY4[1] } })),
   },
   elevator: {
     ...plain,
