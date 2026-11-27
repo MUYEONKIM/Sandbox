@@ -186,10 +186,29 @@ interface WallArt {
 }
 const wallArts = new Map<string, WallArt>();
 
-/** 벽지·벽걸이 한 장을 한쪽 벽 기울기로 눕힌다. 그림 위아래 투명한 줄은 잘라 내고 dy로 옮긴다. */
+/**
+ * 벽지·벽걸이 한 장을 한쪽 벽 기울기로 눕힌다. 그림 위아래 투명한 줄은 잘라 내고 dy로 옮긴다.
+ * 벽 쪽마다 따로 그린 벽걸이(art.sides, 2026-11-27 사용자 "입체감이 없고 너무 평면 그림의 느낌", 디자인 wall-hang-sides.md)는
+ * 눌러 붙이지 않고 그 쪽 그림을 그대로 쓴다. 자리는 dx = −ax, dy = −hang − ay(디자인 hang 기준이라 낮은 벽·문 위로 옮기는 셈이 그대로 맞음).
+ */
 function slant(id: BlockId, side: WallSide, pixels: Map<string, ImageData>) {
   const art = blockArt(id);
   if (art.kind !== 'paper' && art.kind !== 'hang') return null;
+  if (art.kind === 'hang' && art.sides) {
+    const name = art.sidesSheet ?? art.sheet;
+    let sheet = pixels.get(name);
+    if (!sheet) {
+      sheet = spritePixels(name);
+      pixels.set(name, sheet);
+    }
+    const [sx, sy, w, h, ax, ay] = art.sides[side];
+    const out = new Uint8ClampedArray(w * h * 4);
+    for (let r = 0; r < h; r++) {
+      const from = ((sy + r) * sheet.width + sx) * 4;
+      out.set(sheet.data.subarray(from, from + w * 4), r * w * 4);
+    }
+    return { w, h, data: out, dx: -ax, dy: -art.hang - ay };
+  }
   const span = art.kind === 'hang' ? art.span : 1;
   const W = span * 16;
   const H = WALL_H + Math.floor((W - 1) / 2) + 1;

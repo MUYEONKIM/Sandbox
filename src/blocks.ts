@@ -34,7 +34,14 @@ export type Frame = readonly [number, number, number, number, number, number, nu
  * door: 문(곧은 벽 칸 하나, 문 구멍 벽 + 문 두 겹, 가까이 가면 열림). window: 끼우는 창문(창 구멍 벽 + 창문, 낮·밤).
  * curtain: 창문 칸 바로 위 z에 얹는 커튼·블라인드(열림·닫힘은 짝 id).
  */
-export type RoomSheet = 'room/room-decor' | 'room/room-decor-more' | 'room/room-decor-3' | 'room/new-decor' | 'room/room-decor-4' | 'room/room-decor-xmas';
+export type RoomSheet =
+  | 'room/room-decor'
+  | 'room/room-decor-more'
+  | 'room/room-decor-3'
+  | 'room/new-decor'
+  | 'room/room-decor-4'
+  | 'room/room-decor-4-sides'
+  | 'room/room-decor-xmas';
 export type BlockArt =
   | { kind: 'cube'; texture: number; side?: number }
   | { kind: 'sprite'; sprite: SpriteName }
@@ -42,7 +49,18 @@ export type BlockArt =
   | { kind: 'furniture'; frame: Frame }
   | { kind: 'room'; sheet: RoomSheet; slot: 'floor' | 'rug' | 'top' | 'ceil'; frame: Frame }
   | { kind: 'paper'; sheet: 'room/wall-textures' | 'room/wall-textures-more' | 'room/wall-textures-3'; frame: readonly [number, number, number, number] }
-  | { kind: 'hang'; sheet: RoomSheet; frame: Frame; hang: number; span: number; low?: number | null }
+  | {
+      kind: 'hang';
+      sheet: RoomSheet;
+      frame: Frame;
+      hang: number;
+      span: number;
+      low?: number | null;
+      /** 벽 쪽마다 따로 그린 그림(2026-11-27, 디자인 wall-hang-sides.md): [x, y, 너비, 높이, ax, ay], 같은 시트. (ax, ay)는 차지한 벽 칸 시작 끝·높이 hang인 벽 위 점 */
+      sides?: { right: readonly number[]; left: readonly number[] };
+      /** sides 그림이 든 시트(없으면 sheet와 같음, 4차는 room-decor-4-sides) */
+      sidesSheet?: RoomSheet;
+    }
   | { kind: 'pwall'; style: string; axis: 'x' | 'y' | 'none' }
   | { kind: 'door'; door: string; axis: 'x' | 'y' }
   | { kind: 'window'; win: string; axis: 'x' | 'y' }
