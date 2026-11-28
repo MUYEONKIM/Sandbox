@@ -1503,6 +1503,11 @@ canvas {
   font-size: 13px;
 }
 
+/* 건물 안 NPC 이름표(2026-11-28, 디자인 세션 13 doors-npc.json talk.nameTag): 플레이어 이름표와 같은 모양, 글자만 연노랑 */
+.npc-name {
+  color: #ffe9a8;
+}
+
 .sign-name {
   padding: 2px 12px;
   color: var(--gold);

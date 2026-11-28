@@ -120,9 +120,8 @@ export interface FloorPlan {
   portals: Portal[];
 }
 
-/** 1층 카페 ITS'room의 카운터. 오른쪽 벽을 따라 놓이고 손님은 앞(+y)에 선다. */
+/** 1층 카페 ITS'room의 카운터. 오른쪽 벽을 따라 놓이고 손님은 앞(+y)에 선다. 바리스타 NPC가 뒤(19, 14)에 선다(npcs.ts). */
 export const COUNTER = { sprite: 'counter' as const, x: 17, y: 15, w: 6, d: 1 };
-const COUNTER_SPOT = { x: 20, y: 16 };
 /** 카페 바닥(나무)이 깔리는 구역 */
 export const CAFE: Area = [13, 13, 24, 28];
 /** 카페 간판을 다는 벽 위치와 높이 (아트 픽셀) */
@@ -333,7 +332,6 @@ export const TICKER_LIFT = 32;
 export const BULL = { sprite: 'bull' as const, x: 21, y: 21, w: 2, d: 2 };
 /** 거래소 간판을 다는 벽 위치와 높이 (아트 픽셀) */
 export const EXCHANGE_HALL_SIGN = { x: 22, y: EXCHANGE_HALL[1], lift: 70 };
-const EXCHANGE_EXIT = { x: 22, y: EXCHANGE_HALL[3] };
 
 export const EXCHANGE_FURNITURE: Furniture[] = [
   { sprite: 'plant', x: 13, y: 13 },
@@ -350,11 +348,8 @@ export const EXCHANGE_FURNITURE: Furniture[] = [
  */
 export const MART_HALL: Area = [15, 15, 28, 28];
 const mart = (x: number, y: number) => ({ x: MART_HALL[0] + x, y: MART_HALL[1] + y });
-/** 계산대(땅 3×1, 앞면 +y). 가운데 앞 칸이 상점 창을 여는 창구다. */
+/** 계산대(땅 3×1, 앞면 +y). 상점 주인 NPC가 가운데 뒤에 선다(npcs.ts). */
 export const MART_COUNTER = { sprite: 'mart-counter' as const, ...mart(6, 3), w: 3, d: 1 };
-const MART_TILL = { x: MART_COUNTER.x + 1, y: MART_COUNTER.y + 1 };
-/** 나가는 문: 앞-오른쪽 변(x 끝) 가운데. 밟으면 시작마을 상점 문 앞에 선다. */
-const MART_EXIT = { x: MART_HALL[2], y: mart(0, 7).y };
 /** 진열대와 냉장고(장식, 지나갈 수 없음). -x가 없는 것은 오른쪽 벽(y 처음)에, -x는 왼쪽 벽(x 처음)에 붙는다. */
 export const MART_PROPS = [
   MART_COUNTER,
@@ -386,16 +381,10 @@ export const MART_PROPS = [
  */
 export const SMITHY_HALL: Area = [15, 15, 28, 28];
 const smithy = (x: number, y: number) => ({ x: SMITHY_HALL[0] + x, y: SMITHY_HALL[1] + y });
-/** 모루(땅 1×1, 앞면 +y). 앞 칸이 강화·팔기 창구다. */
+/** 모루(땅 1×1, 앞면 +y). 대장장이 NPC가 뒤에 선다(npcs.ts). */
 const SMITHY_ANVIL = { sprite: 'smithy-anvil' as const, ...smithy(2, 3), w: 1, d: 1 };
-/** 왼쪽 벽 무기 걸이(땅 1×2, 앞면 +x). 첫 걸이의 아래 칸 앞이 사기 창구다. */
+/** 왼쪽 벽 무기 걸이(땅 1×2, 앞면 +x). 견습 대장장이 NPC는 둘째 걸이 앞에 선다(npcs.ts). */
 const SMITHY_RACK = { sprite: 'smithy-weapon-rack-x' as const, ...smithy(0, 5), w: 1, d: 2 };
-const SMITHY_COUNTERS = {
-  anvil: { x: SMITHY_ANVIL.x, y: SMITHY_ANVIL.y + 1 },
-  rack: { x: SMITHY_RACK.x + 1, y: SMITHY_RACK.y + 1 },
-};
-/** 나가는 문: 상점 안과 같은 앞-오른쪽 변(x 끝) 가운데. 밟으면 시작마을 대장간 문 앞에 선다. */
-const SMITHY_EXIT = { x: SMITHY_HALL[2], y: smithy(0, 7).y };
 /** 화로, 숯, 모루, 물통, 무기 걸이, 방어구 받침대, 장신구 진열장(지나갈 수 없음). -x가 붙은 것은 왼쪽 벽(x 처음)에 붙는다. */
 export const SMITHY_PROPS = [
   { sprite: 'smithy-forge' as const, ...smithy(1, 0), w: 2, d: 2 },
@@ -412,16 +401,37 @@ export const SMITHY_PROPS = [
 
 /**
  * 노동청 안(labor)과 농협 안(farmcoop)(2026-11-16 사용자 "둘 다 만들어", 디자인 세션 labor-coop-rooms.md). 상점 안과 같은 14×14칸이고
- * 창구 하나가 지금의 노동청 창, 농협 창을 연다. 맵 id는 창을 여는 포탈 이름(office, coop)과 헷갈리지 않게 따로 지었다(에이전트가 정함).
+ * 창구 뒤 직원 NPC가 지금의 노동청 창, 농협 창을 연다(2026-11-28 창구 포탈에서 바꿈, npcs.ts). 맵 id는 창 이름(office, coop)과 헷갈리지 않게 따로 지었다(에이전트가 정함).
  */
 export const SHOP_ROOM: Area = [15, 15, 28, 28];
-const SHOP_ROOM_EXIT = { x: 28, y: 22 };
-const SHOP_ROOM_COUNTER = { x: 22, y: 18 };
-function shopRoomPortals(to: 'office' | 'coop', label: string): Portal[] {
-  return [
-    { ...SHOP_ROOM_EXIT, to: 'plains', label: '시작마을', landing: { x: 26, y: 22 } },
-    { ...SHOP_ROOM_COUNTER, to, label, landing: { x: 22, y: 20 } },
-  ];
+
+/**
+ * 건물 안 나가는 문(2026-11-28 사용자 "모든 맵에서 포탈 대신 출입문으로 들어간다", 그림과 값은 디자인 세션 13 doors-npc.json exitDoors).
+ * 예전 나가는 포탈 자리(앞쪽 변 가운데 어두운 발판 3칸) 앞 변에 세운 두 짝 문이고 걸어서 지나간다(Portal.door). 발판 세 칸이 모두 문 앞 칸이다.
+ * 포탈 차례는 가운데 먼저라 마을 문으로 들어오면 가운데 문에 나타나 한 걸음 들어오고, 쓰러지면 가운데 문 앞 칸에서 일어난다(그 방의 첫 포탈일 때).
+ * 그림(doors/exit-doors, 방마다 한 줄에 48 × 81 네 장, 0 닫힘 → 3 열림) 왼쪽 위 = 바닥 뒤 모서리 gridToWorld(area[0], area[1]) + (u, v)이고,
+ * 깊이는 마지막(뒤쪽 끝) 문 칸의 depthOf + 2다(문 앞 세 칸에 선 사람보다 앞, 발판 옆 칸에 선 사람보다 뒤).
+ */
+export const EXIT_DOOR_FRAME = { w: 48, h: 81 } as const;
+export const EXIT_DOORS: Partial<Record<TowerId, { u: number; v: number; row: number }>> = {
+  mart: { u: 80, v: 103, row: 0 },
+  smithy: { u: 80, v: 103, row: 81 },
+  labor: { u: 80, v: 103, row: 162 },
+  farmcoop: { u: 80, v: 103, row: 243 },
+  casino: { u: 112, v: 151, row: 324 },
+  exchange: { u: -160, v: 151, row: 405 },
+  tower1: { u: 128, v: 175, row: 486 },
+  villa1: { u: 48, v: 55, row: 567 },
+};
+
+/** 나가는 문 포탈 셋: 앞 오른쪽 변(x 끝, 'x') 또는 앞 왼쪽 변(y 끝, 'y')의 발판 가운데 칸 at부터 가운데 → 앞 → 뒤 차례. 문 칸은 바닥 밖 한 칸이다. */
+function exitDoorPortals(area: Area, side: 'x' | 'y', at: number): Portal[] {
+  return [at, at - 1, at + 1].map(
+    (k): Portal =>
+      side === 'x'
+        ? { x: area[2] + 1, y: k, to: 'plains', door: true, landing: { x: area[2], y: k } }
+        : { x: k, y: area[3] + 1, to: 'plains', door: true, landing: { x: k, y: area[3] } },
+  );
 }
 
 type Prop = { sprite: SpriteName; x: number; y: number; w: number; d: number };
@@ -608,11 +618,8 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'lobby',
     area: LOBBY,
     doorways: [lobbyElevator],
-    portals: [
-      wallPortal(LOBBY, lobbyElevator, 'elevator'),
-      { ...COUNTER_SPOT, to: 'counter', landing: { x: COUNTER_SPOT.x, y: COUNTER_SPOT.y + 2 } },
-      { x: LOBBY[2], y: 23, to: 'plains', label: '시작마을', landing: { x: LOBBY[2] - 2, y: 23 } },
-    ],
+    // 카페 카운터 창구는 바리스타 NPC로 바꿨다(2026-11-28, npcs.ts). 첫 포탈(엘리베이터) 앞이 쓰러진 뒤 일어나는 칸이다.
+    portals: [wallPortal(LOBBY, lobbyElevator, 'elevator'), ...exitDoorPortals(LOBBY, 'x', 23)],
   },
   tower4: {
     ...plain,
@@ -673,12 +680,8 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'casino',
     area: CASINO_HALL,
     doorways: [],
-    portals: [
-      { x: CASINO_HALL[2], y: 22, to: 'plains', label: '시작마을', landing: { x: CASINO_HALL[2] - 2, y: 22 } },
-      { x: LADDER_BOARD_X, y: CASINO_HALL[1] + 2, to: 'ladder', landing: { x: LADDER_BOARD_X, y: CASINO_HALL[1] + 4 } },
-      { x: ODDEVEN_BOARD_X, y: CASINO_HALL[1] + 2, to: 'oddeven', landing: { x: ODDEVEN_BOARD_X, y: CASINO_HALL[1] + 4 } },
-      { x: SNAIL_TRACK[2] + 2, y: 22, to: 'snail', landing: { x: SNAIL_TRACK[2] + 4, y: 22 } },
-    ],
+    // 게임판 앞 창구 셋은 딜러 둘과 경주 진행자 NPC로 바꿨다(2026-11-28, npcs.ts).
+    portals: exitDoorPortals(CASINO_HALL, 'x', 22),
   },
   exchange: {
     ...plain,
@@ -686,11 +689,8 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'exchange',
     area: EXCHANGE_HALL,
     doorways: [],
-    portals: [
-      { ...EXCHANGE_EXIT, to: 'plains', label: '시작마을', landing: { x: EXCHANGE_EXIT.x, y: EXCHANGE_EXIT.y - 2 } },
-      // 전광판 가운데 앞 매매 창구. 밟으면 모든 종목이 있는 거래 창이 열린다.
-      { x: EXCHANGE_HALL_SIGN.x, y: EXCHANGE_HALL[1] + 2, to: 'trade', landing: { x: EXCHANGE_HALL_SIGN.x, y: EXCHANGE_HALL[1] + 4 } },
-    ],
+    // 전광판 앞 매매 창구는 거래소 직원 NPC로 바꿨다(2026-11-28, npcs.ts). 나가는 문은 앞-왼쪽 변(y 끝)이다.
+    portals: exitDoorPortals(EXCHANGE_HALL, 'y', 22),
   },
   mart: {
     ...plain,
@@ -698,11 +698,8 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'mart',
     area: MART_HALL,
     doorways: [],
-    portals: [
-      { ...MART_EXIT, to: 'plains', label: '시작마을', landing: { x: MART_EXIT.x - 2, y: MART_EXIT.y } },
-      // 계산대 앞 창구. 밟으면 상점 창(자원 팔기, 도구, 포션, 기타)이 열린다.
-      { ...MART_TILL, to: 'shop', label: '계산대', landing: { x: MART_TILL.x, y: MART_TILL.y + 2 } },
-    ],
+    // 계산대 앞 창구는 상점 주인 NPC로 바꿨다(2026-11-28, npcs.ts).
+    portals: exitDoorPortals(MART_HALL, 'x', 22),
   },
   smithy: {
     ...plain,
@@ -710,15 +707,11 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     style: 'smithy',
     area: SMITHY_HALL,
     doorways: [],
-    portals: [
-      { ...SMITHY_EXIT, to: 'plains', label: '시작마을', landing: { x: SMITHY_EXIT.x - 2, y: SMITHY_EXIT.y } },
-      // 창구 둘은 같은 대장간 창을 다른 탭으로 연다(src/ui/forge.ts).
-      { ...SMITHY_COUNTERS.rack, to: 'forge-shop', label: '무기 사기', landing: { x: SMITHY_COUNTERS.rack.x + 2, y: SMITHY_COUNTERS.rack.y } },
-      { ...SMITHY_COUNTERS.anvil, to: 'forge-anvil', label: '강화 · 팔기', landing: { x: SMITHY_COUNTERS.anvil.x, y: SMITHY_COUNTERS.anvil.y + 2 } },
-    ],
+    // 창구 둘은 대장장이·견습 대장장이 NPC로 바꿨다(2026-11-28, npcs.ts). 같은 대장간 창을 다른 탭으로 연다(src/ui/forge.ts).
+    portals: exitDoorPortals(SMITHY_HALL, 'x', 22),
   },
-  labor: { ...plain, number: null, style: 'labor', area: SHOP_ROOM, doorways: [], portals: shopRoomPortals('office', '작업장 고르기') },
-  farmcoop: { ...plain, number: null, style: 'farmcoop', area: SHOP_ROOM, doorways: [], portals: shopRoomPortals('coop', '농협 창구') },
+  labor: { ...plain, number: null, style: 'labor', area: SHOP_ROOM, doorways: [], portals: exitDoorPortals(SHOP_ROOM, 'x', 22) },
+  farmcoop: { ...plain, number: null, style: 'farmcoop', area: SHOP_ROOM, doorways: [], portals: exitDoorPortals(SHOP_ROOM, 'x', 22) },
   annex: {
     ...plain,
     number: null,
@@ -774,7 +767,7 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     area: VILLA_LOBBY,
     doorways: [],
     portals: [
-      { x: VILLA_LOBBY[2], y: 20, to: 'plains', label: '시작마을', landing: { x: 22, y: 20 } },
+      ...exitDoorPortals(VILLA_LOBBY, 'x', 20),
       { x: 21, y: VILLA_LOBBY[1], to: 'villa_lift', label: '엘리베이터', landing: { x: 21, y: VILLA_LOBBY[1] + 2 } },
     ],
   },

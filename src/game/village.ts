@@ -2,7 +2,7 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { BOARD, CASTLE, CAVE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, VILLA, type Area } from './maps';
+import { BOARD, CASTLE, CAVE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, VILLA, VILLAGE_DOORS, type Area } from './maps';
 import type { Tile } from './world';
 import { CAMP_RESERVED, CAMP_ROADS, TRAIL_AREA, TRAIL_TILES, VILLAGE_CAMP_PROPS } from './campfire';
 
@@ -232,10 +232,17 @@ export function layoutVillage(): Village {
 
   for (const { x, y, w, d } of [OFFICE, CASTLE, SHOP, ...BUILDINGS]) eachTile([x, y, x + w - 1, y + d - 1], mark);
 
-  for (const portal of portalsOf('plains')) {
+  // 건물 출입문(2026-11-28 걸어서 지나가는 문)은 예전 포탈 칸(지금 문 앞 칸) 둘레와 예전 도착 칸을 그대로 비운다(나무·꽃 자리가 바뀌지 않게).
+  const cleared = [
+    ...portalsOf('plains')
+      .filter((portal) => !portal.door)
+      .map((portal) => ({ at: { x: portal.x, y: portal.y }, landing: portal.landing })),
+    ...VILLAGE_DOORS.map((door) => ({ at: door.front, landing: door.old })),
+  ];
+  for (const { at, landing } of cleared) {
     const c = PORTAL_MARGIN;
-    eachTile([portal.x - c, portal.y - c, portal.x + c, portal.y + c], mark);
-    mark(portal.landing.x, portal.landing.y);
+    eachTile([at.x - c, at.y - c, at.x + c, at.y + c], mark);
+    mark(landing.x, landing.y);
   }
 
   for (const { x, y } of FIXED_TREES) mark(x, y);

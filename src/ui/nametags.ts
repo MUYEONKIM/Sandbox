@@ -3,7 +3,8 @@ import { element } from './dom';
 
 const BUBBLE_MS = 4000;
 
-export type TagKind = 'player' | 'portal' | 'sign' | 'ticker' | 'plate';
+/** npc: 건물 안 NPC 이름표(2026-11-28, 플레이어 이름표와 같은 모양에 글자만 연노랑) */
+export type TagKind = 'player' | 'portal' | 'sign' | 'ticker' | 'plate' | 'npc';
 
 interface Tag {
   root: HTMLElement;
@@ -155,7 +156,8 @@ export class NameTags {
     tag.root.style.top = `${y}px`;
   }
 
-  say(id: string, text: string) {
+  /** 머리 위 말풍선. ms가 지나면 숨는다(NPC 인사는 2.2초). */
+  say(id: string, text: string, ms = BUBBLE_MS) {
     const tag = this.tags.get(id);
     if (!tag) return;
     tag.bubble.textContent = text;
@@ -163,7 +165,7 @@ export class NameTags {
     window.clearTimeout(tag.timer);
     tag.timer = window.setTimeout(() => {
       tag.bubble.hidden = true;
-    }, BUBBLE_MS);
+    }, ms);
   }
 
   /** 머리 위로 글자가 떠올랐다가 사라진다. */

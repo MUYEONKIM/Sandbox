@@ -1465,7 +1465,9 @@ export function paintInterior(id: TowerId): HTMLCanvasElement {
   paintSlab(painter, FLOOR_SHADERS[plan.style](painter, plan), EDGE_COLORS[plan.style]);
 
   // 시작마을로 나가는 문 앞 발판. 앞-오른쪽 변(x 끝)의 문이면 y로 길고, 앞-왼쪽 변(y 끝)의 문이면 x로 길다.
-  const exit = plan.portals.find((portal) => portal.to === 'plains');
+  // 나가는 문(2026-11-28, 걸어서 지나가는 문)은 발판 가운데 칸이 첫 문 포탈의 문 앞 칸이다. 문 그림은 발판 앞 변에 선다(GameScene).
+  const door = plan.portals.find((portal) => portal.to === 'plains');
+  const exit = door?.door ? door.landing : door;
   if (exit) {
     const o = painter.screen(exit.x - painter.x0 - 1, exit.y - painter.y0 - 1);
     const frontLeft = exit.y === plan.area[3];

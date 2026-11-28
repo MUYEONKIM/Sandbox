@@ -224,6 +224,11 @@ const NAMES = [
   'camp/grill',
   'camp/log-throw',
   'camp/sparks',
+  // 출입문과 NPC(2026-11-28, 디자인 세션 13 art-source/doors-npc/final/sprites): 마을 건물 문 여닫힘(건물마다 한 줄, 4장),
+  // 건물 안 나가는 문 여닫힘(방마다 한 줄, 48 × 81 4장), NPC(한 줄에 22 × 40 5장). 나가는 문 텍스처는 건물 안에 있을 때만 GPU에 둔다.
+  'doors/village-doors',
+  'doors/exit-doors',
+  'npcs',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];

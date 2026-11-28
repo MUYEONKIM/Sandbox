@@ -49,7 +49,8 @@ import {
 import { isStore, seatKind, toggleOf } from './furnitureUse';
 import { CityView } from './cityView';
 import { CITY_BLANK, CITY_PINNED, FLOOR_TINT, PhaseArt, Skyline, skylineArt, type CityArt } from './cityViews';
-import { ensureWalkDoorTexture, WalkDoor, WALK_DOOR_HOLD_MS, WALK_DOOR_STEP_MS } from './walkDoor';
+import { ensureWalkDoorTexture, intoDoor, WalkDoor, WALK_DOOR_HOLD_MS, WALK_DOOR_STEP_MS } from './walkDoor';
+import { inTalkRange, NPC_OPEN_DELAY_MS, NpcCrew, type Npc, type NpcWindow } from './npcs';
 import { BALCONY_RAIL_ART, POSE_FRAMES, USE_SEATS } from '../roomUse';
 import type { DayPhase } from './daylight';
 import {
@@ -158,6 +159,8 @@ import {
   type MapId,
   type Portal,
   type WorkId,
+  VILLAGE_DOORS,
+  type VillageDoor,
 } from './maps';
 import { meleeTarget } from './melee';
 import { findPath } from './path';
@@ -183,6 +186,8 @@ import {
   VILLA_ROOM_DOOR,
   isTower,
   TICKER_LIFT,
+  EXIT_DOORS,
+  EXIT_DOOR_FRAME,
   type PartitionKind,
   type TowerId,
 } from './tower';
@@ -664,7 +669,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private doorsDirty = false;
   private nextDoorAt = Infinity;
   private doorTile = { x: -1, y: -1 };
-  /** 이 맵의 걸어서 지나가는 문(빈방·발코니의 발코니 문, 4층 발코니 문, 빌라 현관문, 2026-11-27). 빌라 복도는 열 개다. */
+  /** 이 맵의 걸어서 지나가는 문(빈방·발코니의 발코니 문, 4층 발코니 문, 빌라 현관문, 2026-11-27, 마을 건물 문·건물 안 나가는 문, 2026-11-28). 빌라 복도는 열 개, 시작마을은 여덟 개다. */
   private walkDoors: WalkDoor[] = [];
   /** 빌라 방 주인(호수 → 주인 id·닉네임). 복도에 들어올 때 서버에서 한 번 읽는다(null이면 아직 못 읽음). */
   private villaOwners: Map<number, { owner: string; nickname: string }> | null = null;
@@ -675,6 +680,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private doorPass: Portal | null = null;
   /** 휴대폰에서 문을 눌러 문 앞 칸으로 걸어가는 중이면 그 문 칸 */
   private doorGoal: Portal | null = null;
+  /** 건물 안·농장 NPC(2026-11-28, npcs.ts) */
+  private npcs!: NpcCrew;
+  /** 범위 밖 NPC를 눌러 범위 안으로 걸어가는 중이면 그 NPC(닿으면 말을 건다) */
+  private npcGoal: Npc | null = null;
+  /** 말을 건 뒤 창을 여는 타이머(0.3초) */
+  private npcOpenTimer: Phaser.Time.TimerEvent | null = null;
+  /** PC 마우스가 NPC 위인지(손가락 커서를 바뀔 때만 바꿈) */
+  private npcHover = false;
   /** 발코니 맵 밖의 밤 도시 야경. 그 맵에서만 그린다. */
   private city!: CityView;
   /** 발코니 카메라 자리를 마지막으로 맞춘 화면 크기·배율 */
@@ -780,6 +793,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.workFx.myId = this.session.profile.id;
     // 게임에 들어왔으니 효과음 묶음을 뒤에서 받는다(소리가 켜져 있으면 바로, 아니면 첫 입력 때).
     sound.enterGame();
+    this.npcs = new NpcCrew(this, this.tags);
     this.showMap(this.mapId);
     this.market.onChange(() => this.paintTickers());
     // 모험 맵: 보스를 처음 잡아 다음 지역이 열리면 포탈을 세우고, 스텟이 바뀌면 입구 맵 포탈 이름표 색을 다시 칠한다.
@@ -865,7 +879,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       }
       this.updateHover();
       if (pointer.rightButtonDown()) void this.collectBlock();
-      else if (pointer.leftButtonDown() && !this.clickMonster()) this.useSelectedItem();
+      else if (pointer.leftButtonDown() && !this.clickMonster() && !this.clickNpc()) this.useSelectedItem();
     });
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       this.touchFiring = false;
@@ -1120,8 +1134,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /**
    * 건물은 여러 칸을 차지해서 깊이 값 하나로는 앞뒤를 가릴 수 없다.
    * 화면 세로줄 단위로 잘라 줄마다 가장 앞쪽 칸의 깊이를 준다.
+   * 마을 건물 출입문(door, 2026-11-28)은 문 그림도 같은 띠로 잘라 그 띠 깊이 + 0.001에 두고, 건물과 같이 반투명해지게 같은 덮개(covers)에 넣는다.
    */
-  private showBuilding({ sprite: name, x, y, w, d }: Building) {
+  private showBuilding({ sprite: name, x, y, w, d }: Building, door?: VillageDoor) {
     this.spriteTexture(name);
     const image = sprite(name);
     const texture = this.textures.get(name);
@@ -1143,6 +1158,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     };
 
     const strips: Phaser.GameObjects.Image[] = [];
+    const doorPieces: Phaser.GameObjects.Image[] = [];
     for (let edge = (baseLeft % stripW) - stripW; edge < image.width; edge += stripW) {
       const sx = Math.max(edge, 0);
       const width = Math.min(edge + stripW, image.width) - sx;
@@ -1152,10 +1168,55 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const column = Math.round((edge - baseLeft) / stripW) - d;
       const depth = depthOf(x + frontmost(column), y);
       strips.push(this.add.image(left + sx, top, name, stripName).setOrigin(0, 0).setDepth(depth));
+      if (door) {
+        const piece = this.addDoorPiece(door, left, top, sx, width, depth + 0.001);
+        if (piece) doorPieces.push(piece);
+      }
     }
-    this.mapImages.push(...strips);
-    this.covers.add(strips);
-    return { left, top };
+    this.mapImages.push(...strips, ...doorPieces);
+    this.covers.add([...strips, ...doorPieces]);
+    return { left, top, doorPieces };
+  }
+
+  /**
+   * 마을 건물 문 그림에서 건물 띠 [sx, sx + width) 안에 드는 조각 하나(그 띠와 겹치지 않으면 null). 조각마다 여닫힘 네 장을
+   * '문:장:조각 시작' 프레임으로 처음 한 번 단다(그림 doors/village-doors, 건물마다 한 줄).
+   */
+  private addDoorPiece(door: VillageDoor, left: number, top: number, sx: number, width: number, depth: number) {
+    const from = Math.max(sx, door.art.x);
+    const to = Math.min(sx + width, door.art.x + door.frame.w);
+    if (to <= from) return null;
+    const texture = this.textures.get(this.spriteTexture('doors/village-doors'));
+    const cut = from - door.art.x;
+    for (let f = 0; f < 4; f++) {
+      const key = `${door.to}:${f}:${cut}`;
+      if (!texture.has(key)) texture.add(key, 0, f * door.frame.w + cut, door.row, to - from, door.frame.h);
+    }
+    return this.add
+      .image(left + from, top + door.art.y, 'doors/village-doors', `${door.to}:0:${cut}`)
+      .setOrigin(0, 0)
+      .setDepth(depth)
+      .setData('cut', cut);
+  }
+
+  /**
+   * 건물 안 나가는 문(2026-11-28, tower.ts EXIT_DOORS): 앞쪽 변 발판 앞에 선 두 짝 문 한 장. 그림은 건물 안에 있을 때만 GPU에 둔다(clearMap이 지움).
+   */
+  private showExitDoor(id: TowerId, corner: { x: number; y: number }) {
+    const art = EXIT_DOORS[id];
+    const portals = this.world.portals.filter((p) => p.door && p.to === 'plains');
+    if (!art || !portals.length) return;
+    const name = this.spriteTexture('doors/exit-doors');
+    const texture = this.textures.get(name);
+    const { w, h } = EXIT_DOOR_FRAME;
+    for (let f = 0; f < 4; f++) if (!texture.has(`${id}:${f}`)) texture.add(`${id}:${f}`, 0, f * w, art.row, w, h);
+    const back = portals[portals.length - 1];
+    const image = this.add
+      .image(corner.x + art.u, corner.y + art.v, name, `${id}:0`)
+      .setOrigin(0, 0)
+      .setDepth(depthOf(back.x, back.y) + 2);
+    this.mapImages.push(image);
+    this.walkDoors.push(new WalkDoor([image], portals, (f) => `${id}:${f}`, EXIT_DOOR_FRAME));
   }
 
   /** 노동청과 대장간 굴뚝에서 연기가 피어오른다. */
@@ -1242,7 +1303,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.chimneySmoke = [];
     const tintFrom = this.mapImages.length;
     for (const building of this.world.map.buildings) {
-      const { left, top } = this.showBuilding(building);
+      // 시작마을 건물 여덟 곳의 출입문(걸어서 지나가는 문, 2026-11-28)
+      const door = id === DEFAULT_MAP ? VILLAGE_DOORS.find((v) => v.building.sprite === building.sprite && v.building.x === building.x && v.building.y === building.y) : undefined;
+      const { left, top, doorPieces } = this.showBuilding(building, door);
+      if (door && doorPieces.length) {
+        const portals = this.world.portals.filter((p) => p.door && p.to === door.to);
+        this.walkDoors.push(new WalkDoor(doorPieces, portals, (f, i) => `${door.to}:${f}:${doorPieces[i].getData('cut')}`, door.frame));
+      }
       const chimney = id === DEFAULT_MAP ? CHIMNEYS[building.sprite] : undefined;
       if (chimney) this.showChimneySmoke(left, top, chimney);
       if (building.sprite === CASTLE.sprite) this.addSign(CASTLE.name, left + CASTLE_SIGN.x, top + CASTLE_SIGN.y);
@@ -1299,8 +1366,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     // 걸어서 지나가는 문(Portal.door)과 숨은 입구(Portal.secret)는 포탈 그림·이름표가 없다.
     this.portalSprites = this.world.portals.filter((portal) => !portal.door && !portal.secret).map((portal) => this.addPortalSprite(portal));
-    // 블록은 이 뒤에 서버에서 받아 놓는다(spawnBlock이 덮는지 본다).
-    this.keepClear.guard([...this.portalSprites.map(({ image }) => image), ...boards]);
+    // 건물 안·농장 NPC(2026-11-28)
+    this.npcs.show(id);
+    // 블록은 이 뒤에 서버에서 받아 놓는다(spawnBlock이 덮는지 본다). 마을 건물 문·나가는 문·NPC도 덮으면 안 된다(2026-11-28).
+    const entrances = this.walkDoors.filter((door) => door.portals.some((p) => id === DEFAULT_MAP || p.to === DEFAULT_MAP)).flatMap((door) => door.images);
+    this.keepClear.guard([...this.portalSprites.map(({ image }) => image), ...boards, ...entrances, ...this.npcs.all.map(({ image }) => image)]);
     this.clearAdventurePortals();
   }
 
@@ -1414,6 +1484,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     const [x0, y0] = FLOORS[id].area;
     const { left, top } = interiorOrigin(id, gridToWorld(x0, y0));
+    // 시작마을로 나가는 문(2026-11-28, 상점·대장간·노동청·농협·도박장·거래소·아이티공간 1층·빌라 로비)
+    this.showExitDoor(id, gridToWorld(x0, y0));
     if (id === 'balcony' || id === 'balcony4') {
       this.showBalcony(id, gridToWorld(x0, y0));
       return;
@@ -1440,7 +1512,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         'balcony4-door-room',
       );
       this.mapImages.push(image);
-      this.walkDoors = [new WalkDoor(image, this.world.portals.filter((p) => p.door))];
+      this.walkDoors.push(new WalkDoor([image], this.world.portals.filter((p) => p.door)));
     }
     if (id === 'annex') {
       // 발코니 문: 뒤쪽 오른쪽 벽에 붙인 그림(여닫힘 네 장). 벽지·벽걸이(0.52~0.54)보다 앞, 바닥 타일(0.58)보다 뒤에 그린다.
@@ -1451,7 +1523,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         .setOrigin(0, 0)
         .setDepth(DEPTH_FLOOR_TILE - 0.01);
       this.mapImages.push(image);
-      this.walkDoors = [new WalkDoor(image, this.world.portals.filter((p) => p.door))];
+      this.walkDoors.push(new WalkDoor([image], this.world.portals.filter((p) => p.door)));
     }
     if (isVillaRoom(id)) {
       // 빌라 방 현관문(오른쪽 뒤 벽 x 18·19): 빈방 발코니 문과 같은 셈·깊이, 너머는 밝은 복도(디자인 세션 11).
@@ -1462,7 +1534,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         .setOrigin(0, 0)
         .setDepth(DEPTH_FLOOR_TILE - 0.01);
       this.mapImages.push(image);
-      this.walkDoors = [new WalkDoor(image, this.world.portals.filter((p) => p.door))];
+      this.walkDoors.push(new WalkDoor([image], this.world.portals.filter((p) => p.door)));
     }
     for (const { x, y } of this.world.map.railings) {
       const rail = this.addMapArt('railing', paintRailing, x, y);
@@ -1505,7 +1577,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setDepth(DEPTH_INTERIOR + 0.001);
     if (four) this.phaseArt.bind(door, 'balcony4-door-balcony');
     this.mapImages.push(door);
-    this.walkDoors = [new WalkDoor(door, this.world.portals.filter((p) => p.door))];
+    this.walkDoors.push(new WalkDoor([door], this.world.portals.filter((p) => p.door)));
     // 카메라: 오른쪽 끝만 건물 오른쪽 끝에 묶는다(왼쪽과 세로는 묶지 않음). 따라가는 자리는 updateBalconyCamera가 화면 크기에 맞춘다.
     const far = 100_000;
     this.cameras.main.setBounds(corner.x + BALCONY_VIEW.right - far, -far, far, far * 2);
@@ -1540,14 +1612,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (id === 'villa3') this.showCityView('villa3', corner, floor);
     if (id !== 'villa2') return;
     const name = ensureWalkDoorTexture(this, 'villa/door-hall-frames');
-    this.walkDoors = VILLA_HALL_DOORS.map(({ u, map }) => {
-      const image = this.add
-        .image(corner.x + u, corner.y + Math.floor(u / 2) - VILLA_ROOM_DOOR.top, name, '0')
-        .setOrigin(0, 0)
-        .setDepth(DEPTH_FLOOR_TILE - 0.01);
-      this.mapImages.push(image);
-      return new WalkDoor(image, this.world.portals.filter((p) => p.door && p.to === map));
-    });
+    this.walkDoors.push(
+      ...VILLA_HALL_DOORS.map(({ u, map }) => {
+        const image = this.add
+          .image(corner.x + u, corner.y + Math.floor(u / 2) - VILLA_ROOM_DOOR.top, name, '0')
+          .setOrigin(0, 0)
+          .setDepth(DEPTH_FLOOR_TILE - 0.01);
+        this.mapImages.push(image);
+        return new WalkDoor([image], this.world.portals.filter((p) => p.door && p.to === map));
+      }),
+    );
     this.paintVillaPlates();
     // 방 주인은 복도에 들어올 때 한 번 읽는다(다 읽기 전에 다른 맵으로 가면 버림).
     const visit = this.minimapEpoch;
@@ -1795,6 +1869,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.floorTinted = [];
     this.doors.clear();
     this.walkDoors = [];
+    this.npcs.clear();
+    this.npcGoal = null;
+    this.npcOpenTimer?.remove();
+    this.npcOpenTimer = null;
     // 맵이 바뀌면(쓰러짐·순간이동 등) 복도의 '내 방으로 하기' 창도 닫는다.
     this.villaModal?.close();
     this.villaModal = null;
@@ -1821,6 +1899,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.mapImages = [];
     // 도시 풍경 그림은 그 맵에 있을 때만 GPU에 둔다(그림 물체를 지운 뒤에 지움).
     this.phaseArt.leave();
+    // 건물 안 나가는 문 그림도 건물 안에 있을 때만 둔다(다음 맵이 건물 안이면 showExitDoor가 다시 올림).
+    if (this.textures.exists('doors/exit-doors')) this.textures.remove('doors/exit-doors');
     this.bullets.clear();
     this.drops.clear();
     this.stopMonsters();
@@ -1855,6 +1935,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.updateTorches(time);
     this.updateDoors(time);
     this.updateWalkDoor(time);
+    this.npcs.watch(this.me.tile);
+    this.npcs.update(time, this.cameras.main.worldView);
     if (this.balconyCam) this.updateBalconyCamera();
     if (this.city.active) this.city.update(delta);
     this.updateReload();
@@ -1912,7 +1994,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     // F는 발밑에 주울 것이 있으면 줍고, 없으면 일을 시작하거나 멈춘다.
     // 맞닿은 칸에 쓸 수 있는 가구가 있으면 쓴다(앉기·눕기, 등 켜고 끄기, 커튼, 상자, 2026-11-27).
-    if (this.keys.takeWork() && this.canAct && !this.tryPickUp() && !this.campFuelKey() && !this.farmKey() && !this.useFurniture()) this.toggleWork();
+    // 이야기 범위 안 NPC가 있으면 줍기 다음으로 말을 건다(2026-11-28 doors-npc.json talk.pc).
+    if (this.keys.takeWork() && this.canAct && !this.tryPickUp() && !this.talkNpcKey() && !this.campFuelKey() && !this.farmKey() && !this.useFurniture()) this.toggleWork();
 
     if (this.keys.takeJump() && this.canAct && !this.me.jumping) {
       if (this.seated) this.standUp();
@@ -1927,19 +2010,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 막 도착했을 때만 탄다. 창을 닫은 뒤 그 자리에서 다시 열리지 않게 한다.
     const portal = wasMoving ? this.world.portalAt(this.me.tile.x, this.me.tile.y) : undefined;
     if (portal) {
-      if (portal.to === 'office') this.office.open();
-      else if (portal.to === 'dungeon') this.dungeonWindow.open();
+      if (portal.to === 'dungeon') this.dungeonWindow.open();
       else if (portal.to === 'adventure') void this.adventureWindow.open();
-      else if (portal.to === 'coop') this.coop.open();
-      else if (portal.to === 'shop') this.shop.open();
-      else if (portal.to === 'forge-shop') this.forge.openAt('buy');
-      else if (portal.to === 'forge-anvil') this.forge.openAt('anvil');
-      else if (portal.to === 'counter') this.castle.open();
       else if (portal.to === 'fame') void this.fame.open();
       else if (portal.to === 'board') this.board.open();
-      else if (portal.to === 'trade') this.exchange.open();
       else if (portal.to === 'panel') this.elevator.open(this.elevatorFloor, this.mapId === 'villa_lift');
-      else if (isGame(portal.to)) this.casino.open(portal.to);
+      else if (this.openNpcWindow(portal.to)) return;
       else if (isAdventure(portal.to)) void this.goAdventureMap(portal.to);
       else this.travel(portal.to);
       return;
@@ -1950,6 +2026,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.doorGoal = null;
       if (goal.landing.x === this.me.tile.x && goal.landing.y === this.me.tile.y) {
         this.startDoorPass(goal);
+        return;
+      }
+    }
+    // 누른 NPC 쪽으로 걸어 범위 안에 닿았다: 말을 건다(길이 막혀 범위 밖에서 멈췄으면 하지 않음).
+    if (this.npcGoal && !this.route.length) {
+      const npc = this.npcGoal;
+      this.npcGoal = null;
+      if (this.canAct && this.npcs.all.includes(npc) && inTalkRange(npc.spec, this.me.tile)) {
+        this.talkTo(npc);
         return;
       }
     }
@@ -1965,13 +2050,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.advPending = null;
       this.workGoal = null;
       this.doorGoal = null;
+      this.npcGoal = null;
       // 앉았거나 누웠으면 먼저 일어나 들어온 칸에 선다.
       if (this.seated) {
         this.standUp();
         return;
       }
-      // 문 앞 칸에서 문 쪽(벽 쪽, dy −1)으로 걸으면 문으로 넘어간다.
-      const doorAhead = dir.dy < 0 ? this.doorInFront(this.me.tile) : undefined;
+      // 문 앞 칸에서 문 쪽(벽 문은 dy −1, 마을 건물 문·나가는 문은 문마다 다름)으로 걸으면 문으로 넘어간다.
+      const doorAhead = this.doorInFront(this.me.tile, dir);
       if (doorAhead) {
         this.startDoorPass(doorAhead);
         return;
@@ -2069,8 +2155,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    */
   private tap(wx: number, wy: number) {
     this.doorGoal = null;
+    this.npcGoal = null;
     // 모험 맵: 몬스터를 누르면 그 옆 칸까지 걸어가 싸운다(기획 19장 3번). 누른 자리로 본다.
     if (this.clickMonster(wx, wy)) return;
+    // NPC를 누르면 말을 건다(범위 밖이면 범위 안까지 걸어가서). 블록 놓기보다 먼저다.
+    if (this.clickNpc(wx, wy)) return;
     const g = worldToGrid(wx, wy);
     const goal = { x: Math.floor(g.gx), y: Math.floor(g.gy) };
     this.advPending = null;
@@ -3013,6 +3102,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const [id, avatar] of this.others) placeAvatar(id, avatar);
     for (const { image, tag } of this.portalSprites) place(tag, image.x, image.y - PORTAL_TAG_HEIGHT);
     for (const { tag, x, y } of this.signs) place(tag, x, y);
+    this.npcs.placeTags(place, HEAD_HEIGHT);
   }
 
   /**
@@ -3054,9 +3144,22 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       me: this.me.tile,
       others,
       blocks: [...this.world.blockTiles(), ...this.world.map.walls, ...this.world.map.partitions],
-      portals: this.world.portals.filter((portal) => !portal.door && !portal.secret),
+      portals: this.minimapPortals(),
       bosses: this.advField?.bossDots ?? [],
     });
+  }
+
+  /**
+   * 미니맵 포탈 점: 그림 있는 포탈과, 마을 건물 문·건물 안 나가는 문(2026-11-28 포탈에서 바꿈, 문 앞 칸에 문마다 하나)이다.
+   * 빌라 복도·발코니 문처럼 방 사이 문과 숨은 입구는 그리지 않는다(예전과 같음).
+   */
+  private minimapPortals(): Tile[] {
+    const dots: Tile[] = this.world.portals.filter((portal) => !portal.door && !portal.secret);
+    for (const door of this.walkDoors) {
+      const first = door.portals[0];
+      if (first && (this.mapId === DEFAULT_MAP || first.to === DEFAULT_MAP)) dots.push(first.landing);
+    }
+    return dots;
   }
 
   /** M·미니맵 지도 버튼: 모험 지역 맵에서만 지역 전체지도를 열고 닫는다. */
@@ -3457,6 +3560,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private updateHover() {
     // 휴대폰에는 마우스 커서가 없으므로 설치 미리보기를 띄우지 않는다. 인터페이스를 숨겼을 때도 띄우지 않는다.
     if (this.hud.isOpen || this.input.activePointer.wasTouch || this.uiHidden) {
+      if (this.npcHover) {
+        this.npcHover = false;
+        this.input.setDefaultCursor('');
+      }
       this.hoveredBlock = this.hoveredGround = this.hoveredWall = this.hoveredCeil = null;
       this.ghost.setVisible(false);
       this.marker.clear();
@@ -3465,6 +3572,19 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
 
     const w = this.pointerWorld();
+    // NPC 위에서는 손가락 커서이고 설치 미리보기를 띄우지 않는다(누르면 말을 건다, 2026-11-28). 커서는 바뀔 때만 바꾼다.
+    const overNpc = this.npcs.hit(w.x, w.y) !== undefined;
+    if (overNpc !== this.npcHover) {
+      this.npcHover = overNpc;
+      this.input.setDefaultCursor(overNpc ? 'pointer' : '');
+    }
+    if (overNpc) {
+      this.hoveredBlock = this.hoveredGround = this.hoveredWall = this.hoveredCeil = null;
+      this.ghost.setVisible(false);
+      this.marker.clear();
+      this.groundUi.setTip(null);
+      return;
+    }
     this.pointAt(w.x, w.y);
     this.drawHover();
     this.updateGoldTip();
@@ -4248,14 +4368,18 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 걸어서 지나가는 문(빈방·발코니의 발코니 문, 4층 발코니 문, 빌라 현관문)을 여닫는다: 넘어가는 중이거나, 막 넘어와 잠시 열어 두는 동안이거나,
-   * 문 앞 칸에서 문 쪽(dy < 0)을 보는 사람(나와 보이는 남)이 있으면 열고, 아니면 닫는다. 프레임 넘기기는 WalkDoor가 70ms마다 한다.
-   * 이 맵에 문이 없으면 바로 끝나고, 있어도 문마다 칸·방향 비교 몇 번이다(빌라 복도 문 열 개).
+   * 걸어서 지나가는 문(빈방·발코니의 발코니 문, 4층 발코니 문, 빌라 현관문, 마을 건물 문, 건물 안 나가는 문)을 여닫는다: 넘어가는 중이거나, 막 넘어와 잠시 열어 두는 동안이거나,
+   * 문 앞 칸에서 문 쪽(벽 문은 dy < 0, 그 밖에는 문마다 넘어가는 쪽, walkDoor.ts intoDoor)을 보는 사람(나와 보이는 남)이 있으면 열고, 아니면 닫는다. 프레임 넘기기는 WalkDoor가 70ms마다 한다.
+   * 이 맵에 문이 없으면 바로 끝나고, 있어도 문마다 칸·방향 비교 몇 번이다(빌라 복도 문 열 개, 시작마을 여덟 개).
    * 빌라 빈 방 문은 '내 방으로 하기'를 물어야 하는 동안(내 방이 없음) 내가 보고 서 있어도 열지 않는다(확인 창이 먼저).
    */
   private updateWalkDoor(time: number) {
     for (const door of this.walkDoors) {
-      const facing = (a: Avatar) => !a.isHidden && a.gridFacing.dy < 0 && door.portalInFront(a.tile) !== undefined;
+      const facing = (a: Avatar) => {
+        if (a.isHidden) return false;
+        const front = door.portalInFront(a.tile);
+        return front !== undefined && intoDoor(front, a.gridFacing);
+      };
       const mine = this.doorPass ? door.portals.includes(this.doorPass) : facing(this.me) && !this.villaHolds(door.portalInFront(this.me.tile)!);
       let open = mine || door.held(time);
       if (!open) {
@@ -4281,13 +4405,89 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.villaAsking === portal || this.villaClaimRoom(portal) !== null;
   }
 
-  /** tile이 문 앞 칸이면 그 칸의 문 포탈 */
-  private doorInFront(tile: Tile) {
+  /** tile이 문 앞 칸이면 그 칸의 문 포탈. dir을 주면 그쪽으로 걸어 그 문으로 넘어갈 때만 */
+  private doorInFront(tile: Tile, dir?: Dir) {
     for (const door of this.walkDoors) {
       const portal = door.portalInFront(tile);
-      if (portal) return portal;
+      if (portal && (!dir || intoDoor(portal, dir))) return portal;
     }
     return undefined;
+  }
+
+  /**
+   * 예전 창구 포탈이 열던 창(상점, 대장간 두 탭, 노동청, 농협, 매매, 카페 카운터, 도박장 게임)을 연다. 그런 창이면 true.
+   * 2026-11-28부터는 NPC에게 말을 걸어 연다(npcs.ts).
+   */
+  private openNpcWindow(to: Portal['to']): to is NpcWindow {
+    if (to === 'office') this.office.open();
+    else if (to === 'coop') this.coop.open();
+    else if (to === 'shop') this.shop.open();
+    else if (to === 'forge-shop') this.forge.openAt('buy');
+    else if (to === 'forge-anvil') this.forge.openAt('anvil');
+    else if (to === 'counter') this.castle.open();
+    else if (to === 'trade') this.exchange.open();
+    else if (isGame(to)) this.casino.open(to);
+    else return false;
+    return true;
+  }
+
+  /**
+   * F로 말 걸기: 이야기 범위 안 NPC가 있으면 말을 건다. 앉아 있으면(일어나기가 먼저) 하지 않고,
+   * 농장에서 가리키거나 발밑·앞에 내 일거리 칸이 있으면 농장 일이 먼저다(제가 정한 것). 말을 걸었으면 true
+   */
+  private talkNpcKey() {
+    if (!this.npcs.all.length || this.seated) return false;
+    if (this.farm && this.farmTarget()) return false;
+    const npc = this.npcs.pick(this.me.tile, this.me.gridFacing);
+    if (!npc) return false;
+    this.talkTo(npc);
+    return true;
+  }
+
+  /**
+   * NPC 그림을 눌렀다(PC 좌클릭, 휴대폰 누르기): 범위 안이면 바로 말을 걸고, 밖이면 범위 안 가장 가까운 칸(예전 창구 칸이 있으면 그 칸)까지 걸어간 뒤 말을 건다.
+   * NPC를 눌렀으면 true. wx·wy가 없으면 지금 마우스 자리다.
+   */
+  private clickNpc(wx?: number, wy?: number) {
+    if (!this.npcs.all.length || !this.canAct) return false;
+    const at = wx === undefined || wy === undefined ? this.pointerWorld() : { x: wx, y: wy };
+    const npc = this.npcs.hit(at.x, at.y);
+    if (!npc) return false;
+    if (this.seated) this.standUp();
+    this.clearRoute();
+    this.workGoal = null;
+    this.doorGoal = null;
+    this.advPending = null;
+    if (inTalkRange(npc.spec, this.me.tile)) {
+      this.talkTo(npc);
+      return true;
+    }
+    // 예전 창구 칸이 없거나 막혔으면 NPC 쪽 길에서 처음 범위에 드는 칸까지만 간다.
+    const stand = npc.spec.stand;
+    if (stand && this.world.isWalkable(stand.x, stand.y)) this.walkTo(stand);
+    else {
+      this.walkTo({ x: npc.spec.x, y: npc.spec.y });
+      const i = this.route.findIndex((tile) => inTalkRange(npc.spec, tile));
+      if (i >= 0 && i < this.route.length - 1) {
+        this.route = this.route.slice(0, i + 1);
+        this.routeGoal = this.route[i];
+        this.drawRouteMarker();
+      }
+    }
+    this.npcGoal = npc;
+    return true;
+  }
+
+  /** 말을 건다: NPC가 돌아보고 말풍선을 띄우고, 0.3초 뒤 그 NPC의 창을 연다(같은 맵에 있고 다른 창이 열리지 않았을 때). */
+  private talkTo(npc: Npc) {
+    if (this.npcOpenTimer) return;
+    this.npcGoal = null;
+    this.stopWork();
+    this.npcs.greet(npc, this.me.tile);
+    this.npcOpenTimer = this.time.delayedCall(NPC_OPEN_DELAY_MS, () => {
+      this.npcOpenTimer = null;
+      if (this.npcs.all.includes(npc) && this.canAct) this.openNpcWindow(npc.spec.opens);
+    });
   }
 
   /** 이 문 포탈이 달린 문 */

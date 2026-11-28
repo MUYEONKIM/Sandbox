@@ -27,6 +27,7 @@ import { layoutVillage, type Scenery } from './village';
 import type { Tile } from './world';
 import { WORK_LAYOUTS } from './workLayouts';
 import { FARM_PROPS, farmFences, type FenceEdge } from './farmLayout';
+import { npcsOf } from './npcs';
 
 /** Void는 아무것도 없는 칸이다. 건물 안처럼 맵의 일부만 쓸 때 나머지를 채운다. */
 export const Terrain = { Ground: 0, Water: 1, Void: 2 } as const;
@@ -266,6 +267,8 @@ export function generateMap(id: MapId): GameMap {
     }
   }
   for (const { x, y } of [...scenery.props, ...scenery.trees]) solid[x + y * size] = 1;
+  // NPC 칸은 지나갈 수 없고 블록을 놓을 수 없다(2026-11-28 건물 안 창구를 NPC로 바꿈, npcs.ts).
+  for (const { x, y } of npcsOf(id)) solid[x + y * size] = 1;
 
   const { floor, floorTop } = MAPS[id];
   const railings = isTower(id) ? FLOORS[id].railings : [];

@@ -695,6 +695,52 @@ export const COOP = {
 /** 거래소 안 종목 창구 포탈. 이름은 포탈마다 종목 이름(label)을 쓴다. */
 const TRADE_INFO = { name: '매매 창구', accent: 0xffd84d };
 
+/**
+ * 마을 건물 출입문(2026-11-28 사용자 "모든 맵에서 포탈 대신 출입문으로 들어간다", 그림과 값은 디자인 세션 13 doors-npc.json villageDoors).
+ * 걸어서 지나가는 문(Portal.door)이다. 건물 상수의 door(예전 포탈 칸)가 문 앞 칸(front)이고, 거기서 건물 쪽(walkIn)으로 한 칸이 문 칸(건물 바닥 칸)이다.
+ * 문 그림은 건물 그림에 그려진 문 자리에 얹는 여닫힘 네 장(0번 = 건물 그림과 같은 픽셀)이고, 건물처럼 16px 띠로 잘라
+ * 그 띠의 건물 깊이 + 0.001에 둔다(GameScene.showBuilding). 건물이 반투명해질 때 같이 반투명해진다.
+ * old는 예전 도착 칸(건물 상수의 landing)이다. 이제 거기 서지 않지만 나무·꽃을 흩는 자리(village.ts)가 바뀌지 않게 계속 비운다.
+ */
+export interface VillageDoor {
+  to: TowerId;
+  building: { sprite: string; x: number; y: number };
+  front: { x: number; y: number };
+  walkIn: { dx: number; dy: number };
+  old: { x: number; y: number };
+  /** 문 그림 한 장 크기(px) */
+  frame: { w: number; h: number };
+  /** 건물 그림 왼쪽 위에서 문 그림 왼쪽 위까지(px) */
+  art: { x: number; y: number };
+  /** 그림(doors/village-doors)에서 이 건물 줄의 y(px). 줄 안에 장 네 개가 가로로 있다. */
+  row: number;
+}
+
+const villageDoor = (
+  to: TowerId,
+  building: { sprite: string; x: number; y: number; door: { x: number; y: number }; landing: { x: number; y: number } },
+  walkIn: VillageDoor['walkIn'],
+  frame: VillageDoor['frame'],
+  art: VillageDoor['art'],
+  row: number,
+): VillageDoor => ({ to, building: { sprite: building.sprite, x: building.x, y: building.y }, front: building.door, walkIn, old: building.landing, frame, art, row });
+
+export const VILLAGE_DOORS: readonly VillageDoor[] = [
+  villageDoor('mart', SHOP, { dx: 0, dy: -1 }, { w: 12, h: 29 }, { x: 14, y: 89 }, 0),
+  villageDoor('smithy', SMITHY, { dx: 0, dy: -1 }, { w: 12, h: 24 }, { x: 30, y: 63 }, 29),
+  villageDoor('labor', OFFICE, { dx: -1, dy: 0 }, { w: 14, h: 24 }, { x: 93, y: 90 }, 53),
+  villageDoor('farmcoop', COOP, { dx: 0, dy: -1 }, { w: 15, h: 23 }, { x: 24, y: 48 }, 77),
+  villageDoor('casino', { ...TAVERN, ...CASINO_DOOR }, { dx: -1, dy: 0 }, { w: 15, h: 26 }, { x: 76, y: 93 }, 100),
+  villageDoor('exchange', EXCHANGE, { dx: 0, dy: -1 }, { w: 15, h: 22 }, { x: 42, y: 168 }, 126),
+  villageDoor('tower1', CASTLE, { dx: -1, dy: 0 }, { w: 20, h: 25 }, { x: 250, y: 283 }, 148),
+  villageDoor('villa1', VILLA, { dx: 0, dy: -1 }, { w: 16, h: 21 }, { x: 50, y: 133 }, 173),
+];
+
+/** 마을 건물 문 포탈: 문 칸이 x·y, 문 앞 칸이 landing */
+function villageDoorPortal({ to, front, walkIn }: VillageDoor): Portal {
+  return { x: front.x + walkIn.dx, y: front.y + walkIn.dy, to, door: true, landing: front };
+}
+
 export function isMapId(value: unknown): value is MapId {
   return typeof value === 'string' && Object.hasOwn(MAPS, value);
 }
@@ -761,18 +807,12 @@ export function portalsOf(id: MapId): Portal[] {
   if (isAdventure(id)) return adventurePortals(id);
   const portals = (Object.entries(MAPS[id].links) as [Corner, MapId][]).map(([corner, to]) => portalAt(corner, to));
   if (id === 'plains') {
-    portals.push({ ...OFFICE.door, to: 'labor', landing: OFFICE.landing });
-    portals.push({ ...SHOP.door, to: 'mart', landing: SHOP.landing });
-    portals.push({ ...CASTLE.door, to: 'tower1', label: CASTLE.name, landing: CASTLE.landing });
+    // 건물 여덟 곳은 걸어서 지나가는 출입문이다(2026-11-28, VILLAGE_DOORS). 창을 여는 간판·동굴·모험하기는 그대로 포탈이다.
+    for (const door of VILLAGE_DOORS) portals.push(villageDoorPortal(door));
     portals.push({ ...FAME.door, to: 'fame', landing: FAME.landing });
     portals.push({ ...BOARD.door, to: 'board', landing: BOARD.landing });
-    portals.push({ ...EXCHANGE.door, to: 'exchange', landing: EXCHANGE.landing });
-    portals.push({ ...CASINO_DOOR.door, to: 'casino', landing: CASINO_DOOR.landing });
     portals.push({ ...ADVENTURE_GATE.door, to: 'adventure', landing: ADVENTURE_GATE.landing });
     portals.push({ ...CAVE.door, to: 'dungeon', landing: CAVE.landing });
-    portals.push({ ...COOP.door, to: 'farmcoop', landing: COOP.landing });
-    portals.push({ ...SMITHY.door, to: 'smithy', landing: SMITHY.landing });
-    portals.push({ ...VILLA.door, to: 'villa1', label: VILLA.name, landing: VILLA.landing });
     // 캠프파이어 맵으로 가는 산길 아치 앞 두 칸(숨은 포탈: 그림·이름표·미니맵 점 없음, 밟으면 넘어감)
     for (const at of CAMP_TRAIL.triggers) portals.push({ ...at, to: 'campfire', secret: true, landing: CAMP_TRAIL.back });
   }
@@ -817,7 +857,8 @@ export function arrivalFor(to: MapId, from: MapId) {
     portals.find((p) => p.to === from) ??
     portals.find((p) => p.to === 'elevator') ??
     (isTower(to) || MAPS[to].work ? portals[0] : undefined);
-  return back ? back.landing : OFFICE.landing;
+  // 작업장에서 돌아오면 노동청 출입문 앞 칸(2026-11-28 문으로 바꾸며 예전 도착 칸 (11, 7)에서 옮김. 블록을 못 놓는 칸이다)
+  return back ? back.landing : OFFICE.door;
 }
 
 /**
