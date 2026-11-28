@@ -279,7 +279,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     ]),
   ) as Record<VillaRoomId, MapInfo>),
   // 캠프파이어 맵(2026-11-28, 디자인 세션 14 camp-map.json): 산속 밤하늘 아래 모닥불. 마을 광장 옆 산길 아치로 간다. 공격·블록이 막힌다.
-  campfire: { name: '캠프파이어', floor: [], floorTop: BLOCK_TOP, color: 0x3a3226, accent: 0xffb36a, background: '#050817', links: {}, safe: true },
+  campfire: { name: '캠프파이어', floor: [], floorTop: BLOCK_TOP, color: 0x3a3226, accent: 0xffb36a, background: '#04061a', links: {}, safe: true },
   // 4층 발코니(2026-11-27, 비밀 아님). 맵 밖은 시간대마다 바뀌는 도시 풍경이다(src/game/cityViews.ts).
   balcony4: {
     name: '아이티공간 4층 발코니',
@@ -554,6 +554,9 @@ export const CASTLE = {
 /**
  * 시작마을 왼쪽의 상점. 문 앞 칸이 포탈이고, 타면 상점 안(mart 맵)으로 들어간다(2026-11-15 사용자 요청 "상점도 건물 내부로 들어가서").
  * 사고파는 것은 안의 계산대 앞 창구에서 한다(src/game/tower.ts의 MART_PROPS).
+ * 2026-11-28 입구를 광장 쪽 오른쪽 앞 면 가운데(옛 셔터 자리)로 옮겼다(사용자 "상점 같은경우 입구를 찾기가 너무 어렵다", "안 A",
+ * 디자인 세션 13 doors-npc/final/shop-fix/shop-fix.json): 문 앞 칸 (9, 32), 문 칸 (8, 32). 옛 문 앞 칸 (3, 38)은 문이 아니다.
+ * landing은 예전 도착 칸 (4, 40)이다(나무·꽃 흩는 자리를 그대로 비우려고 둠, VillageDoor.old).
  */
 export const SHOP = {
   sprite: 'villa' as const,
@@ -561,7 +564,7 @@ export const SHOP = {
   y: 30,
   w: 6,
   d: 8,
-  door: { x: 3, y: 38 },
+  door: { x: 9, y: 32 },
   landing: { x: 4, y: 40 },
   name: '상점',
   accent: 0xb58cff,
@@ -608,15 +611,8 @@ export const CASINO_DOOR = { door: { x: 41, y: 38 }, landing: { x: 43, y: 38 } }
 /** 주점(도박장) 건물 자리. 오른쪽 벽에 그려진 문이 CASINO_DOOR다. */
 export const TAVERN = { sprite: 'tavern' as const, x: 37, y: 36, w: 4, d: 4, name: '인생한방 도박장' };
 
-/**
- * 시작마을 귀퉁이 포탈로 가는 길이 성을 두르는 길에서 갈라지는 곳의 안내판(2026-11-15 사용자 요청 "각 방향 포탈이 어디로
- * 향하는지 모르겠다, 안내판을 세워라"). 자리와 글은 에이전트가 정했다.
- */
-export const GUIDEPOSTS = [
-  { x: 31, y: 11, text: '농장 가는 길 ↗' },
-  { x: 16, y: 36, text: '↙ 전쟁터 가는 길' },
-  { x: 31, y: 40, text: '모험하기 ↘' },
-];
+// 귀퉁이 포탈 길 안내판 셋(GUIDEPOSTS: '농장 가는 길 ↗', '↙ 전쟁터 가는 길', '모험하기 ↘', 2026-11-15)은
+// 2026-11-28 뺐다(사용자 "모험하기, 농장가는 길 과같은 표지판은 이제 없앤다"). 그 칸 (31, 11)·(16, 36)·(31, 40)은 빈 땅이다.
 
 /**
  * 광장 오른쪽 잔디밭의 명예의 전당 간판. 앞 칸이 포탈이고, 타면 레벨 순위 창이 열린다.
@@ -725,15 +721,16 @@ const villageDoor = (
   row: number,
 ): VillageDoor => ({ to, building: { sprite: building.sprite, x: building.x, y: building.y }, front: building.door, walkIn, old: building.landing, frame, art, row });
 
+// 그림 줄(row)은 2026-11-28 상점 문이 19 × 27로 바뀌며 아래 줄들이 2px씩 올라갔다(shop-fix.json rows).
 export const VILLAGE_DOORS: readonly VillageDoor[] = [
-  villageDoor('mart', SHOP, { dx: 0, dy: -1 }, { w: 12, h: 29 }, { x: 14, y: 89 }, 0),
-  villageDoor('smithy', SMITHY, { dx: 0, dy: -1 }, { w: 12, h: 24 }, { x: 30, y: 63 }, 29),
-  villageDoor('labor', OFFICE, { dx: -1, dy: 0 }, { w: 14, h: 24 }, { x: 93, y: 90 }, 53),
-  villageDoor('farmcoop', COOP, { dx: 0, dy: -1 }, { w: 15, h: 23 }, { x: 24, y: 48 }, 77),
-  villageDoor('casino', { ...TAVERN, ...CASINO_DOOR }, { dx: -1, dy: 0 }, { w: 15, h: 26 }, { x: 76, y: 93 }, 100),
-  villageDoor('exchange', EXCHANGE, { dx: 0, dy: -1 }, { w: 15, h: 22 }, { x: 42, y: 168 }, 126),
-  villageDoor('tower1', CASTLE, { dx: -1, dy: 0 }, { w: 20, h: 25 }, { x: 250, y: 283 }, 148),
-  villageDoor('villa1', VILLA, { dx: 0, dy: -1 }, { w: 16, h: 21 }, { x: 50, y: 133 }, 173),
+  villageDoor('mart', SHOP, { dx: -1, dy: 0 }, { w: 19, h: 27 }, { x: 167, y: 97 }, 0),
+  villageDoor('smithy', SMITHY, { dx: 0, dy: -1 }, { w: 12, h: 24 }, { x: 30, y: 63 }, 27),
+  villageDoor('labor', OFFICE, { dx: -1, dy: 0 }, { w: 14, h: 24 }, { x: 93, y: 90 }, 51),
+  villageDoor('farmcoop', COOP, { dx: 0, dy: -1 }, { w: 15, h: 23 }, { x: 24, y: 48 }, 75),
+  villageDoor('casino', { ...TAVERN, ...CASINO_DOOR }, { dx: -1, dy: 0 }, { w: 15, h: 26 }, { x: 76, y: 93 }, 98),
+  villageDoor('exchange', EXCHANGE, { dx: 0, dy: -1 }, { w: 15, h: 22 }, { x: 42, y: 168 }, 124),
+  villageDoor('tower1', CASTLE, { dx: -1, dy: 0 }, { w: 20, h: 25 }, { x: 250, y: 283 }, 146),
+  villageDoor('villa1', VILLA, { dx: 0, dy: -1 }, { w: 16, h: 21 }, { x: 50, y: 133 }, 171),
 ];
 
 /** 마을 건물 문 포탈: 문 칸이 x·y, 문 앞 칸이 landing */

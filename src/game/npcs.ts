@@ -4,6 +4,7 @@ import { depthOf, tileCenter } from '../iso';
 import type { NameTags } from '../ui/nametags';
 import type { GameId } from './casino';
 import type { MapId } from './maps';
+import { npcLinesOf, talkId, type TalkDay, type TalkPhase, type TalkSeason } from './npcLines';
 import type { Tile } from './world';
 
 /**
@@ -11,7 +12,8 @@ import type { Tile } from './world';
  * 그림과 값은 디자인 세션 13 doors-npc.json npcs·talk). 예전 창구 포탈 대신 창구 뒤나 게임판 앞에 서서 같은 창을 연다.
  * - 그림 npcs.png: NPC마다 한 줄, 22 × 40 다섯 장(0·1 서기, 2·3·4 짧은 동작). 발 줄·크기·숨쉬기가 플레이어 캐릭터와 같고 화면 왼쪽(+y)을 본다.
  * - 이야기 범위: NPC 칸에서 가로·세로 TALK_RANGE칸 안(체비셰프, 소품·창구 너머도 됨). 여럿이면 직선 거리가 가까운 쪽, 같으면 내가 바라보는 쪽.
- * - 말 걸기: NPC가 나를 돌아보고(좌우 뒤집기만) 말풍선 2.2초, 0.3초 뒤 예전 창구의 창이 열린다. 맵에 들어와 처음 말 걸면 lines[0], 다음부터 lines[1].
+ * - 말 걸기: NPC가 나를 돌아보고(좌우 뒤집기만) 말풍선 2.2초, 0.3초 뒤 예전 창구의 창이 열린다. 맵에 들어와 처음 말 걸면 첫 인사,
+ *   다음부터 npcLines.ts의 여러 대사 가운데 하나(pickLine, 2026-11-28 npc-lines-1128.md 2절).
  * - NPC 칸은 지나갈 수 없고 블록을 놓을 수 없다(map.ts가 solid로 막음). 예전 창구 칸은 빈 바닥이다.
  * - 안내 문구는 없다. 범위에 들어오면 나를 돌아보는 것만 한다.
  */
@@ -29,7 +31,6 @@ export interface NpcSpec {
   opens: NpcWindow;
   /** 예전 창구 칸: 범위 밖에서 NPC를 누르면 먼저 이 칸으로 걸어간다. 없으면 NPC 칸에 가장 가까운 칸으로 간다. */
   stand?: Tile;
-  lines: readonly [string, string];
   /** 그림 줄 */
   row: number;
   /** 짧은 동작: 장 차례와 한 장 시간 */
@@ -58,32 +59,32 @@ const COOP_CLERK_ACTION = { frames: [2, 3, 4, 3, 4], frameMs: 180 };
 
 export const NPCS: Partial<Record<MapId, readonly NpcSpec[]>> = {
   mart: [
-    { id: 'shopkeeper', name: '상점 주인', x: 22, y: 17, face: '+y', opens: 'shop', stand: { x: 22, y: 19 }, lines: ['어서 오세요.', '천천히 보세요.'], row: 0, action: { frames: [2, 3, 3, 4], frameMs: 160 } },
+    { id: 'shopkeeper', name: '상점 주인', x: 22, y: 17, face: '+y', opens: 'shop', stand: { x: 22, y: 19 }, row: 0, action: { frames: [2, 3, 3, 4], frameMs: 160 } },
   ],
   smithy: [
-    { id: 'smith', name: '대장장이', x: 17, y: 17, face: '+y', opens: 'forge-anvil', stand: { x: 17, y: 19 }, lines: ['어서 오세요.', '무기 손볼까요?'], row: 1, action: { frames: [2, 2, 3, 4, 2, 2, 3, 4], frameMs: 130 } },
-    { id: 'apprentice', name: '견습 대장장이', x: 16, y: 23, face: '+x', opens: 'forge-shop', stand: { x: 16, y: 21 }, lines: ['어서 오세요.', '무기 보고 가세요.'], row: 2, action: { frames: [2, 3, 4, 4], frameMs: 240 } },
+    { id: 'smith', name: '대장장이', x: 17, y: 17, face: '+y', opens: 'forge-anvil', stand: { x: 17, y: 19 }, row: 1, action: { frames: [2, 2, 3, 4, 2, 2, 3, 4], frameMs: 130 } },
+    { id: 'apprentice', name: '견습 대장장이', x: 16, y: 23, face: '+x', opens: 'forge-shop', stand: { x: 16, y: 21 }, row: 2, action: { frames: [2, 3, 4, 4], frameMs: 240 } },
   ],
   labor: [
-    { id: 'labor', name: '노동청 직원', x: 21, y: 16, face: '+y', opens: 'office', stand: { x: 22, y: 18 }, lines: ['어서 오세요.', '일자리 보러 오셨어요?'], row: 3, action: { frames: [2, 3, 4, 4], frameMs: 150 } },
+    { id: 'labor', name: '노동청 직원', x: 21, y: 16, face: '+y', opens: 'office', stand: { x: 22, y: 18 }, row: 3, action: { frames: [2, 3, 4, 4], frameMs: 150 } },
   ],
   farmcoop: [
-    { id: 'coop', name: '농협 직원', x: 22, y: 16, face: '+y', opens: 'coop', stand: { x: 22, y: 18 }, lines: ['어서 오세요.', '씨앗 보러 오셨어요?'], row: 4, action: COOP_CLERK_ACTION },
+    { id: 'coop', name: '농협 직원', x: 22, y: 16, face: '+y', opens: 'coop', stand: { x: 22, y: 18 }, row: 4, action: COOP_CLERK_ACTION },
   ],
   exchange: [
-    { id: 'clerk', name: '거래소 직원', x: 22, y: 14, face: '+y', opens: 'trade', stand: { x: 22, y: 15 }, lines: ['어서 오세요.', '오늘 시세입니다.'], row: 5, action: { frames: [2, 3, 2, 4], frameMs: 240 } },
+    { id: 'clerk', name: '거래소 직원', x: 22, y: 14, face: '+y', opens: 'trade', stand: { x: 22, y: 15 }, row: 5, action: { frames: [2, 3, 2, 4], frameMs: 240 } },
   ],
   casino: [
-    { id: 'dealer-ladder', name: '사다리 딜러', x: 18, y: 14, face: '+y', opens: 'ladder', stand: { x: 18, y: 15 }, lines: ['어서 오세요.', '사다리 한 판 하시겠어요?'], row: 6, action: { frames: [2, 3, 2, 4], frameMs: 220 } },
-    { id: 'dealer-oddeven', name: '홀짝 딜러', x: 25, y: 14, face: '+y', opens: 'oddeven', stand: { x: 25, y: 15 }, lines: ['어서 오세요.', '홀일까요, 짝일까요?'], row: 7, action: { frames: [2, 3, 4, 3, 4, 3], frameMs: 110 } },
-    { id: 'host-snail', name: '경주 진행자', x: 15, y: 22, face: '+x', opens: 'snail', stand: { x: 16, y: 22 }, lines: ['어서 오세요.', '어느 달팽이로 하시겠어요?'], row: 8, action: { frames: [2, 3, 4, 3, 4], frameMs: 160 } },
+    { id: 'dealer-ladder', name: '사다리 딜러', x: 18, y: 14, face: '+y', opens: 'ladder', stand: { x: 18, y: 15 }, row: 6, action: { frames: [2, 3, 2, 4], frameMs: 220 } },
+    { id: 'dealer-oddeven', name: '홀짝 딜러', x: 25, y: 14, face: '+y', opens: 'oddeven', stand: { x: 25, y: 15 }, row: 7, action: { frames: [2, 3, 4, 3, 4, 3], frameMs: 110 } },
+    { id: 'host-snail', name: '경주 진행자', x: 15, y: 22, face: '+x', opens: 'snail', stand: { x: 16, y: 22 }, row: 8, action: { frames: [2, 3, 4, 3, 4], frameMs: 160 } },
   ],
   tower1: [
-    { id: 'barista', name: '바리스타', x: 19, y: 14, face: '+y', opens: 'counter', stand: { x: 20, y: 16 }, lines: ['어서 오세요.', "ITS'room입니다."], row: 9, action: { frames: [2, 3, 4, 3, 4], frameMs: 170 } },
+    { id: 'barista', name: '바리스타', x: 19, y: 14, face: '+y', opens: 'counter', stand: { x: 20, y: 16 }, row: 9, action: { frames: [2, 3, 4, 3, 4], frameMs: 170 } },
   ],
   // 농장 포탈 옆 농협 직원(2026-11-28 PM, 기획 docs/balance/life-1127.md 2.2): 농협 안 직원과 같은 그림·창.
   // 자리는 제가 정한 것: 이야기 범위(y 41~)가 밭(y ~39)과 밭 앞 길(y 40)에 닿지 않고, 포탈 (0, 45) ±2·도착 칸 (3, 44) ±1·소품(등 (7, 43))을 비킨 앞 줄.
-  farm: [{ id: 'farm-coop', name: '농협 직원', x: 6, y: 45, face: '+y', opens: 'coop', lines: ['어서 오세요.', '씨앗 보러 오셨어요?'], row: 4, action: COOP_CLERK_ACTION }],
+  farm: [{ id: 'farm-coop', name: '농협 직원', x: 6, y: 45, face: '+y', opens: 'coop', row: 4, action: COOP_CLERK_ACTION }],
 };
 
 export function npcsOf(id: MapId): readonly NpcSpec[] {
@@ -110,6 +111,97 @@ export interface Npc {
 
 const gap = () => ACTION_GAP_MS[0] + Math.random() * (ACTION_GAP_MS[1] - ACTION_GAP_MS[0]);
 
+const DEFAULT_GREET = '어서 오세요.';
+/** 그 NPC에게 이 번째까지 말 걸면 처음 온 사람, 이 수를 넘으면 단골(그 기기에서 셈) */
+const NEWCOMER_TALKS = 10;
+const REGULAR_TALKS = 30;
+/** 다시 고르지 않는 바로 앞 줄 수 */
+const RECENT_LINES = 3;
+/** 그 기기에 NPC마다 적는 이야기 수와 날 줄을 쓴 날: { [talkId]: { n, day } } */
+const TALK_KEY = 'npc-talk';
+
+type TalkBook = Record<string, { n?: number; day?: string }>;
+let talkBook: TalkBook | null | undefined;
+
+function readTalkBook(): TalkBook | null {
+  if (talkBook !== undefined) return talkBook;
+  try {
+    const raw = JSON.parse(localStorage.getItem(TALK_KEY) ?? '{}') as unknown;
+    talkBook = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as TalkBook) : {};
+  } catch {
+    talkBook = null;
+  }
+  return talkBook;
+}
+
+function saveTalkBook() {
+  if (!talkBook) return;
+  try {
+    localStorage.setItem(TALK_KEY, JSON.stringify(talkBook));
+  } catch {
+    // 못 쓰면 이번 화면 동안만 센다.
+  }
+}
+
+/** 이번 이야기를 하나 세고 센 수를 돌려준다. 기기에 적지 못하면 null(처음 온 사람도 단골도 아님). */
+function talkCount(id: string): number | null {
+  const book = readTalkBook();
+  if (!book) return null;
+  const entry = (book[id] ??= {});
+  entry.n = (Number.isFinite(entry.n) ? (entry.n as number) : 0) + 1;
+  saveTalkBook();
+  return entry.n;
+}
+
+/** 날 줄을 쓴 날(한국 시간 'M-D'). 기기에 적지 못하면 이번 화면 동안만 기억한다. */
+const dayUsedHere = new Map<string, string>();
+function dayUsed(id: string): string | undefined {
+  return readTalkBook()?.[id]?.day ?? dayUsedHere.get(id);
+}
+function markDay(id: string, date: string) {
+  dayUsedHere.set(id, date);
+  const book = readTalkBook();
+  if (!book) return;
+  (book[id] ??= {}).day = date;
+  saveTalkBook();
+}
+
+/** 한국 시간의 시·달·날짜 */
+function kstNow(now = Date.now()) {
+  const d = new Date(now + 9 * 3_600_000);
+  const month = d.getUTCMonth() + 1;
+  const date = d.getUTCDate();
+  return { hour: d.getUTCHours(), month, day: date, date: `${d.getUTCFullYear()}-${month}-${date}` };
+}
+
+/** 아침 06~11시, 낮 11~17시, 노을 17~19시, 밤 19~04시, 새벽 04~06시 */
+function talkPhase(hour: number): TalkPhase {
+  if (hour >= 6 && hour < 11) return 'morning';
+  if (hour >= 11 && hour < 17) return 'noon';
+  if (hour >= 17 && hour < 19) return 'sunset';
+  if (hour >= 4 && hour < 6) return 'dawn';
+  return 'night';
+}
+
+/** 봄 3~5월, 여름 6~8월, 가을 9~11월, 겨울 12~2월 */
+function talkSeason(month: number): TalkSeason {
+  if (month >= 3 && month <= 5) return 'spring';
+  if (month >= 6 && month <= 8) return 'summer';
+  if (month >= 9 && month <= 11) return 'autumn';
+  return 'winter';
+}
+
+/** 크리스마스 12월 24~25일, 새해 첫날 1월 1일 */
+function talkDay({ month, day }: { month: number; day: number }): TalkDay | null {
+  if (month === 12 && (day === 24 || day === 25)) return 'xmas';
+  if (month === 1 && day === 1) return 'newyear';
+  return null;
+}
+
+function pickOne<T>(list: readonly T[]): T | undefined {
+  return list.length ? list[Math.floor(Math.random() * list.length)] : undefined;
+}
+
 /**
  * 지금 맵의 NPC들. 그림 한 장씩이고 장이 바뀔 때만 setFrame한다. update는 맵에 NPC가 없으면 바로 끝나고,
  * 있으면 NPC마다 시각 비교 한두 번이다(한 맵 최대 3명). 돌아보기는 내 칸이 바뀔 때만 다시 센다(watch).
@@ -120,6 +212,8 @@ export class NpcCrew {
   private seen = { x: Number.NaN, y: Number.NaN };
   /** 이번 맵 방문에 이미 인사한 NPC id */
   private readonly greeted = new Set<string>();
+  /** NPC(talkId)마다 바로 앞에 한 줄들. 화면을 켜 둔 동안만, 맵을 옮겨도 남는다. */
+  private readonly recent = new Map<string, string[]>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -244,7 +338,37 @@ export class NpcCrew {
     this.turn(npc, me);
     const first = !this.greeted.has(npc.spec.id);
     this.greeted.add(npc.spec.id);
-    this.tags.say(npc.tag, npc.spec.lines[first ? 0 : 1], NPC_BUBBLE_MS);
+    this.tags.say(npc.tag, this.pickLine(npc.spec.id, first), NPC_BUBBLE_MS);
+  }
+
+  /**
+   * 대사 고르기(npc-lines-1128.md 2절): 맵에 들어와 처음이면 첫 인사. 크리스마스·새해 첫날이면 그날 첫 번 뒤 이야기에 날 줄을 한 번.
+   * 그 밖에는 3번에 1번 그때 줄(때·계절·날·처음 온 사람·단골), 나머지는 늘 하는 말. 바로 앞 3줄은 다시 고르지 않는다.
+   */
+  private pickLine(npcId: string, first: boolean): string {
+    const id = talkId(npcId);
+    const lines = npcLinesOf(npcId);
+    const count = talkCount(id);
+    if (!lines) return DEFAULT_GREET;
+    if (first) return lines.greet;
+    const now = kstNow();
+    const day = talkDay(now);
+    const recent = this.recent.get(id) ?? [];
+    let line: string | undefined;
+    if (day && dayUsed(id) !== now.date) {
+      line = lines.day[day];
+      markDay(id, now.date);
+    }
+    if (!line && Math.random() < 1 / 3) {
+      const moment = [lines.phase[talkPhase(now.hour)], lines.season[talkSeason(now.month)]];
+      if (day) moment.push(lines.day[day]);
+      if (count !== null && count <= NEWCOMER_TALKS) moment.push(lines.newcomer);
+      if (count !== null && count > REGULAR_TALKS) moment.push(lines.regular);
+      line = pickOne(moment.filter((text) => !recent.includes(text)));
+    }
+    line ??= pickOne(lines.always.filter((text) => !recent.includes(text))) ?? pickOne(lines.always) ?? lines.greet;
+    this.recent.set(id, [...recent, line].slice(-RECENT_LINES));
+    return line;
   }
 
   /** 좌우만 돈다. toward가 없으면 처음 보던 쪽이고, 화면에서 바로 위·아래면 지금 쪽을 둔다. */

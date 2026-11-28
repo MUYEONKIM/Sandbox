@@ -202,17 +202,31 @@ const NAMES = [
   'villa/bench',
   // 캠프파이어(2026-11-28, 디자인 세션 14 art-source/campfire/final/sprites): 시작마을 2×2칸 모닥불·광장·산길 아치와 캠프파이어 맵 소품.
   // 맵 밖 하늘·별·산·숲 층과 별똥별은 그 맵에 들어갈 때 따로 읽는다(campfire.ts CampSky).
+  // 2판·넓힌 맵(같은 날): 마을 통나무 셋·그루터기(vlog-*, vstump), 산길 둘레 덤불·바위(마을과 캠프파이어 맵이 같이 씀),
+  // 캠프파이어 맵 큰 불·불티·통나무 넷·그루터기·어린 전나무. 1판 불(flame, flare)과 통나무(log-x·y, log-x2·y2)는 뺐다.
   'campfire/pit2',
   'campfire/flame2',
-  'campfire/log-x2',
-  'campfire/log-y2',
+  'campfire/vlog-ne',
+  'campfire/vlog-nw',
+  'campfire/vlog-sw',
+  'campfire/vstump',
   'campfire/plaza2',
   'campfire/woodpile',
   'campfire/pit',
-  'campfire/flame',
-  'campfire/flare',
-  'campfire/log-x',
-  'campfire/log-y',
+  'campfire/blaze',
+  'campfire/blaze-flare',
+  'campfire/embers',
+  'camp/bush-a',
+  'camp/bush-b',
+  'camp/rock-m',
+  'camp/rock-s',
+  'camp/log-a',
+  'camp/log-b',
+  'camp/log-c',
+  'camp/log-d',
+  'camp/stump',
+  'camp/fir-s',
+  'camp/fir-m',
   'camp/arch-y',
   'camp/arch-x',
   'camp/floor',
@@ -228,6 +242,8 @@ const NAMES = [
   // 건물 안 나가는 문 여닫힘(방마다 한 줄, 48 × 81 4장), NPC(한 줄에 22 × 40 5장). 나가는 문 텍스처는 건물 안에 있을 때만 GPU에 둔다.
   'doors/village-doors',
   'doors/exit-doors',
+  // 상점 문 앞 붉은 테 매트(2026-11-28 상점 입구 안 A). 마을 바닥 그림에 한 번 칠한다.
+  'doors/mat-red',
   'npcs',
 ] as const;
 

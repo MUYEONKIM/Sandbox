@@ -2,9 +2,9 @@ import { hash2, Rng } from '../art/pixels';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
 import type { Building } from './map';
-import { BOARD, CASTLE, CAVE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, VILLA, VILLAGE_DOORS, type Area } from './maps';
+import { BOARD, CASTLE, CAVE, COOP, EXCHANGE, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, VILLA, VILLAGE_DOORS, type Area } from './maps';
 import type { Tile } from './world';
-import { CAMP_RESERVED, CAMP_ROADS, TRAIL_AREA, TRAIL_TILES, VILLAGE_CAMP_PROPS } from './campfire';
+import { CAMP_RESERVED, CAMP_ROADS, TRAIL_DIRT, TRAIL_TILES, TRAIL_TREES, VILLAGE_CAMP_PROPS } from './campfire';
 
 /** tiles.png의 타일 번호 */
 const PAVING = [63, 63, 63, 63, 61];
@@ -42,6 +42,8 @@ const STONE_ROADS: Area[] = [
   // 아이티공간 정문 앞에서 링 도로 왼쪽까지, 상점 문 앞
   [11, 15, 13, 17],
   [3, 39, 4, 40],
+  // 상점 새 입구(2026-11-28 안 A, shop-fix.json road): 문 앞 칸 (9, 32)에서 광장 쪽 동서 돌길까지
+  [9, 32, 13, 33],
   // 가운데 캠프파이어로 이어지는 네 길
   ...CAMP_ROADS,
   // 명예의 전당과 게시판 간판 앞으로
@@ -95,8 +97,8 @@ const FIXED_TREES: Tree[] = [
   // 광장 오른쪽 잔디밭의 명예의 전당 간판과 게시판
   { sprite: FAME.sprite, x: FAME.x, y: FAME.y },
   { sprite: BOARD.sprite, x: BOARD.x, y: BOARD.y },
-  // 귀퉁이 포탈 안내판
-  ...GUIDEPOSTS.map(({ x, y }) => ({ sprite: 'board' as const, x, y })),
+  // 귀퉁이 포탈 길 안내판 셋은 2026-11-28 뺐다(maps.ts 주석). 아래는 산길 아치 뒤 나무 둘(캠프파이어 2판, campfire.ts TRAIL_TREES)
+  ...TRAIL_TREES,
   // 마을 나무(2026-11-16 디자인 세션이 포탈·안내판을 가리지 않는 자리로 고름, occlusion.md). 참나무 (23, 7)와 소나무 (29, 4)는
   // 2026-11-27 빌라 자리라 뺐다(사용자 "둘 다 빼고 그 자리에").
   { sprite: 'firtree', x: 39, y: 17 },
@@ -222,11 +224,11 @@ export function layoutVillage(): Village {
     });
   }
 
-  // 캠프파이어 산길 흙 오솔길(아치 칸 아래까지)
-  eachTile([...TRAIL_AREA], (x, y) => {
+  // 캠프파이어 산길 흙길(서쪽 돌길에서 아치 앞으로, 아치 뒤 링 도로까지, 2판)
+  for (const { x, y } of TRAIL_DIRT) {
     floorTiles.set(tileIndex(x, y), TRAIL_TILES[(x * 3 + y * 5) % TRAIL_TILES.length]);
     mark(x, y);
-  });
+  }
   // 캠프파이어 광장 원(돌바닥 그림이 덮음)과 일어나는 칸에는 꽃을 두지 않는다.
   for (const { x, y } of CAMP_RESERVED) mark(x, y);
 

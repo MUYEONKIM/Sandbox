@@ -150,7 +150,6 @@ import {
   SHOP,
   SMITHY,
   COOP,
-  GUIDEPOSTS,
   isAdventure,
   isDungeon,
   ADVENTURE_GATE_MAP,
@@ -214,9 +213,8 @@ import {
   CAMP_FLOOR,
   CAMP_LIGHTS,
   CAMP_NIGHT_TINT,
-  CAMP_SIGN,
   CampSky,
-  FLAME_FLARE,
+  BLAZE_FLARE,
   FLAME_MS,
   FUEL,
   FUEL_GAP_MS,
@@ -309,6 +307,8 @@ const VOTE_GAP_MS = 10 * 60_000;
 const CASTLE_SIGN = { x: 176, y: 243 };
 /** 상점: 옥상 MART 간판 위 */
 const SHOP_SIGN = { x: 95, y: 32 };
+/** 상점 문 앞 칸의 붉은 테 매트(2026-11-28 안 A, shop-fix.json mat): 마을 바닥 그림에 그 칸 마름모 왼쪽 위로 한 번 칠한다. */
+const SHOP_MAT = { sprite: 'doors/mat-red' as const, x: SHOP.door.x, y: SHOP.door.y };
 /** 그 밖의 마을 건물: 지붕(옥상 간판) 위 가운데 */
 const PLAIN_SIGNS: Partial<Record<string, { name: string; x: number; y: number }>> = {
   inn: { name: OFFICE.name, x: 64, y: 14 },
@@ -326,7 +326,10 @@ const EXCHANGE_SIGN = { x: 99, y: 55 };
 const DEPTH_INTERIOR = 0.5;
 /** 이 폭(px) 이하는 휴대폰 화면으로 본다(조작 안내·창 접기와 같은 620px) */
 const MOBILE_WIDTH = 620;
-/** 캠프파이어 맵에서만 쓰는 그림. 맵을 나가면 GPU에서 뺀다(마을과 같이 쓰는 장작더미·나무·산길 아치는 둠). */
+/**
+ * 캠프파이어 맵에서만 쓰는 그림. 맵을 나가면 GPU에서 뺀다(마을과 같이 쓰는 장작더미·나무·산길 아치·산길 둘레 덤불·바위는 둠).
+ * 2026-11-28 2판·넓힌 맵: 큰 불·불티·통나무 넷·그루터기·어린 전나무를 더하고, 1판 불·통나무를 뺐다.
+ */
 const CAMP_ONLY_TEXTURES = [
   'camp/floor',
   'camp/chair',
@@ -338,11 +341,17 @@ const CAMP_ONLY_TEXTURES = [
   'camp/arch-x',
   'camp/log-throw',
   'camp/sparks',
+  'camp/log-a',
+  'camp/log-b',
+  'camp/log-c',
+  'camp/log-d',
+  'camp/stump',
+  'camp/fir-s',
+  'camp/fir-m',
   'campfire/pit',
-  'campfire/flame',
-  'campfire/flare',
-  'campfire/log-x',
-  'campfire/log-y',
+  'campfire/blaze',
+  'campfire/blaze-flare',
+  'campfire/embers',
   'glow-camp-bonfire',
   'glow-camp-lantern',
   'glow-camp-arch',
@@ -699,8 +708,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private skyline!: Skyline;
   /** 캠프파이어 맵 밖 하늘·별·산·숲과 별똥별(2026-11-28, campfire.ts) */
   private campSky!: CampSky;
-  /** 지금 맵의 모닥불 불꽃(시작마을 2×2칸, 캠프파이어 맵 큰 불): 120ms마다 다음 장이고, 장작을 넣으면 1.6초 큰 불꽃 */
+  /** 지금 맵의 모닥불 불꽃(시작마을 2×2칸, 캠프파이어 맵 큰 불): 90ms마다 다음 장이고, 장작을 넣으면 1.6초 큰 불꽃 */
   private campFlame: { image: Phaser.GameObjects.Image; base: FlameArt; art: FlameArt; frame: number; at: { x: number; y: number } } | null = null;
+  /** 캠프파이어 맵 큰 불 위로 늘 오르는 불티(불꽃과 같은 타이머로 넘김) */
+  private campEmbers: { image: Phaser.GameObjects.Image; art: FlameArt; frame: number } | null = null;
   private campFlameTimer: Phaser.Time.TimerEvent | null = null;
   /** 캠프파이어 맵 큰 불의 빛(장작을 넣으면 1.35배에서 천천히 1로) */
   private campFireLight: SteadyLight | null = null;
@@ -960,8 +971,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (data) paintAdventureGround(canvas, data, map, monstersOf(id));
       // 시작마을 캠프파이어 광장 돌바닥(2026-11-28, 디자인 세션 14 campfireSmall.b.plaza): 바닥 그림에 함께 칠한다.
       if (id === DEFAULT_MAP) {
+        const ctx = canvas.getContext('2d')!;
+        const left = worldRect(map.size).left;
         const corner = gridToWorld(VILLAGE_PLAZA.gx, VILLAGE_PLAZA.gy);
-        canvas.getContext('2d')!.drawImage(sprite(VILLAGE_PLAZA.sprite), corner.x + VILLAGE_PLAZA.dx - worldRect(map.size).left, corner.y + VILLAGE_PLAZA.dy);
+        ctx.drawImage(sprite(VILLAGE_PLAZA.sprite), corner.x + VILLAGE_PLAZA.dx - left, corner.y + VILLAGE_PLAZA.dy);
+        // 상점 문 앞 매트(2026-11-28)
+        const mat = gridToWorld(SHOP_MAT.x, SHOP_MAT.y);
+        ctx.drawImage(sprite(SHOP_MAT.sprite), mat.x - TILE_W / 2 - left, mat.y);
       }
       this.textures.addCanvas(key, canvas);
     }
@@ -1291,12 +1307,6 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 마을 인벤토리는 모험에서 열지 않는다(I는 스텟 판, 휴대폰 [인벤토리] 버튼은 숨김): 열어 둔 채 들어오면 닫는다.
     if (isAdventure(id)) this.hud.close();
     this.refreshRunLevel();
-    if (id === DEFAULT_MAP) {
-      for (const post of GUIDEPOSTS) {
-        const c = tileCenter(post.x, post.y);
-        this.addSign(post.text, c.x, c.y - 40);
-      }
-    }
     // 모험 지옥은 가장자리 어둠을 약하게(2026-11-22 밝기, 옛 지옥 던전은 그대로).
     if (info.mood) this.gloom.show(this.world.map.walls.filter((wall) => wall.id === 'lava'), isAdventure(id));
     else this.gloom.clear();
@@ -1319,7 +1329,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const plain = PLAIN_SIGNS[building.sprite];
       if (plain && id === DEFAULT_MAP) this.addSign(plain.name, left + plain.x, top + plain.y);
     }
-    // 시작마을 가운데 2×2칸 캠프파이어 불꽃과 이름표('캠프파이어', '산길 ↖')
+    // 시작마을 가운데 2×2칸 캠프파이어 불꽃과 이름표('캠프파이어'. 길 안내 '산길 ↖'은 2026-11-28 뺌)
     if (id === DEFAULT_MAP) {
       this.showCampFlame(VILLAGE_FIRE.art, VILLAGE_FIRE.gx, VILLAGE_FIRE.gy, VILLAGE_FIRE.lift);
       for (const sign of VILLAGE_CAMP_SIGNS) {
@@ -1352,7 +1362,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     // 캠프파이어 맵: 소품·나무에도 밤 색을 곱한다(바닥은 showCampMap에서 넣음, 불꽃·빛·하늘은 그대로).
     if (id === 'campfire') {
-      this.floorTinted.push(...this.mapImages.slice(tintFrom).filter((image) => image !== this.campFlame?.image));
+      this.floorTinted.push(...this.mapImages.slice(tintFrom).filter((image) => image !== this.campFlame?.image && image !== this.campEmbers?.image));
       this.tintFloor();
     }
     // 사람에게도 밤 색(캠프파이어 맵만, 다른 맵으로 가면 푼다). 처음 접속할 때는 캐릭터를 맵을 그린 뒤 만들어 거기서 입힌다.
@@ -5773,7 +5783,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   // ───────── 캠프파이어(2026-11-28, campfire.ts, 기획 4 life-1127.md 4-1) ─────────
 
-  /** 모닥불 불꽃 한 장을 (gx, gy) 땅 점에서 lift px 위에 세우고 120ms마다 다음 장으로 넘긴다(프레임이 바뀔 때만 setFrame). */
+  /**
+   * 모닥불 불꽃 한 장을 (gx, gy) 땅 점에서 lift px 위에 세우고 FLAME_MS(90ms)마다 다음 장으로 넘긴다(프레임이 바뀔 때만 setFrame).
+   * 캠프파이어 맵 불티(campEmbers)도 같은 타이머로 넘긴다.
+   */
   private showCampFlame(art: FlameArt, gx: number, gy: number, lift: number) {
     this.ensureFrames(art);
     const ground = gridToWorld(gx, gy);
@@ -5784,6 +5797,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       .setDepth(depthOf(24, 24) + 0.01);
     this.mapImages.push(image);
     this.campFlame = { image, base: art, art, frame: 0, at };
+    this.campEmbers = null;
     this.campFlameTimer?.remove();
     this.campFlameTimer = this.time.addEvent({
       delay: FLAME_MS,
@@ -5795,8 +5809,26 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         if (flame.art !== flame.base && this.time.now >= this.flareUntil) this.setFlameArt(flame.base);
         flame.frame = (flame.frame + 1) % flame.art.frames;
         flame.image.setFrame(String(flame.frame));
+        const embers = this.campEmbers;
+        if (embers) {
+          embers.frame = (embers.frame + 1) % embers.art.frames;
+          embers.image.setFrame(String(embers.frame));
+        }
       },
     });
+  }
+
+  /** 캠프파이어 맵 큰 불 위로 늘 오르는 불티(camp-map.json v2.fire.embers): 불과 같은 땅 점에서 embersLift 위, 불꽃보다 앞 */
+  private showCampEmbers() {
+    const art = CAMP_FIRE.embers;
+    this.ensureFrames(art);
+    const ground = gridToWorld(CAMP_FIRE.gx, CAMP_FIRE.gy);
+    const image = this.add
+      .image(ground.x, ground.y - CAMP_FIRE.embersLift, art.sprite, '0')
+      .setOrigin(art.ax / art.w, art.ay / art.h)
+      .setDepth(depthOf(24, 24) + 0.015);
+    this.mapImages.push(image);
+    this.campEmbers = { image, art, frame: 0 };
   }
 
   /** 가로로 늘어선 프레임 그림에 '0'~'n−1' 프레임을 만든다(처음 한 번). */
@@ -5816,8 +5848,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 캠프파이어 맵(디자인 세션 14 camp-map.json): 바닥 그림 한 장(밤 색을 곱함), 가운데 큰 불꽃, 맵 밖 하늘 층, 카메라를 캐릭터보다 위로.
-   * 소품·나무는 showMap의 건물·나무 반복문이 놓고 밤 색을 곱한다.
+   * 캠프파이어 맵(디자인 세션 14 camp-map.json v2·wide): 바닥 그림 한 장(밤 색을 곱함), 가운데 큰 불꽃과 불티, 맵 밖 하늘 층, 카메라를 캐릭터보다 위로.
+   * 소품·나무는 showMap의 건물·나무 반복문이 놓고 밤 색을 곱한다. 길 안내 이름표는 없다(2026-11-28 wide.sign null).
    */
   private showCampMap() {
     const [x0, y0, x1] = CAMP_AREA;
@@ -5829,13 +5861,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.mapImages.push(floor);
     this.floorTinted.push(floor);
     this.showCampFlame(CAMP_FIRE.art, CAMP_FIRE.gx, CAMP_FIRE.gy, CAMP_FIRE.lift);
+    this.showCampEmbers();
     this.campSky.show(gridToWorld(x0, y0).y);
-    const sign = gridToWorld(CAMP_SIGN.gx, CAMP_SIGN.gy);
-    this.addSign(CAMP_SIGN.text, sign.x, sign.y - CAMP_SIGN.lift);
     this.liftCampCamera();
   }
 
-  /** 캠프파이어 맵: 카메라가 캐릭터보다 위를 보게 해 하늘을 넓힌다(데스크톱 70px, 폭 620px 이하 100px). */
+  /** 캠프파이어 맵: 카메라가 캐릭터보다 위를 보게 해 하늘을 넓힌다(데스크톱·폭 620px 이하 모두 100px, 2판). */
   private liftCampCamera() {
     const cam = this.cameras.main;
     cam.setFollowOffset(0, cam.width <= MOBILE_WIDTH ? CAMP_CAMERA_LIFT.mobile : CAMP_CAMERA_LIFT.desktop);
@@ -5846,6 +5877,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.campFlameTimer?.remove();
     this.campFlameTimer = null;
     this.campFlame = null;
+    this.campEmbers = null;
     this.campFireLight = null;
     this.flareTween?.remove();
     this.flareTween = null;
@@ -5864,7 +5896,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 캠프파이어 맵 고리 16칸에서 F(휴대폰은 불을 누름): 확인 창 "당신의 고민도 함께 태우십니까?" [확인] [취소].
+   * 캠프파이어 맵 고리 16칸에서 F(휴대폰은 불을 누름): 확인 창 "장작을 넣으시겠습니까?" [확인] [취소](2026-11-28 사용자 "담백한 멘트").
    * 1분 안에 다시 누르면 아무 일도 없다(확인 창도 뜨지 않음). 그런 칸이면 true(F로 다른 일을 하지 않음).
    */
   private campFuelKey() {
@@ -5872,7 +5904,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.fuelBusy || this.time.now - this.lastFuelAt < FUEL_GAP_MS) return true;
     const root = document.getElementById('hud');
     if (!root) return true;
-    const modal = new Modal(root, 'camp-fuel', '당신의 고민도 함께 태우십니까?');
+    const modal = new Modal(root, 'camp-fuel', '장작을 넣으시겠습니까?');
     this.fuelModal = modal;
     modal.button('확인', () => void this.throwLog(), true);
     modal.button('취소', () => undefined);
@@ -5913,7 +5945,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /**
    * 장작 넣기 연출(camp-map.json fuel.sequence): 손 높이(발에서 20px 위)에서 장작 한 장이 불꽃 아래(화덕 가운데에서 10px 위)까지
-   * 0.4초 포물선(가운데 26px 솟음) → 불꽃이 1.6초 큰 불꽃, 불티 여섯 장 한 번, 불빛 1.35배에서 천천히 1로.
+   * 0.4초 포물선(가운데 26px 솟음) → 불꽃이 1.6초 큰 불(2판 blaze-flare), 튀는 불티 여섯 장 한 번, 불빛 1.35배에서 천천히 1로.
    */
   private playFuel(from: Avatar, who?: string) {
     const flame = this.campFlame;
@@ -5942,7 +5974,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private flare(at: { x: number; y: number }) {
     if (!this.campFlame) return;
     this.flareUntil = this.time.now + FUEL.flareMs;
-    this.setFlameArt(FLAME_FLARE);
+    this.setFlameArt(BLAZE_FLARE);
     sound.play('torch_on', { at: { x: 23, y: 23 } });
     // 불티 여섯 장(80ms) 한 번
     this.ensureFrames(SPARKS);

@@ -37,9 +37,11 @@ export const GLOW_LOOKS = {
   campfire: { color: 0xff8a3a, pool: 84, halo: 28, head: 16, flicker: 0.2, fire: true },
   // 시작마을 동굴 횃불(2026-11-17): 색과 크기는 등 기둥과 같고, 빛무리를 불꽃 가운데(땅에서 21px)에 두고 불처럼 깜빡인다(에이전트가 정함).
   torch: { color: 0xffc070, pool: 72, halo: 24, head: 21, flicker: 0.15, fire: true },
-  // 시작마을 2×2칸 캠프파이어와 산길 아치 랜턴(2026-11-28, 디자인 세션 14 campfire.json). 캠프파이어 맵 빛은 그 맵에서만 따로 만든다(campfire.ts CAMP_LIGHTS).
-  campfire2: { color: 0xff8a3a, pool: 104, halo: 34, head: 18, flicker: 0.18, fire: true },
+  // 시작마을 2×2칸 캠프파이어와 산길 아치 랜턴(2026-11-28, 디자인 세션 14 campfire.json, 불은 2판 v2.light 깜빡임 0.22). 캠프파이어 맵 빛은 그 맵에서만 따로 만든다(campfire.ts CAMP_LIGHTS).
+  campfire2: { color: 0xff8a3a, pool: 104, halo: 34, head: 18, flicker: 0.22, fire: true },
   arch_lantern: { color: 0xffd890, pool: 40, halo: 14, head: 35, flicker: 0.08, fire: false },
+  // 시작마을 상점 새 입구 양옆 벽등 둘(2026-11-28 안 A, shop-fix.json lamps 높이 15px). 모양은 작은 등(lamp_small)에 높이만 15(제가 정한 것).
+  shop_lamp: { color: 0xffd890, pool: 36, halo: 12, head: 15, flicker: 0.05, fire: false },
 } satisfies Record<string, GlowLook>;
 export type GlowLookId = keyof typeof GLOW_LOOKS;
 
@@ -83,6 +85,11 @@ export const FIXED_LIGHTS: Readonly<Record<string, readonly FixedLight[]>> = {
   // 시작마을 캠프파이어 화덕(2×2칸 가운데)과 산길 아치에 매단 랜턴(2026-11-28). 캠프파이어 맵 것은 늘 켜는 빛이라 campfire.ts CAMP_LIGHTS에 따로 둔다.
   'campfire/pit2': [{ look: 'campfire2', gx: 1, gy: 1 }],
   'camp/arch-y': [{ look: 'arch_lantern', gx: 0.5, gy: 1.68 }],
+  // 시작마을 상점(그림 villa.png) 오른쪽 앞 면 입구 양옆 벽등(2026-11-28 안 A, shop-fix.json lamps)
+  villa: [
+    { look: 'shop_lamp', gx: 5.4, gy: 3.6 },
+    { look: 'shop_lamp', gx: 5.4, gy: 1.2 },
+  ],
 };
 
 export const GLOW_TEXTURE = 'glow-atlas';

@@ -741,7 +741,7 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     // 방으로 들어가는 문(걸어서 지나감). 첫 칸 앞이 쓰러진 뒤 일어나는 칸이다.
     portals: BALCONY_DOOR.map((x): Portal => ({ x, y: BALCONY[1] - 1, to: 'annex', door: true, landing: { x, y: BALCONY[1] } })),
   },
-  // 캠프파이어 맵(2026-11-28, 디자인 세션 14 camp-map.json): 바닥은 그림 한 장(GameScene.showCampMap). 산길 아치 앞 두 칸이 숨은 포탈이다.
+  // 캠프파이어 맵(2026-11-28, 디자인 세션 14 camp-map.json, 넓힌 맵 25×25): 바닥은 그림 한 장(GameScene.showCampMap). 숲길 끝 아치 앞 두 칸이 숨은 포탈이다.
   // 첫 포탈 앞(CAMP_ARRIVE)이 들어오면 서는 칸이자 쓰러진 뒤 일어나는 칸이다.
   campfire: {
     ...plain,

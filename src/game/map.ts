@@ -222,7 +222,7 @@ export function generateMap(id: MapId): GameMap {
     // 건물 안 소품(2026-11-16 다시 꾸미기, 노동청·농협 안)
     buildings.push(...(ROOM_PROPS[id] ?? []));
     if (id === 'labor') scenery.trees.push(...LABOR_FURNITURE);
-    // 캠프파이어 맵 뒤쪽 두 변의 나무(2026-11-28, campfire.ts)
+    // 캠프파이어 맵 둘레 큰 나무(2026-11-28 넓힌 맵, campfire.ts CAMP_TREES)
     if (id === 'campfire') scenery.trees.push(...CAMP_TREES);
     if (id === 'exchange') {
       buildings.push({ ...BULL });
