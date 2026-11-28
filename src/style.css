@@ -2610,7 +2610,7 @@ canvas {
   align-items: center;
   gap: 2px;
   width: max-content;
-  max-width: 260px;
+  max-width: 320px;
   padding: 8px 12px;
   color: var(--text);
   background: rgb(31 21 16 / 88%);
@@ -2633,17 +2633,57 @@ canvas {
   font-weight: 700;
 }
 
-/* 바탕과 테두리는 게임 버튼 그림(#hud button)을 쓴다. 줍기 안내와 같다. */
+/* 바탕과 테두리는 게임 버튼 그림(#hud button)을 쓴다. 줍기 안내와 같다.
+   버튼 줄: [F 칭찬] [비난] [구획 돌보기](2026-11-28 농장 UX). */
+.farm-panel-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 .farm-panel-button {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
-  padding: 2px 12px 2px 6px;
+  padding: 2px 12px;
   font: inherit;
   font-weight: 700;
   pointer-events: auto;
   cursor: pointer;
+}
+
+.farm-panel-button:has(.pickup-key) {
+  padding-left: 6px;
+}
+
+/* 씨앗 고르기 줄: 가진 씨앗 그림과 개수. 버튼은 게임 버튼 그림이고, 든 씨앗은 고른 탭 모양(#hud button.chosen)이다. */
+.farm-panel-seeds {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+#hud .farm-seed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 40px;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.farm-seed-icon {
+  width: 22px;
+  height: 22px;
+  image-rendering: pixelated;
 }
 
 .farm-panel .pickup-key {
@@ -2658,8 +2698,14 @@ canvas {
     display: none;
   }
 
-  .farm-panel-button {
+  .farm-panel-button,
+  .farm-panel-button:has(.pickup-key) {
     padding: 6px 16px;
+  }
+
+  #hud .farm-seed {
+    width: 44px;
+    padding: 4px 0;
   }
 }
 

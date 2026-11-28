@@ -1,5 +1,5 @@
 import type { Economy } from '../game/economy';
-import { formatGrow, GRADE_NAME, landPrice, type CropId, type Plot } from '../game/farm';
+import { formatGrow, formatLeft, GRADE_NAME, landPrice, ripeAt, type CropId, type Plot } from '../game/farm';
 import type { PlacedBlock } from '../net/session';
 import { LandMap } from './landMap';
 import { paintItem, type SeedId } from '../items';
@@ -28,6 +28,9 @@ const SEED_MAX = 1000;
  */
 export class CoopWindow extends PurchaseWindow {
   private readonly landLine: HTMLElement;
+  /** 내 밭 숫자 한 줄(2026-11-28 농장 UX 5번): 다 자람·자라는 중·빈 땅 칸 수와 다음 다 자라는 때 */
+  private readonly fieldLine: HTMLElement;
+  private myField: Plot[] = [];
   private readonly cropList: HTMLElement;
   private readonly sellButton: HTMLButtonElement;
   private myPlots = 0;
@@ -38,7 +41,7 @@ export class CoopWindow extends PurchaseWindow {
     private readonly myId: string,
     private readonly actions: CoopActions,
   ) {
-    super(parent, economy, '농협', '땅과 씨앗을 팔고 거둔 작물을 사 드립니다. 농장은 시작마을 오른쪽 포탈입니다.');
+    super(parent, economy, '농협', '땅과 씨앗을 팔고 거둔 작물을 사 드립니다.');
     this.hostRoot = parent;
 
     element('office-section', this.root).textContent = '내 땅';
@@ -46,6 +49,7 @@ export class CoopWindow extends PurchaseWindow {
     const landText = element('shop-stat-text', land);
     element('shop-stat-name', landText).textContent = '땅 사고팔기';
     this.landLine = element('shop-stat-blurb', landText);
+    this.fieldLine = element('shop-stat-blurb', landText);
     const mapButton = element('shop-buy', land, 'button') as HTMLButtonElement;
     mapButton.type = 'button';
     mapButton.textContent = '지도 열기';
@@ -127,18 +131,39 @@ export class CoopWindow extends PurchaseWindow {
   private async refreshLand() {
     const plots = await this.actions.loadFarm();
     if (!plots) return;
-    this.myPlots = plots.filter((plot) => plot.owner === this.myId).length;
+    this.myField = plots.filter((plot) => plot.owner === this.myId);
+    this.myPlots = this.myField.length;
     this.showLand();
   }
 
   private showLand() {
     this.landLine.textContent = `내 땅 ${this.myPlots.toLocaleString()}칸 · 다음 칸 ${goldText(landPrice(this.myPlots + 1))} · 되팔면 마지막 칸 값의 절반`;
+    // 창을 열 때와 땅 지도에서 사고판 뒤 읽은 땅으로 센다(열려 있는 동안 시간이 흘러도 다시 읽지 않는다).
+    const now = Date.now();
+    let ripe = 0;
+    let growing = 0;
+    let next = Infinity;
+    for (const plot of this.myField) {
+      const crop = plot.crop && this.economy.cropInfo(plot.crop);
+      if (!crop) continue;
+      const at = ripeAt(plot, crop);
+      if (at <= now) ripe++;
+      else {
+        growing++;
+        next = Math.min(next, at);
+      }
+    }
+    const empty = this.myField.length - ripe - growing;
+    const parts = [`다 자람 ${ripe}칸`, `자라는 중 ${growing}칸`, `빈 땅 ${empty}칸`];
+    if (Number.isFinite(next)) parts.push(`다음 다 자람 ${formatLeft(next - now)}`);
+    this.fieldLine.textContent = parts.join(' · ');
+    this.fieldLine.hidden = this.myField.length === 0;
   }
 
   private showCrops() {
     this.cropList.replaceChildren();
     const rows = this.economy.cropStock;
-    if (!rows.length) element('office-empty', this.cropList).textContent = '거둔 작물이 없습니다. 농장의 내 땅에 씨앗을 심어 거둡니다.';
+    if (!rows.length) element('office-empty', this.cropList).textContent = '거둔 작물이 없습니다.';
     let total = 0;
     for (const { crop, grade, count, value } of rows) {
       const row = element('office-stash-row', this.cropList);
@@ -158,8 +183,6 @@ export class CoopWindow extends PurchaseWindow {
     const [plots, blocks] = await Promise.all([this.actions.loadFarm(), this.actions.loadBlocks()]);
     if (!plots || !blocks) return;
     const modal = new Modal(this.hostRoot, 'land-map', '농장 땅');
-    element('modal-note', modal.box).textContent =
-      '빈 땅을 선택하면 사고, 내 땅(노랑)을 선택하면 팝니다. 누르면 선택하고 다시 누르면 취소, 끌면 두 칸 사이의 네모를 한꺼번에 선택합니다. 휠이나 +/−로 확대합니다.';
     const summary = element('land-summary', modal.box);
     const map = new LandMap(modal.box, {
       myId: this.myId,
@@ -172,6 +195,7 @@ export class CoopWindow extends PurchaseWindow {
     modal.box.append(summary);
     const load = (fresh: Plot[], freshBlocks: PlacedBlock[]) => {
       map.setData({ plots: fresh, blocks: freshBlocks });
+      this.myField = fresh.filter((plot) => plot.owner === this.myId);
       this.myPlots = map.mine;
     };
     load(plots, blocks);

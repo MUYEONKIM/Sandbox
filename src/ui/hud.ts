@@ -28,6 +28,13 @@ function iconUrl(id: Exclude<ItemId, GearRef>) {
 
 const TOAST_MS = 3500;
 
+/** 띄운 알림 하나. 떠 있는 동안 글을 바꿀 수 있다. */
+export interface Toast {
+  readonly alive: boolean;
+  /** 글을 바꾸고 사라지는 때를 다시 센다. 이미 사라졌으면 false */
+  retitle(text: string): boolean;
+}
+
 /** 왼쪽 위 조작 안내: [이름, 키들, 덧붙임] */
 const HELP_ROWS: [string, string[], string?][] = [
   ['이동', ['WASD', '방향키'], '두 키는 대각선'],
@@ -593,12 +600,26 @@ export class Hud {
   }
 
   /** 화면 아래쪽에 잠깐 뜨는 알림 */
-  toast(title: string, detail = '', rare = false) {
+  toast(title: string, detail = '', rare = false): Toast {
     const box = element(rare ? 'toast rare' : 'toast', this.toastBox);
-    element('toast-title', box).textContent = title;
+    const head = element('toast-title', box);
+    head.textContent = title;
     if (detail) element('toast-detail', box).textContent = detail;
     while (this.toastBox.childElementCount > TOAST_LIMIT) this.toastBox.firstElementChild?.remove();
-    window.setTimeout(() => box.remove(), TOAST_MS);
+    let timer = window.setTimeout(() => box.remove(), TOAST_MS);
+    return {
+      get alive() {
+        return box.isConnected;
+      },
+      // 떠 있는 알림의 글만 바꾸고 사라지는 때를 다시 센다(2026-11-28 농장 거둔 알림 묶기).
+      retitle: (text: string) => {
+        if (!box.isConnected) return false;
+        if (head.textContent !== text) head.textContent = text;
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => box.remove(), TOAST_MS);
+        return true;
+      },
+    };
   }
 
   /** 포션 개수가 바뀌면 칸의 숫자를 다시 쓴다. */

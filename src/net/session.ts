@@ -30,9 +30,18 @@ export interface HarvestResult {
 
 export type HarvestFail = 'elsewhere' | 'failed';
 
+/** 구획 돌보기 한 번의 결과(SQL tend_plots). seeds는 든 씨앗의 남은 수(씨앗을 안 들었으면 null) */
+export interface TendResult {
+  harvested: { crop: CropId; grade: Grade; count: number }[];
+  planted: number;
+  praised: number;
+  seeds: number | null;
+  plots: Plot[];
+}
+
 /** 농장 서버 함수가 거절한 까닭(서버 메시지 그대로) */
 function farmFail(message: string) {
-  for (const reason of ['taken', 'not enough gold', 'cannot sell', 'not a plot', 'no seed', 'cannot plant', 'not ripe', 'nothing to harvest', 'too soon', 'already ripe', 'nothing growing', 'not on the farm']) {
+  for (const reason of ['taken', 'not enough gold', 'cannot sell', 'not a plot', 'no seed', 'cannot plant', 'not ripe', 'nothing to harvest', 'too soon', 'already ripe', 'nothing growing', 'not on the farm', 'unknown crop']) {
     if (message.includes(reason)) return reason;
   }
   return 'failed';
@@ -911,6 +920,24 @@ export class GameSession {
   async voteCrop(x: number, y: number, good: boolean): Promise<{ praise: number; blame: number; next_at: string } | string> {
     const { data, error } = await supabase.rpc('vote_crop', { px: x, py: y, good });
     return error ? farmFail(error.message) : (data as { praise: number; blame: number; next_at: string });
+  }
+
+  /**
+   * 구획 돌보기(2026-11-28, SQL tend_plots): (x, y)가 든 6×6 구획의 내 땅을 한 번에 거두고, 빈 칸에 seed를 심고, 자라는 것을 칭찬한다.
+   * plots는 돌본 뒤 그 구획의 내 땅(모두 내 것이라 owner를 채운다).
+   */
+  async tendPlots(x: number, y: number, seed: CropId | null): Promise<TendResult | string> {
+    const { data, error } = await supabase.rpc('tend_plots', { px: x, py: y, seed });
+    if (error) return farmFail(error.message);
+    const d = data as { harvested: { crop: CropId; grade: Grade; count: number }[]; planted: number; praised: number; seeds: number | null; plots: Record<string, unknown>[] };
+    const owner = this.profile.id;
+    return {
+      harvested: (d.harvested ?? []).filter((h) => isCropId(h.crop)).map((h) => ({ crop: h.crop, grade: h.grade, count: Number(h.count) })),
+      planted: Number(d.planted) || 0,
+      praised: Number(d.praised) || 0,
+      seeds: d.seeds === null || d.seeds === undefined ? null : Number(d.seeds),
+      plots: (d.plots ?? []).map((row) => parsePlot({ ...row, owner })).filter((plot) => plot !== null),
+    };
   }
 
   /** 이 작물에 내가 다시 누를 수 있는 시각(ms). 누른 적 없으면 null */

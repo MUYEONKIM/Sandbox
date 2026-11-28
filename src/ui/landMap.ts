@@ -1,10 +1,13 @@
 import { CUBE_ORIGIN_X, CUBE_ORIGIN_Y } from '../art/cube';
-import { DECOR_LIFT, paintGround, TILE_CELL, worldRect } from '../art/ground';
+import { DECOR_LIFT, TILE_CELL, worldRect } from '../art/ground';
+import { paintWorkGround } from '../art/workGround';
 import { groundPoint, sprite, type SpriteName } from '../art/sprites';
 import { blockArt, blockTile, footprintOf, isFloorTile, isRug, outdoorFrame, paintBlock, topOf, wallAxisMask, wallFrame, type BlockId } from '../blocks';
 import { BLOCK_HEIGHT, MAP_SIZE } from '../config';
 import { CROP_ART, CROP_CELL } from '../game/cropArt';
-import { cropStateText, FARMLAND_TILES, FLOOR_TOP, isPlot, ownerWord, stageOf, votesText, type CropInfo, type CropId, type Plot } from '../game/farm';
+import { cropStateText, FARMLAND_TILES, FLOOR_TOP, isPlot, ownerWord, sectorOf, stageOf, votesText, type CropInfo, type CropId, type Plot } from '../game/farm';
+import { farmFences } from '../game/farmLayout';
+import { TILE_W } from '../config';
 import { generateMap } from '../game/map';
 import { gridToWorld, tileCenter, worldToGrid } from '../iso';
 import type { PlacedBlock } from '../net/session';
@@ -47,11 +50,17 @@ const COLORS = {
 };
 
 let groundCache: HTMLCanvasElement | null = null;
-/** 흙길과 잔디(게임의 농장 바닥과 같은 그림) */
+/** 흙길, 바퀴 자국, 풀 둑, 들꽃 풀밭(게임의 농장 바닥과 같은 그림, workGround.ts의 farm. 2026-11-28 새 바닥을 넣음) */
 function ground() {
-  groundCache ??= paintGround(generateMap('farm'));
+  groundCache ??= paintWorkGround(generateMap('farm'), 'farm');
   return groundCache;
 }
+
+/** 울타리 488조각(게임과 같은 자리, GameScene.showFences). 바뀌지 않아 한 번만 만든다. */
+const FENCES = farmFences();
+
+/** 두 번 누르기로 보는 간격(ms, 제가 정한 것) */
+const DOUBLE_TAP_MS = 400;
 
 const cubeCache = new Map<BlockId, HTMLCanvasElement>();
 function cubeOf(id: BlockId) {
@@ -105,6 +114,8 @@ export class LandMap {
   readonly picked = new Set<string>();
   mode: 'buy' | 'sell' | null = null;
   private hover: { x: number; y: number } | null = null;
+  /** 지난번 누른 칸과 때(두 번 누르기로 구획 고르기) */
+  private lastTap: { x: number; y: number; at: number } | null = null;
   private dragFrom: { x: number; y: number } | null = null;
   private dragTo: { x: number; y: number } | null = null;
   private pan: { x: number; y: number; tx: number; ty: number } | null = null;
@@ -277,6 +288,18 @@ export class LandMap {
     if (!this.picked.size) this.mode = null;
   }
 
+  /**
+   * (x, y)가 든 6×6 구획에서 고를 수 있는 칸을 모두 고른다. 아직 고른 칸이 없으면 누른 칸이 빈 땅이면 사기, 팔 수 있는 내 땅이면 팔기로 정한다.
+   * 남의 땅·작물이나 블록이 있는 내 땅은 건너뛴다(toggle과 같음).
+   */
+  private pickSector(x: number, y: number) {
+    const sector = sectorOf(x, y);
+    if (!sector) return;
+    if (!this.picked.size) this.mode = this.kindOf(x, y) === 'empty' ? 'buy' : this.sellable(x, y) ? 'sell' : null;
+    for (let j = sector.y0; j < sector.y0 + 6; j++) for (let i = sector.x0; i < sector.x0 + 6; i++) this.toggle(i, j, true);
+    if (!this.picked.size) this.mode = null;
+  }
+
   clearPicks() {
     this.picked.clear();
     this.mode = null;
@@ -379,8 +402,17 @@ export class LandMap {
     const to = cancel ? null : (this.cellAt(e) ?? this.dragTo);
     this.dragFrom = this.dragTo = null;
     if (from && to) {
-      if (from.x === to.x && from.y === to.y) this.toggle(to.x, to.y);
-      else {
+      const tap = this.lastTap;
+      const now = performance.now();
+      if (from.x === to.x && from.y === to.y && tap && tap.x === to.x && tap.y === to.y && now - tap.at < DOUBLE_TAP_MS) {
+        // 같은 칸을 두 번 누르면 그 구획에서 고를 수 있는 칸을 모두 고른다(2026-11-28 농장 UX 7번).
+        this.lastTap = null;
+        this.pickSector(to.x, to.y);
+      } else if (from.x === to.x && from.y === to.y) {
+        this.lastTap = { x: to.x, y: to.y, at: now };
+        this.toggle(to.x, to.y);
+      } else {
+        this.lastTap = null;
         // 시작 칸과 끝 칸을 두 모서리로 하는 격자 네모(마름모 결을 따라 비스듬한 네모)
         for (let y = Math.min(from.y, to.y); y <= Math.max(from.y, to.y); y++) {
           for (let x = Math.min(from.x, to.x); x <= Math.max(from.x, to.x); x++) this.toggle(x, y, true);
@@ -465,6 +497,14 @@ export class LandMap {
         depth: plot.x + plot.y + 0.2,
         draw: () => ctx.drawImage(crops, sx, sy, CROP_CELL.width, CROP_CELL.height, c.x - RECT.left - art.anchorX, c.y - art.anchorY, CROP_CELL.width, CROP_CELL.height),
       });
+    }
+    // 울타리: 게임처럼 그 칸에 선 작물·블록보다 조금 뒤(depthOf − 5 = 칸 깊이 − 0.5)
+    for (const { x, y, side } of FENCES) {
+      const name = side === 'top' ? 'farm-fence' : 'farm-fence-x';
+      const image = sprite(name);
+      const left = gridToWorld(x, y + 1).x - Math.floor((image.width - TILE_W) / 2) - RECT.left;
+      const top = gridToWorld(x + 1, y + 1).y - image.height;
+      items.push({ depth: x + y - 0.5, draw: () => ctx.drawImage(image, left, top) });
     }
     // 같은 칸에 쌓인 것: 높이는 아래 것들의 윗면 합(2026-11-24 장식품 위 장식품, 윗면을 모르는 옛 블록은 상자 높이)
     const stacks = new Map<string, BlockId[]>();

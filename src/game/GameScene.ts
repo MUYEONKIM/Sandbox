@@ -106,7 +106,7 @@ import type {
 import { dropFailText, type GroundUi } from '../ui/ground';
 import { GroundItems } from './drops';
 import type { ChatBox } from '../ui/chat';
-import type { Hud, RunStatus } from '../ui/hud';
+import type { Hud, RunStatus, Toast } from '../ui/hud';
 import { COUNT } from '../ui/countUp';
 import type { Minimap } from '../ui/minimap';
 import type { ChapterMap } from '../ui/chapterMap';
@@ -129,7 +129,7 @@ import { BlockChunks } from './blockChunks';
 import { CoverFader } from './covers';
 import { KEEP_CLEAR_ALPHA, KeepClear } from './keepClear';
 import type { Economy, ShopTool } from './economy';
-import type { Arm, Inventory } from './inventory';
+import { HOTBAR_SIZE, type Arm, type Inventory } from './inventory';
 import type { Dir, Keys } from './keys';
 import { formatNumber, levelNeed } from './level';
 import { goldText, toGold } from './gold';
@@ -214,7 +214,7 @@ import { paintAdventureGround } from '../art/adventureGround';
 import { FIGHT_GAP_MS } from './adventureRules';
 import { BattleIntro, LEAVE_MS, swirlKind } from './battleIntro';
 import { bigText } from './adventure';
-import { cropStateText, FARM_DO_LABEL, FarmField, formatLeft, GRADE_NAME, isPlot, leftTick, ownerWord, plotAction, plotCardLines, registerFarmTextures, ripeAt, showsCard, votesText, type CropId, type Plot, type PlotSituation } from './farm';
+import { cropStateText, FARM_DO_LABEL, FarmField, GRADE_NAME, isPlot, leftTick, ownerWord, plotAction, plotCardLines, plotSecond, registerFarmTextures, ripeAt, sectorOf, showsCard, showsSeeds, votesText, type CropId, type Grade, type Plot, type PlotSituation } from './farm';
 import type { CoopWindow } from '../ui/coop';
 import { Modal } from '../ui/modal';
 import { element } from '../ui/dom';
@@ -269,6 +269,12 @@ const SMOKE_FRAMES = ['Smoke0000', 'Smoke0001', 'Smoke0002'] as const;
 const SMOKE_FRAME_MS = 240;
 /** 클릭을 연달아 해도 안내가 쌓이지 않게 하는 간격 */
 const NOTICE_MS = 2000;
+/** 거둔 알림을 한 줄로 묶는 시간(2026-11-28 농장 UX 6번 "2초 안에 거둔 것") */
+const HARVEST_TOAST_MS = 2000;
+/** F를 이만큼 누르고 있으면 구획 돌보기(제가 정한 것, life-1127.md 2.2) */
+const TEND_HOLD_MS = 500;
+/** 한 작물에 칭찬·비난하는 간격(서버 vote_crop의 10분) */
+const VOTE_GAP_MS = 10 * 60_000;
 
 /**
  * 건물 이름표를 다는 위치 (건물 그림 기준 픽셀, 이름표 아래 가운데). 2026-11-15 건물을 현대 도시풍으로 다시 그리며
@@ -462,7 +468,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 방향키 없이 Shift를 누르면 이 방향으로 대시한다. 처음에는 화면 아래를 본다. */
   private lastDir: Dir = { dx: 1, dy: 1 };
   /** 작물 곁 안내 창에 지난번 넣은 값. 모두 같으면 창을 고치지 않는다(docs/balance/farm.md 9.3 '그리는 법'). */
-  private readonly farmCard = { plot: null as Plot | null, held: null as ItemId | null, seeds: -1, blocked: false, tick: 0 };
+  private readonly farmCard = { plot: null as Plot | null, held: null as ItemId | null, seeds: -1, blocked: false, tick: 0, voteTick: 0 };
   private level: bigint;
   /** 이동 키 하나를 같은 칸에서 누르고 있는 중: "맵:x:y:키 코드", 그 칸에서 누르기 시작한 시각, 이미 열어 봤는지 */
   private hush: { place: string; since: number; tried: boolean } | null = null;
@@ -576,7 +582,19 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 농장 땅과 작물 그림. 농장이 아니면 null */
   private farm: FarmField | null = null;
-  private farmBusy = false;
+  /**
+   * 서버에 보낸 농장 요청. 칸마다 하나만 둔다: 같은 칸만 막고 다른 칸은 앞 요청을 기다리지 않고 바로 보낸다
+   * (2026-11-28 농장 UX life-1127.md 2.2의 1번, 예전에는 하나라도 가는 중이면 누른 것을 버렸다).
+   */
+  private readonly farmPending = new Map<number, Promise<void>>();
+  /** 구획 돌보기를 보내 답을 기다리는 구획(왼쪽 위 칸의 키). 그동안 그 구획의 한 칸 요청은 보내지 않는다. */
+  private readonly farmTending = new Set<number>();
+  /** 칸마다 내가 다시 칭찬·비난할 수 있는 시각(ms)과 그 작물의 심은 시각. 안내 창이 "다음 9분"으로 보인다. */
+  private readonly voteNext = new Map<number, { at: number; next: number }>();
+  /** 2초 안에 거둔 것을 한 줄로 묶는 알림(2026-11-28 농장 UX 6번): 떠 있는 알림, 묶는 끝 시각, 작물·등급별 개수 */
+  private harvestToast: { toast: Toast; until: number; piles: Map<string, number> } | null = null;
+  /** F를 길게 눌러 구획 돌보기를 이번 누름에 이미 했는지(F를 떼면 풀림) */
+  private tendHeldDone = false;
 
   /** 휠로 다음 배율을 바꿀 수 있는 시각 */
   private nextZoomAt = 0;
@@ -719,9 +737,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.groundUi.onHintClick = () => {
       if (this.canAct) this.tryPickUp();
     };
-    this.groundUi.farm.onAction = () => {
-      if (this.canAct) this.farmKey();
+    this.groundUi.farm.onAction = (button) => {
+      if (!this.canAct) return;
+      if (button === 'action') this.farmKey();
+      else if (button === 'second') this.farmBlame();
+      else this.farmTend();
     };
+    this.groundUi.farm.onSeed = (crop) => this.holdSeed(crop);
     // 미니맵을 펴면 바로 한 번 그린다(접혀 있는 동안은 그리지 않았다).
     this.minimap.fold.onChange((folded) => {
       if (folded) return;
@@ -1724,7 +1746,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.updateVision();
     this.bullets.update(delta);
     this.monsters?.update(delta);
-    this.farm?.update(time);
+    if (this.farm) {
+      this.farm.update(time);
+      this.checkTendHold();
+    }
     if (this.me) this.gloom.track(this.me.sprite);
     this.updateWork();
     this.workFx.update(delta);
@@ -3388,6 +3413,16 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return showsCard(ahead, myId) ? ahead : null;
   }
 
+  /** 이 작물에 내가 다시 칭찬·비난할 수 있는 시각(ms). 모르거나 그 칸에 새로 심었으면 undefined(매 프레임 불러도 새 값을 만들지 않는다) */
+  private voteNextOf(plot: Plot) {
+    const known = this.voteNext.get(plot.x + plot.y * 1000);
+    return known && known.at === plot.plantedAt ? known.next : undefined;
+  }
+
+  private setVoteNext(plot: Plot, next: number) {
+    if (plot.plantedAt !== null) this.voteNext.set(plot.x + plot.y * 1000, { at: plot.plantedAt, next });
+  }
+
   /** 안내 창 글을 만들 칸 상태. seedId는 단축키 칸에서 고른 씨앗(안 골랐으면 null) */
   private farmSituation(plot: Plot, now = Date.now()) {
     const held = this.inventory.selectedStack?.id ?? null;
@@ -3398,6 +3433,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       myId: this.session.profile.id,
       blocked: !!this.world.heightAt(plot.x, plot.y),
       seed: seedId ? { name: itemName(seedId), count: this.economy.seedCount(cropOfSeed(seedId)) } : null,
+      voteNext: plot.crop ? (this.voteNextOf(plot) ?? null) : null,
+      anySeed: this.economy.ownedSeeds.length > 0,
       now,
     };
     return { situation, seedId };
@@ -3405,7 +3442,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /**
    * 작물 곁 안내 창. 서 있을 때만 띄운다(걷는 중, 맵 이동 중, 쓰러짐, 창이 열림, 줍기 안내가 떴으면 숨김).
-   * 대상 칸의 Plot 참조, 든 칸과 씨앗 수, 블록 유무, 남은 시간 표시 값이 지난번과 같으면 글을 만들지 않는다.
+   * 대상 칸의 Plot 참조, 든 칸, 씨앗 수 판(seedVersion), 블록 유무, 남은 시간과 다음 칭찬 때의 표시 값이 지난번과 같으면
+   * 글을 만들지 않는다(매 프레임은 이 비교만).
    */
   private updateFarmPanel(picking: boolean) {
     const plot = !this.farm || picking || this.me.moving || !this.canAct ? null : this.farmTarget();
@@ -3414,21 +3452,32 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     const held = this.inventory.selectedStack?.id ?? null;
-    const seeds = held && isSeed(held) ? this.economy.seedCount(cropOfSeed(held)) : -1;
+    const seeds = this.economy.seedVersion;
     const blocked = !!this.world.heightAt(plot.x, plot.y);
     const crop = plot.crop ? this.farm!.crop(plot.crop) : undefined;
     const now = Date.now();
     const tick = crop ? leftTick(ripeAt(plot, crop) - now) : 0;
+    const next = crop ? this.voteNextOf(plot) : undefined;
+    const voteTick = next !== undefined && next > now ? leftTick(next - now) : 0;
     const last = this.farmCard;
-    if (last.plot === plot && last.held === held && last.seeds === seeds && last.blocked === blocked && last.tick === tick) return;
+    if (last.plot === plot && last.held === held && last.seeds === seeds && last.blocked === blocked && last.tick === tick && last.voteTick === voteTick) return;
     last.plot = plot;
     last.held = held;
     last.seeds = seeds;
     last.blocked = blocked;
     last.tick = tick;
-    const { situation } = this.farmSituation(plot, now);
+    last.voteTick = voteTick;
+    const { situation, seedId } = this.farmSituation(plot, now);
     const action = plotAction(situation);
-    this.groundUi.farm.set({ lines: plotCardLines(situation), action: action && FARM_DO_LABEL[action] });
+    const second = plotSecond(situation);
+    this.groundUi.farm.set({
+      lines: plotCardLines(situation),
+      action: action && FARM_DO_LABEL[action],
+      second: second && '비난',
+      tend: plot.owner === situation.myId,
+      seeds: showsSeeds(situation) ? this.economy.ownedSeeds : null,
+      held: seedId ? cropOfSeed(seedId) : null,
+    });
   }
 
   private hideFarmPanel() {
@@ -5134,7 +5183,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private plotTip(x: number, y: number) {
     if (!this.farm || !isPlot(x, y)) return null;
     const plot = this.farm.at(x, y);
-    if (!plot) return '빈 땅 · 농협에서 삽니다';
+    if (!plot) return '빈 땅';
     const who = `${ownerWord(plot, this.session.profile.id)} 땅`;
     const crop = plot.crop && this.farm.crop(plot.crop);
     if (!crop) return `${who} · 비어 있음`;
@@ -5142,8 +5191,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   }
 
   /**
-   * 농장에서 F(휴대폰은 안내 창의 버튼): 안내 창이 다루는 칸(farmTarget)에 창에 적힌 일을 한다. 내 다 자란 작물은 거두고,
-   * 자라는 작물은 칭찬·비난 창을 열고, 내 빈 땅이면 고른 씨앗을 심는다. 그런 칸이 있으면 할 일이 없어도 true(F로 일을 시작하지 않는다)
+   * 농장에서 F(휴대폰은 안내 창의 첫 버튼): 안내 창이 다루는 칸(farmTarget)에 창에 적힌 일을 한다. 내 다 자란 작물은 거두고
+   * (씨앗을 들었으면 바로 심고), 자라는 작물은 칭찬하고, 내 빈 땅이면 든 씨앗을 심는다. 그런 칸이 있으면 할 일이 없어도 true(F로 일을 시작하지 않는다)
    */
   private farmKey() {
     if (!this.farm || !this.canAct) return false;
@@ -5151,13 +5200,22 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (!plot) return false;
     const { situation, seedId } = this.farmSituation(plot);
     const action = plotAction(situation);
-    if (action === 'harvest') void this.harvestPlot(plot);
-    else if (action === 'vote') this.openVote(plot);
-    else if (action === 'plant' && seedId) void this.plantSeed(plot, cropOfSeed(seedId));
+    if (action === 'harvest') this.harvestPlot(plot, null);
+    else if (action === 'replant' && seedId) this.harvestPlot(plot, cropOfSeed(seedId));
+    else if (action === 'praise') this.voteCrop(plot, true);
+    else if (action === 'plant' && seedId) this.plantSeed(plot, cropOfSeed(seedId));
     return true;
   }
 
-  /** 농장에서 좌클릭: 마우스로 가리킨 손 닿는 칸(8방위 2칸)이 내 다 자란 작물이면 거두고, 씨앗을 들었으면 심는다. 한 일이 있으면 true */
+  /** 안내 창의 [비난]: 자라는 작물을 비난한다(창 없이 바로, 한 칸씩). */
+  private farmBlame() {
+    const plot = this.farm ? this.farmTarget() : null;
+    if (!plot) return;
+    const { situation } = this.farmSituation(plot);
+    if (plotSecond(situation) === 'blame') this.voteCrop(plot, false);
+  }
+
+  /** 농장에서 좌클릭: 마우스로 가리킨 손 닿는 칸(8방위 2칸)이 내 다 자란 작물이면 거두고(씨앗을 들었으면 바로 심음), 씨앗을 들었으면 심는다. 한 일이 있으면 true */
   private farmClick() {
     if (!this.farm || !this.canAct) return false;
     const tile = this.hoveredGround ?? this.hoveredBlock;
@@ -5165,89 +5223,217 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const plot = this.farm.at(tile.x, tile.y);
     const myId = this.session.profile.id;
     const held = this.inventory.selectedStack?.id;
+    const seed = held && isSeed(held) ? cropOfSeed(held) : null;
     if (plot?.crop) {
       if (plot.owner === myId && this.farm.isRipe(plot)) {
-        void this.harvestPlot(plot);
+        const sow = seed && this.economy.seedCount(seed) > 0 && !this.world.heightAt(tile.x, tile.y) ? seed : null;
+        this.harvestPlot(plot, sow);
         return true;
       }
       return false;
     }
-    if (held && isSeed(held)) {
-      if (!plot || plot.owner !== myId) this.notice('내 땅이 아닙니다', '씨앗은 농협에서 산 내 땅에만 심습니다.');
-      else if (this.world.heightAt(tile.x, tile.y)) this.notice('블록이 놓여 있습니다', '블록을 회수한 뒤 심습니다.');
-      else void this.plantSeed(plot, cropOfSeed(held));
+    if (seed) {
+      if (!plot || plot.owner !== myId) this.notice('내 땅이 아닙니다', '');
+      else if (this.world.heightAt(tile.x, tile.y)) this.notice('블록 있음', '');
+      else this.plantSeed(plot, seed);
       return true;
     }
     return false;
   }
 
-  private async plantSeed(plot: Plot, crop: CropId) {
-    if (this.farmBusy) return;
+  /**
+   * 칸 하나에 농장 요청을 보낸다. 그 칸에 가는 요청이 있거나 그 칸의 구획을 돌보는 중이면 보내지 않고(같은 칸만 막음),
+   * 다른 칸이면 앞 요청을 기다리지 않는다. 보냈으면 true
+   */
+  private farmRequest(plot: Plot, run: () => Promise<void>) {
+    const k = plot.x + plot.y * 1000;
+    const sector = sectorOf(plot.x, plot.y);
+    if (this.farmPending.has(k) || (sector && this.farmTending.has(sector.x0 + sector.y0 * 1000))) return false;
+    const job = run().finally(() => this.farmPending.delete(k));
+    this.farmPending.set(k, job);
+    return true;
+  }
+
+  /** 지금 보일 때의 같은 칸 땅(요청을 보내는 동안 실시간 알림으로 바뀌었을 수 있다) */
+  private plotNow(plot: Plot) {
+    return this.farm?.at(plot.x, plot.y) ?? plot;
+  }
+
+  private plantSeed(plot: Plot, crop: CropId) {
     if (this.economy.seedCount(crop) <= 0) {
-      this.notice('씨앗이 없습니다', '시작마을 농협에서 삽니다.');
+      this.notice(`${itemName(`seed_${crop}` as ItemId)} 0개`, '');
       return;
     }
-    this.farmBusy = true;
+    this.farmRequest(plot, () => this.sendPlant(plot, crop));
+  }
+
+  private async sendPlant(plot: Plot, crop: CropId) {
     const left = await this.session.plantCrop(plot.x, plot.y, crop);
-    this.farmBusy = false;
     if (typeof left === 'string') {
-      this.notice('심지 못했습니다', left === 'no seed' ? '씨앗이 없습니다.' : '내 빈 땅인지 확인해 주세요.');
+      this.notice('심지 못했습니다', left === 'no seed' ? `${itemName(`seed_${crop}` as ItemId)} 0개` : '');
       return;
     }
     sound.play('plant');
     this.economy.setSeedCount(crop, left);
-    this.farm?.upsert({ ...plot, crop, plantedAt: Date.now(), praise: 0, blame: 0 });
+    this.farm?.upsert({ ...this.plotNow(plot), crop, plantedAt: Date.now(), praise: 0, blame: 0 });
   }
 
-  private async harvestPlot(plot: Plot) {
-    if (this.farmBusy) return;
-    this.farmBusy = true;
-    const result = await this.session.harvestPlot(plot.x, plot.y);
-    this.farmBusy = false;
-    if (typeof result === 'string') {
-      this.notice('거두지 못했습니다', result === 'not ripe' ? '아직 다 자라지 않았습니다.' : '잠시 후 다시 시도해 주세요.');
+  /** 다 자란 내 작물을 거둔다. sow가 있으면 이어서 같은 칸에 그 씨앗을 심는다(서버 호출 2번, 2026-11-28 농장 UX 2번). */
+  private harvestPlot(plot: Plot, sow: CropId | null) {
+    this.farmRequest(plot, async () => {
+      const result = await this.session.harvestPlot(plot.x, plot.y);
+      if (typeof result === 'string') {
+        this.notice('거두지 못했습니다', result === 'not ripe' ? '아직 다 자라지 않았습니다.' : '잠시 후 다시 시도해 주세요.');
+        return;
+      }
+      sound.play('crop_harvest');
+      this.economy.addCrop(result.crop, result.grade, result.count);
+      this.farm?.upsert({ ...this.plotNow(plot), crop: null, plantedAt: null, praise: 0, blame: 0 });
+      this.toastHarvest([result]);
+      if (sow && this.economy.seedCount(sow) > 0 && this.mapId === 'farm') await this.sendPlant(plot, sow);
+    });
+  }
+
+  /**
+   * 거둔 알림: 2초 안에 거둔 것은 떠 있는 한 줄에 더한다(2026-11-28 농장 UX 6번, "가지 40개 거둠").
+   * 작물·등급마다 개수를 모아 "가지 40개 · 칭찬 당근 8개 거둠"처럼 쓴다.
+   */
+  private toastHarvest(list: readonly { crop: CropId; grade: Grade; count: number }[]) {
+    if (!list.length) return;
+    const now = performance.now();
+    let open = this.harvestToast;
+    if (!open || now > open.until || !open.toast.alive) open = null;
+    const piles = open?.piles ?? new Map<string, number>();
+    for (const { crop, grade, count } of list) piles.set(`${grade}:${crop}`, (piles.get(`${grade}:${crop}`) ?? 0) + count);
+    const words = [...piles].map(([k, n]) => {
+      const [grade, crop] = k.split(':') as [Grade, CropId];
+      return `${GRADE_NAME[grade]}${this.economy.cropInfo(crop)?.name ?? '작물'} ${n.toLocaleString()}개`;
+    });
+    const text = `${words.join(' · ')} 거둠`;
+    if (open && open.toast.retitle(text)) open.until = now + HARVEST_TOAST_MS;
+    else this.harvestToast = { toast: this.hud.toast(text), until: now + HARVEST_TOAST_MS, piles };
+  }
+
+  /**
+   * 칭찬(good) 또는 비난: 창 없이 바로 보낸다(2026-11-28 농장 UX 3번). 받은 다음 누를 때를 적어 안내 창에 "다음 10분"으로 보이고,
+   * 10분이 안 지나 거절되면 서버(my_vote_next)에서 그 때를 받아 적는다.
+   */
+  private voteCrop(plot: Plot, good: boolean) {
+    this.farmRequest(plot, async () => {
+      const result = await this.session.voteCrop(plot.x, plot.y, good);
+      if (typeof result === 'string') {
+        sound.play('deny');
+        if (result === 'too soon') {
+          const next = await this.session.myVoteNext(plot.x, plot.y);
+          if (next) this.setVoteNext(plot, next);
+        }
+        return;
+      }
+      sound.play('ui_tab');
+      this.setVoteNext(plot, Date.parse(result.next_at));
+      const now = this.plotNow(plot);
+      if (now.plantedAt === plot.plantedAt) this.farm?.upsert({ ...now, praise: result.praise, blame: result.blame });
+    });
+  }
+
+  /** PC: F를 0.5초 누르고 있으면 구획 돌보기(제가 정한 것, life-1127.md 2.2). 한 번 누를 때 한 번만 */
+  private checkTendHold() {
+    const since = this.keys.workHeldSince;
+    if (since === null) {
+      this.tendHeldDone = false;
       return;
     }
-    sound.play('crop_harvest');
-    this.economy.addCrop(result.crop, result.grade, result.count);
-    this.farm?.upsert({ ...plot, crop: null, plantedAt: null, praise: 0, blame: 0 });
-    const name = this.economy.cropInfo(result.crop)?.name ?? '작물';
-    this.hud.toast(`${GRADE_NAME[result.grade]}${name} ${result.count}개 거둠`, '시작마을 농협에서 팝니다');
+    if (this.tendHeldDone || performance.now() - since < TEND_HOLD_MS) return;
+    this.tendHeldDone = true;
+    if (this.canAct) this.farmTend();
   }
 
-  /** 자라는 작물의 칭찬·비난 창. 누가 눌렀는지는 보이지 않고 수만 보인다. 한 사람이 한 작물에 10분에 한 번 */
-  private openVote(plot: Plot) {
-    const crop = plot.crop && this.farm?.crop(plot.crop);
-    if (!crop) return;
-    const root = document.getElementById('hud');
-    if (!root) return;
-    const modal = new Modal(root, 'vote', `${crop.name} 칭찬·비난`);
-    const who = plot.owner === this.session.profile.id ? '내 작물' : `${plot.nickname || '누군가'}의 작물`;
-    element('modal-note', modal.box).textContent = `${who} · 다 자랄 때까지 ${formatLeft(ripeAt(plot, crop) - Date.now())}`;
-    const counts = element('modal-note', modal.box);
-    const wait = element('modal-note', modal.box);
-    const show = (praise: number, blame: number, next: number | null) => {
-      counts.textContent = `칭찬 ${praise} · 비난 ${blame} (다 자랄 때 많은 쪽이 칭찬·비난 작물이 됩니다)`;
-      const left = next ? next - Date.now() : 0;
-      wait.textContent = left > 0 ? `다음은 ${formatLeft(left)} 뒤에 누를 수 있습니다` : '지금 누를 수 있습니다 (한 작물에 10분에 한 번)';
-      good.disabled = bad.disabled = left > 0;
+  /**
+   * 구획 돌보기(2026-11-28 농장 UX, SQL tend_plots): 안내 창이 다루는 칸이 든 6×6 구획의 내 땅을 한 번에
+   * 거두고 → 든 씨앗을 빈 칸에 심고 → 자라는 것을 칭찬한다. 그 구획에 가는 한 칸 요청이 있으면 끝나기를 기다렸다 보낸다.
+   * 결과는 알림 한 줄("가지 120개 거둠 · 30칸 심음 · 30칸 칭찬").
+   */
+  private farmTend() {
+    const plot = this.farm ? this.farmTarget() : null;
+    const myId = this.session.profile.id;
+    if (!plot || plot.owner !== myId) return;
+    const sector = sectorOf(plot.x, plot.y);
+    if (!sector) return;
+    const sk = sector.x0 + sector.y0 * 1000;
+    if (this.farmTending.has(sk)) return;
+    this.farmTending.add(sk);
+    const held = this.inventory.selectedStack?.id;
+    const seed = held && isSeed(held) ? cropOfSeed(held) : null;
+    const inSector = (k: number) => {
+      const x = k % 1000;
+      const y = Math.floor(k / 1000);
+      return x >= sector.x0 && x < sector.x0 + 6 && y >= sector.y0 && y < sector.y0 + 6;
     };
-    const vote = async (isGood: boolean) => {
-      const result = await this.session.voteCrop(plot.x, plot.y, isGood);
-      if (typeof result === 'string') {
-        wait.textContent = result === 'too soon' ? '아직 10분이 지나지 않았습니다' : result === 'already ripe' ? '이미 다 자랐습니다' : '누르지 못했습니다';
-        return false;
+    const waiting = [...this.farmPending].filter(([k]) => inSector(k)).map(([, job]) => job);
+    void this.sendTend(plot, sector, seed, waiting).finally(() => this.farmTending.delete(sk));
+  }
+
+  private async sendTend(plot: Plot, sector: { x0: number; y0: number }, seed: CropId | null, waiting: Promise<void>[]) {
+    await Promise.all(waiting);
+    const myId = this.session.profile.id;
+    // 앞 요청이 이 구획 칸을 바꾼 뒤의 모습과 견주어 이번에 칭찬한 칸을 안다.
+    const before = new Map<number, Plot>();
+    for (let y = sector.y0; y < sector.y0 + 6; y++) {
+      for (let x = sector.x0; x < sector.x0 + 6; x++) {
+        const p = this.farm?.at(x, y);
+        if (p && p.owner === myId) before.set(x + y * 1000, p);
       }
-      const updated = { ...plot, praise: result.praise, blame: result.blame };
-      this.farm?.upsert(updated);
-      show(result.praise, result.blame, Date.parse(result.next_at));
-      return false;
-    };
-    const good = modal.button('칭찬하기', () => vote(true), true);
-    const bad = modal.button('비난하기', () => vote(false));
-    modal.button('닫기', () => undefined);
-    show(plot.praise, plot.blame, null);
-    void this.session.myVoteNext(plot.x, plot.y).then((next) => show(plot.praise, plot.blame, next));
+    }
+    const result = await this.session.tendPlots(plot.x, plot.y, seed && this.economy.seedCount(seed) > 0 ? seed : null);
+    if (typeof result === 'string') {
+      this.notice('돌보지 못했습니다', '잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    const now = Date.now();
+    for (const fresh of result.plots) {
+      fresh.nickname = this.session.profile.nickname;
+      const old = before.get(fresh.x + fresh.y * 1000);
+      if (fresh.crop && (!old || old.plantedAt !== fresh.plantedAt || fresh.praise > old.praise)) {
+        this.setVoteNext(fresh, now + VOTE_GAP_MS);
+      }
+      if (this.mapId === 'farm') this.farm?.upsert(fresh);
+    }
+    for (const { crop, grade, count } of result.harvested) this.economy.addCrop(crop, grade, count);
+    if (seed && result.seeds !== null) this.economy.setSeedCount(seed, result.seeds);
+    if (result.harvested.length) sound.play('crop_harvest');
+    else if (result.planted) sound.play('plant');
+    const parts: string[] = [];
+    if (result.harvested.length) {
+      const words = result.harvested.map(({ crop, grade, count }) => `${GRADE_NAME[grade]}${this.economy.cropInfo(crop)?.name ?? '작물'} ${count.toLocaleString()}개`);
+      parts.push(`${words.join(' · ')} 거둠`);
+    }
+    if (result.planted) parts.push(`${result.planted}칸 심음`);
+    if (result.praised) parts.push(`${result.praised}칸 칭찬`);
+    this.hud.toast(parts.length ? parts.join(' · ') : '돌본 칸 0');
+  }
+
+  /**
+   * 안내 창 씨앗 고르기 칸을 누르면 그 씨앗을 든다(2026-11-28 농장 UX 4번): 단축키 칸에 있으면 그 칸을 고르고,
+   * 없으면 지금 든 칸이 씨앗이거나 비었으면 그 칸에, 아니면 빈 칸에, 빈 칸도 없으면 지금 든 칸에 넣는다(제가 정한 것).
+   * 넣은 것은 목록에 그대로 남는다(Inventory.put).
+   */
+  private holdSeed(crop: CropId) {
+    const id = `seed_${crop}` as ItemId;
+    const inv = this.inventory;
+    const at = inv.hotbarIndexOf(id);
+    if (at >= 0) {
+      inv.select(at);
+      return;
+    }
+    const onHotbar = inv.selected < HOTBAR_SIZE;
+    const current = onHotbar ? inv.slots[inv.selected] : undefined;
+    const empty = inv.slots.indexOf(null);
+    let target: number;
+    if (onHotbar && (current === null || (current && isSeed(current.id)))) target = inv.selected;
+    else if (empty >= 0) target = empty;
+    else target = onHotbar ? inv.selected : 0;
+    inv.put(target, id);
+    inv.select(target);
   }
 
   onConnection(connected: boolean, reason: string | null) {

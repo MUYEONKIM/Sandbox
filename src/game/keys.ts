@@ -62,6 +62,8 @@ export class Keys {
   private shiftHeld = false;
   private jumpPressed = false;
   private workPressed = false;
+  /** F를 누른 시각(뗐으면 null). 농장 구획 돌보기를 F 길게 누르기로도 하려고 잰다(2026-11-28). */
+  private workDownAt: number | null = null;
 
   constructor(private readonly actions: KeyActions) {
     window.addEventListener('keydown', (e) => {
@@ -73,10 +75,12 @@ export class Keys {
       if (e.code === 'Tab') this.actions.onScoreboard(false);
       this.held.delete(e.code);
       this.pressedAt.delete(e.code);
+      if (e.code === 'KeyF') this.workDownAt = null;
     });
     window.addEventListener('blur', () => {
       this.held.clear();
       this.pressedAt.clear();
+      this.workDownAt = null;
       this.shiftHeld = false;
       this.actions.onScoreboard(false);
     });
@@ -114,6 +118,7 @@ export class Keys {
       this.jumpPressed = true;
     } else if (e.code === 'KeyF') {
       this.workPressed = true;
+      this.workDownAt = performance.now();
     } else if (e.code === 'KeyI') {
       this.actions.onInventory();
     } else if (e.code === 'KeyH') {
@@ -171,6 +176,11 @@ export class Keys {
     const pressed = this.workPressed;
     this.workPressed = false;
     return pressed;
+  }
+
+  /** F를 누르고 있는 시각(ms, performance.now 기준). 떼었으면 null */
+  get workHeldSince() {
+    return this.workDownAt;
   }
 
   /** Space를 눌렀으면 true를 돌려주고 입력을 지운다. */

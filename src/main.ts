@@ -177,7 +177,7 @@ function enterGame(
       sound.play('buy');
       economy.setGold(bought.gold);
       economy.setSeedCount(crop, bought.count);
-      hud.toast(`${economy.cropInfo(crop)?.name ?? ''} 씨앗 ${amount}개 구매`, byInput('인벤토리(I)의 씨앗 탭에서 단축키 칸에 넣고, 농장의 내 땅을 좌클릭해 심습니다', '인벤토리의 씨앗 탭에서 단축키 칸에 넣고, 농장의 내 땅을 눌러 심습니다'));
+      hud.toast(`${economy.cropInfo(crop)?.name ?? ''} 씨앗 ${amount}개 구매`, `가진 씨앗 ${bought.count.toLocaleString()}개`);
     },
     onSellCrops: async () => {
       const sold = await session.sellCrops();

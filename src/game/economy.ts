@@ -1,5 +1,5 @@
 import type { PotionId, WeaponId } from '../items';
-import { cropValue, type CropId, type CropInfo, type Grade } from './farm';
+import { CROP_IDS, cropValue, type CropId, type CropInfo, type Grade } from './farm';
 import type { WorkId } from './maps';
 import type { StatId } from './stats';
 import type { Gold } from './gold';
@@ -237,6 +237,7 @@ export class Economy {
   /** 작물 표와 내 씨앗·작물. 접속할 때 따로 읽는다(표가 없으면 빈 목록). */
   setFarm(crops: CropInfo[], stock: { kind: 'seed' | Grade; crop: CropId; count: number }[]) {
     this.crops = crops;
+    this.seedVersion++;
     this.seeds.clear();
     this.harvested.clear();
     for (const { kind, crop, count } of stock) {
@@ -256,7 +257,16 @@ export class Economy {
 
   setSeedCount(crop: CropId, count: number) {
     this.seeds.set(crop, count);
+    this.seedVersion++;
     this.changed();
+  }
+
+  /** 씨앗 수가 바뀔 때마다 1씩 는다. 작물 곁 안내 창이 매 프레임 이 값만 견준다(2026-11-28 씨앗 고르기). */
+  seedVersion = 0;
+
+  /** 가진 씨앗(1개 이상)과 개수, 작물 차례 */
+  get ownedSeeds() {
+    return CROP_IDS.filter((id) => (this.seeds.get(id) ?? 0) > 0).map((crop) => ({ crop, count: this.seeds.get(crop)! }));
   }
 
   addCrop(crop: CropId, grade: Grade, count: number) {

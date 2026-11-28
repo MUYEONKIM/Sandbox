@@ -104,8 +104,11 @@ export function cropStateText(plot: Plot, crop: CropInfo, now = Date.now()) {
   return left > 0 ? `${crop.name} ${formatLeft(left)} 남음` : `${GRADE_NAME[gradeOf(plot)]}${crop.name} 다 자람`;
 }
 
-/** 작물 곁 안내 창과 F가 하는 일 */
-export type FarmDo = 'vote' | 'harvest' | 'plant';
+/**
+ * 작물 곁 안내 창과 F가 하는 일. 칭찬·비난은 창 없이 바로 한다(2026-11-28 농장 UX, life-1127.md 2.2의 3번):
+ * F와 첫 버튼은 칭찬, 둘째 버튼은 비난이다. 씨앗을 든 채 내 다 자란 칸이면 거두고 바로 심는다(같은 곳 2번).
+ */
+export type FarmDo = 'praise' | 'harvest' | 'replant' | 'plant';
 
 /** 안내 창에 보일 칸의 상태. GameScene이 모아 넘긴다. */
 export interface PlotSituation {
@@ -117,6 +120,10 @@ export interface PlotSituation {
   blocked: boolean;
   /** 단축키 칸에서 고른 씨앗: 이름('당근 씨앗')과 가진 개수. 씨앗을 안 골랐으면 null */
   seed: { name: string; count: number } | null;
+  /** 이 작물에 내가 다시 칭찬·비난할 수 있는 시각(ms). 모르면 null */
+  voteNext: number | null;
+  /** 가진 씨앗이 하나라도 있는지(씨앗 고르기 줄을 띄울지) */
+  anySeed: boolean;
   now: number;
 }
 
@@ -125,35 +132,67 @@ export function showsCard(plot: Plot | undefined, myId: string): plot is Plot {
   return !!plot && (plot.crop !== null || plot.owner === myId);
 }
 
-/** 그 칸에서 F(휴대폰은 창의 버튼)가 하는 일. 없으면 null */
+/** 칭찬·비난을 지금 누를 수 있는지: 자라는 중이고 10분이 지났거나 모름 */
+function canVote(s: PlotSituation) {
+  return !!s.crop && s.now < ripeAt(s.plot, s.crop) && !(s.voteNext !== null && s.voteNext > s.now);
+}
+
+/** 든 씨앗을 이 칸에 심을 수 있는지 */
+function canSow(s: PlotSituation) {
+  return !s.blocked && !!s.seed && s.seed.count > 0;
+}
+
+/** 그 칸에서 F(휴대폰은 창의 첫 버튼)가 하는 일. 없으면 null */
 export function plotAction(s: PlotSituation): FarmDo | null {
   const { plot, crop } = s;
   if (crop) {
-    if (s.now < ripeAt(plot, crop)) return 'vote';
-    return plot.owner === s.myId ? 'harvest' : null;
+    if (s.now < ripeAt(plot, crop)) return canVote(s) ? 'praise' : null;
+    if (plot.owner !== s.myId) return null;
+    return canSow(s) ? 'replant' : 'harvest';
   }
-  if (plot.owner !== s.myId || s.blocked || !s.seed || s.seed.count <= 0) return null;
+  if (plot.owner !== s.myId || !canSow(s)) return null;
   return 'plant';
 }
 
-export const FARM_DO_LABEL: Record<FarmDo, string> = { vote: '칭찬·비난', harvest: '거두기', plant: '심기' };
+/** 둘째 버튼(비난). 칭찬을 누를 수 있을 때만 */
+export function plotSecond(s: PlotSituation): 'blame' | null {
+  return plotAction(s) === 'praise' ? 'blame' : null;
+}
 
-/** 안내 창의 글 줄(첫 줄이 제목). docs/balance/farm.md 9.3의 표와 같다. */
+export const FARM_DO_LABEL: Record<FarmDo, string> = { praise: '칭찬', harvest: '거두기', replant: '거두고 심기', plant: '심기' };
+
+/** 씨앗 고르기 줄을 띄울 칸: 내 빈 땅과 내 다 자란 작물(블록이 없을 때) */
+export function showsSeeds(s: PlotSituation) {
+  if (s.plot.owner !== s.myId || s.blocked || !s.anySeed) return false;
+  return !s.crop || s.now >= ripeAt(s.plot, s.crop);
+}
+
+/** 안내 창의 글 줄(첫 줄이 제목). 하는 법·조건 문구 없이 상태 값만 쓴다(2026-11-28 예전 문구 뺌). */
 export function plotCardLines(s: PlotSituation): string[] {
   const { plot, crop } = s;
   if (crop) {
     const title = `${ownerWord(plot, s.myId)} ${crop.name}`;
     const left = ripeAt(plot, crop) - s.now;
-    if (left > 0) return [title, `다 자랄 때까지 ${formatLeft(left)}`, votesText(plot)];
+    if (left > 0) {
+      const lines = [title, `다 자랄 때까지 ${formatLeft(left)}`, votesText(plot)];
+      if (s.voteNext !== null && s.voteNext > s.now) lines.push(`다음 ${formatLeft(s.voteNext - s.now)}`);
+      return lines;
+    }
     const grade = gradeOf(plot);
     const ripe = grade === 'normal' ? '다 자람' : `다 자람 · ${GRADE_NAME[grade]}작물`;
-    return plot.owner === s.myId ? [title, ripe, votesText(plot)] : [title, ripe, '주인만 거둘 수 있습니다', votesText(plot)];
+    return [title, ripe, votesText(plot)];
   }
   const title = '내 빈 땅';
-  if (s.blocked) return [title, '블록을 회수해야 심을 수 있습니다'];
-  if (!s.seed) return [title, '단축키 칸에서 씨앗을 고르면 심을 수 있습니다'];
-  if (s.seed.count <= 0) return [title, `${s.seed.name}이 없습니다 · 농협에서 삽니다`];
-  return [title, `${s.seed.name} ${s.seed.count}개`];
+  if (s.blocked) return [title, '블록 있음'];
+  if (s.seed && s.seed.count <= 0) return [title, `${s.seed.name} 0개`];
+  if (!s.anySeed) return [title, '씨앗 0개'];
+  return [title];
+}
+
+/** 구획 돌보기가 다룰 6×6 구획의 왼쪽 위 칸(서버 tend_plots와 같은 셈). 땅이 아니면 null */
+export function sectorOf(x: number, y: number) {
+  if (!isPlot(x, y)) return null;
+  return { x0: 2 + Math.floor((x - 2) / 8) * 8, y0: 2 + Math.floor((y - 2) / 8) * 8 };
 }
 
 /** 흙길 타일(tiles.png). 땅이 아닌 칸에 깐다. */
