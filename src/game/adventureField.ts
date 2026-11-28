@@ -4,6 +4,7 @@ import { depthOf, tileCenter } from '../iso';
 import { adventureTuning, type AdvZone } from '../net/adventure';
 import { adventureArt, loadAdventureArt } from '../art/adventureArt';
 import { element } from '../ui/dom';
+import { anyModalOpen } from '../ui/modal';
 import type { BossDot } from '../ui/minimap';
 import { statRows } from '../ui/adventure';
 import { gearKey, gearWindow, type GearUi } from '../ui/adventureGear';
@@ -100,7 +101,8 @@ interface LevelUp {
   to: string;
   gained: string;
   onKey: (e: KeyboardEvent) => void;
-  recommend: HTMLButtonElement | null;
+  /** 저절로 나누기에서 고른 비율로 나누는 버튼(statRows가 돌려줌) */
+  split: HTMLButtonElement | null;
 }
 
 /** 미니맵 보스 점 목록 번호(모든 필드가 함께 센다) */
@@ -413,21 +415,23 @@ export class AdventureField {
 
   /**
    * 레벨 업 창(기획 19장 4번): 이긴 전투로 판 레벨이 오르고 판이 이어질 때, 전투 창이 닫혀 필드로 돌아온 뒤 스텟 판을 띄운다
-   * (2026-11-18 사용자 "전투 종료후 스텟창은 맵으로 돌아온 후에 뜬다"). [추천대로 나누고 닫기 (Enter)]는 남은 포인트를 추천대로 나누고 닫는다.
+   * (2026-11-18 사용자 "전투 종료후 스텟창은 맵으로 돌아온 후에 뜬다"). [나누고 닫기 (Enter)]는 남은 포인트를 저절로 나누기에서 고른 비율(추천대로, 나누기 1~3)로
+   * 나누고 닫는다(2026-11-28 기획 growth-1127.md 8-5, 예전 '추천대로 나누고 닫기').
    * [닫기 (Esc)](Space도)는 나누지 않고 닫는다.
    * 키는 창이 먼저 받는다(채팅·점프보다 먼저, window capture).
    */
   openLevelUp(from: string, to: string, gained: string) {
     this.closeLevelUp(false);
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // 글 칸과 [고치기] 같은 가운데 작은 창이 떠 있을 때는 그 창이 키를 받는다.
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || anyModalOpen()) return;
       const enter = e.code === 'Enter' || e.code === 'NumpadEnter';
       if (!enter && e.code !== 'Escape' && e.code !== 'Space') return;
       e.preventDefault();
       e.stopImmediatePropagation();
       if (!e.repeat) this.closeLevelUp(enter);
     };
-    this.levelUp = { from, to, gained, onKey, recommend: null };
+    this.levelUp = { from, to, gained, onKey, split: null };
     window.addEventListener('keydown', onKey, true);
     // 레벨 업 창은 스텟 판만(디자인 23절 5번): 장비창은 숨기고, 묶음은 예전 판 자리 그대로(CSS .adv-sheet.levelup)
     this.clearGear();
@@ -440,13 +444,13 @@ export class AdventureField {
     this.paintPanel();
   }
 
-  /** 레벨 업 창을 닫는다. assign이면 남은 포인트를 추천대로 나눈다. */
+  /** 레벨 업 창을 닫는다. assign이면 남은 포인트를 저절로 나누기에서 고른 비율로 나눈다. */
   private closeLevelUp(assign: boolean) {
     const up = this.levelUp;
     if (!up) return;
     this.levelUp = null;
     window.removeEventListener('keydown', up.onKey, true);
-    if (assign && up.recommend && !up.recommend.disabled) up.recommend.click();
+    if (assign && up.split && !up.split.disabled) up.split.click();
     this.panel.classList.remove('levelup');
     this.sheet.classList.remove('levelup');
     sound.play('ui_close');
@@ -676,14 +680,14 @@ export class AdventureField {
     }
     const say = element('adv-message', document.createElement('div'));
     // 장착 칸과 무기 목록은 장비창으로 옮겼다(2026-11-21 디자인 23절). 판에는 스텟 줄만 남는다.
-    const recommend = statRows(this.panel, this.adventure, view, true, (text) => (say.textContent = text));
+    const split = statRows(this.panel, this.adventure, view, true, (text) => (say.textContent = text));
     this.panel.append(say);
     if (up) {
-      up.recommend = recommend;
+      up.split = split;
       const row = element('adv-levelup-buttons', this.panel);
       const go = element('adv-btn primary', row, 'button') as HTMLButtonElement;
       go.type = 'button';
-      go.textContent = '추천대로 나누고 닫기 (Enter)';
+      go.textContent = '나누고 닫기 (Enter)';
       go.addEventListener('click', () => this.closeLevelUp(true));
       const close = element('adv-btn', row, 'button') as HTMLButtonElement;
       close.type = 'button';

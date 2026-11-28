@@ -1,10 +1,10 @@
 import { adventureArt, HERO_ART, itemIcon, loadAdventureArt, weaponIcon } from '../art/adventureArt';
 import { bigText, type Adventure } from '../game/adventure';
 import { bpDots } from '../game/adventureBattle';
-import { ADV_STATS, baseLevel, BP_RUN, equipFlat, equipPct, MAX_SLOTS, PER_POINT, slotCap, slotPrice, SPLIT, TOWN_EXP_PER_WIN, TOWN_X, type AdvStat } from '../game/adventureRules';
+import { ADV_STATS, baseLevel, BP_RUN, equipFlat, equipPct, MAX_SLOTS, PER_POINT, slotCap, slotPrice, SPLIT, TOWN_EXP_PER_WIN, TOWN_X, type AdvStat, type AdvStats } from '../game/adventureRules';
 import { formatNumber } from '../game/level';
 import { goldText } from '../game/gold';
-import { adventureAssign, adventureBuy, adventureBuySlot, adventureEquip, adventureSell, adventureSetAuto, adventureEquipWeapon, type AdvEquipFx, type AdvItem, type AdvWeapon, type AdvResult, type AdvView, adventureRanking, type AdvRanking } from '../net/adventure';
+import { adventureAssign, adventureBuy, adventureBuySlot, adventureEquip, adventureSell, adventureSetAuto, adventureSavePreset, adventureEquipWeapon, type AdvEquipFx, type AdvItem, type AdvPreset, type AdvWeapon, type AdvResult, type AdvView, adventureRanking, type AdvRanking } from '../net/adventure';
 import { bigOf, COUNT, countUp, type Counter } from './countUp';
 import { element } from './dom';
 import { Modal } from './modal';
@@ -24,7 +24,7 @@ const STAT_DESC: Record<AdvStat, string> = {
   hp: '최대 체력 · 1포인트 +5',
   atk: '주는 피해 · 1포인트 +1',
   def: '받는 피해 줄임 · 1포인트 +3',
-  agi: '콤보·크리티컬 확률 · 1포인트 +1',
+  agi: '연속 공격·크리티컬 확률 · 1포인트 +1',
   luc: '금화·무기·크리티컬 · 1포인트 +1',
 };
 
@@ -57,6 +57,8 @@ const FAIL: Record<string, string> = {
   'too fast': '잠시 뒤에 다시 해 주세요.',
   'zone locked': '아직 열리지 않은 지역입니다.',
   'not in the field': '이 맵에서는 싸울 수 없습니다.',
+  'bad preset name': '이름은 1~8자로 적어 주세요.',
+  'bad preset': '스텟마다 0~10, 합 1 이상으로 적어 주세요.',
 };
 export const failText = (reason: string) => FAIL[reason] ?? '잠시 후 다시 해 주세요.';
 
@@ -129,13 +131,22 @@ function pointsOf(text: string) {
 /** adventure_assign에 보낼 값: 안전한 정수면 숫자, 더 크면 글자(서버 numeric) */
 const assignArg = (v: bigint) => (v <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(v) : v.toString());
 
+/** 서버가 나누기 셋을 보내지 않을 때(SQL 20261128300000 전) 쓰는 처음 값: 모두 추천대로 비율 */
+const DEFAULT_PRESETS: AdvPreset[] = [1, 2, 3].map((n) => ({ name: `나누기 ${n}`, ...SPLIT }));
+const presetsOf = (view: AdvView) => (view.presets?.length === 3 ? view.presets : DEFAULT_PRESETS);
+/** 버튼 아래 작은 비율 글 "3:3:1:1:0"(HP : ATK : DEF : AGI : LUC) */
+const ratioText = (r: AdvStats) => ADV_STATS.map((k) => r[k]).join(':');
+
 /**
- * 스텟 줄(창의 스텟 탭과 필드의 스텟 판, 디자인 세션 시안 adventure-ui.md 13절).
- * 위에 [추천대로 (3 : 3 : 1)] [고르게], 스텟마다 [+1] [+10] [+100] [절반] [전부]. 누르면 바로 나눈다(adventure_assign).
- * 추천대로는 HP 3 : ATK 3 : DEF 1(마을 AGI가 0이면 AGI 1도), 고르게는 다섯 스텟에 똑같이 나누고 나머지는 남긴다.
+ * 스텟 줄(창의 스텟 탭과 필드의 스텟 판, 디자인 세션 시안 adventure-ui.md 13절, 2026-11-28 기획 growth-1127.md 8-5·9-4).
+ * 위에 [추천대로 (3 : 3 : 1 : 1)] [고르게], 그 아래 [나누기 1] [나누기 2] [나누기 3](이름만, 아래 작은 글씨로 비율과 [고치기]),
+ * 스텟마다 [+1] [+10] [+100] [절반] [전부]. 누르면 바로 나눈다(adventure_assign).
+ * 추천대로는 HP 3 : ATK 3 : DEF 1 : AGI 1, 나누기 1~3은 저장한 비율, 고르게는 다섯 스텟에 똑같이 나누고 나머지는 남긴다.
  * 절반은 남은 포인트의 반(내림, 적어도 1), 전부는 남은 포인트 모두다. 남은 포인트보다 큰 버튼은 꺼 둔다.
  * 계산은 화면이 하고 남은 포인트는 큰 수일 수 있어 BigInt로 센다.
- * [추천대로] 버튼을 돌려준다(레벨 업 창의 "추천대로 나누고 닫기"가 누름).
+ * 스텟 다섯 줄 아래 전투 수치(combatRows), 맨 아래 저절로 나누기 줄([추천대로] [나누기 1~3] 가운데 고른 것이 밝음).
+ * 저절로 나누기에서 고른 비율의 버튼을 돌려준다(레벨 업 창의 "나누고 닫기"가 누름).
+ * view가 바뀔 때만 부른다(창은 Adventure.version, 필드 판은 panelVersion). 매 프레임 하는 일은 없다.
  */
 export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvView, compact: boolean, say: (text: string) => void): HTMLButtonElement {
   const points = pointsOf(view.points);
@@ -152,16 +163,30 @@ export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvVie
       if (!ok) for (const b of on) b.disabled = false;
     });
   };
+  // 비율 r로 나눌 버튼: unit = 남은 포인트 ÷ 다섯 합(내림), 나머지는 남긴다(서버 저절로 나누기와 같음). unit이 0이면 꺼 둔다.
+  const ratioButton = (cls: string, host: HTMLElement, text: string, r: AdvStats, done: string) => {
+    const parts = BigInt(ADV_STATS.reduce((a, k) => a + r[k], 0));
+    const unit = parts > 0n ? points / parts : 0n;
+    const b = button(cls, host, text, () => send(Object.fromEntries(ADV_STATS.map((k) => [k, unit * BigInt(r[k])])), done), unit === 0n);
+    buttons.push(b);
+    return b;
+  };
   const quick = element('adv-quick', parent);
-  const parts = BigInt(ADV_STATS.reduce((a, k) => a + SPLIT[k], 0));
-  const unit = points / parts;
-  const recommend = button('adv-btn', quick, '추천대로 (3 : 3 : 1 : 1)', () => {
-    send(Object.fromEntries(ADV_STATS.map((k) => [k, unit * BigInt(SPLIT[k])])), '추천대로 나눴습니다.');
-  }, unit === 0n);
-  buttons.push(recommend);
+  const recommend = ratioButton('adv-btn', quick, '추천대로 (3 : 3 : 1 : 1)', SPLIT, '추천대로 나눴습니다.');
   const even = points / 5n;
   const evenly = button('adv-btn', quick, '고르게', () => send(Object.fromEntries(ADV_STATS.map((k) => [k, even])), '고르게 나눴습니다.'), even === 0n);
   buttons.push(evenly);
+  const presets = presetsOf(view);
+  const presetRow = element('adv-presets', parent);
+  const presetButtons = presets.map((p, i) => {
+    const cell = element('adv-preset', presetRow);
+    const b = ratioButton('adv-btn', cell, p.name, p, `${p.name}대로 나눴습니다.`);
+    b.title = p.name; // 좁은 판에서 이름이 줄임표로 잘릴 때
+    const foot = element('adv-preset-foot', cell);
+    element('adv-preset-ratio', foot, 'span').textContent = ratioText(p);
+    button('adv-preset-edit', foot, '고치기', () => editPreset(parent, adventure, i + 1, p));
+    return b;
+  });
   const half = points >= 2n ? points / 2n : points;
   const list = element('adv-stats', parent);
   const p = view.power;
@@ -177,12 +202,168 @@ export function statRows(parent: HTMLElement, adventure: Adventure, view: AdvVie
       buttons.push(button('adv-step wide', add, label, () => send({ [k]: amount }, `${STAT_NAME[k]}에 ${bigText(amount.toString())} 나눴습니다.`), amount <= 0n || amount > points));
     }
   }
-  const toggle = element(`adv-toggle${view.auto ? ' on' : ''}`, parent);
-  toggle.style.marginTop = '8px';
+  combatRows(parent, view, compact);
+  // 저절로 나누기 줄: 켜기 상자(누르면 켜고 끔)와 쓸 비율 넷. 휴대폰 폭의 창과 필드 판은 나누기 버튼을 숫자만(CSS adv-auto-num).
+  const auto = element('adv-auto', parent);
+  const toggle = element(`adv-toggle${view.auto ? ' on' : ''}`, auto);
   element('adv-toggle-box', toggle);
-  element('', toggle, 'span').textContent = '레벨이 오르면 추천대로 저절로 나누기';
+  const label = element('', toggle, 'span');
+  element('adv-auto-long', label, 'span').textContent = '레벨이 오르면 ';
+  label.append('저절로 나누기');
   toggle.addEventListener('click', () => void adventureCall(adventure, () => adventureSetAuto(!view.auto), say));
-  return recommend;
+  const chosen = view.autoPreset ?? 0;
+  const picks = element('adv-auto-picks', auto);
+  for (let n = 0; n <= presets.length; n++) {
+    const b = button(`adv-btn adv-auto-pick${n === chosen ? ' chosen' : ''}`, picks, n ? '' : '추천대로', () => {
+      if (n !== chosen) void adventureCall(adventure, () => adventureSetAuto(view.auto, n), say);
+    });
+    b.setAttribute('aria-pressed', String(n === chosen));
+    if (n) {
+      b.setAttribute('aria-label', presets[n - 1].name);
+      element('adv-auto-full', b, 'span').textContent = presets[n - 1].name;
+      element('adv-auto-num', b, 'span').textContent = String(n);
+    }
+  }
+  return (chosen && presetButtons[chosen - 1]) || recommend;
+}
+
+/** 배율 글: 소수 둘째 자리(×2.75, 기획 9-1 끝) */
+const times = (v: number) => `×${v.toFixed(2)}`;
+/** 줄이는 몫 글: "−49.4%"(0이면 "0%") */
+const cut = (v: number) => {
+  const t = pct(v);
+  return t === '0%' ? t : `−${t}`;
+};
+const NO_VALUE = '-';
+
+/**
+ * 전투 수치(2026-11-28 사용자 요청, 기획 growth-1127.md 9-1·9-4). 내 능력 값 숫자만 보이고 이길 확률이나 설명은 넣지 않는다.
+ * 레벨이 드는 다섯(크리티컬, 연속 공격, 받는 피해, 판 금화, 무기 드랍)은 서버 view.combat(지금 판 레벨 기준), 나머지는 view.power.fx다.
+ * 판이 없으면 레벨이 드는 다섯은 "-", 지역이 없는 맵은 받는 피해만 "-". 흡혈·버팀은 0이면 숨긴다.
+ * 창(compact 아님): 머리글 "전투 수치 · Lv. n 상대"와 두 칸 격자, 괄호 몫(휴대폰 폭에서는 CSS가 한 줄에 하나로 바꾸고 괄호를 숨김).
+ * 필드 판(compact): 머리글·괄호 없이 줄바꿈되는 세 줄.
+ */
+function combatRows(parent: HTMLElement, view: AdvView, compact: boolean) {
+  const c = view.combat;
+  if (!c) return;
+  const fx = view.power.fx;
+  const crit = c.crit === null ? NO_VALUE : pct(c.crit);
+  const combo = c.combo === null ? NO_VALUE : pct(c.combo);
+  const taken = c.taken === null ? NO_VALUE : cut(1 - c.taken);
+  const gold = c.goldMul === null ? NO_VALUE : times(c.goldMul);
+  const drop = c.dropMul === null ? NO_VALUE : times(c.dropMul);
+  const exp = `+${pct(fx.exp)}`;
+  const critMul = times(fx.critMul);
+  const comboMax = pct(fx.comboMax);
+  const leech = fx.leech > 0 ? pct(fx.leech) : '';
+  const endure = fx.endure.map(([chance]) => pct(chance)).join(' · ');
+  if (compact) {
+    const box = element('adv-combat-lines', parent);
+    const row = (items: [string, string, string?][]) => {
+      const el = element('adv-cb-line', box);
+      items.forEach(([key, value, rest], i) => {
+        if (i) el.append(' · ');
+        const item = element('adv-cb-item', el, 'span');
+        element('adv-cb-key', item, 'span').textContent = key;
+        item.append(' ');
+        element('', item, 'b').textContent = value;
+        if (rest) item.append(` ${rest}`);
+      });
+    };
+    row([['크리티컬', crit, critMul], ['연속 공격', combo, `(상한 ${comboMax})`]]);
+    row([['받는 피해', taken], ['경험치', exp], ['금화', gold], ['드랍', drop]]);
+    const extra: [string, string][] = [];
+    if (leech) extra.push(['흡혈', leech]);
+    if (endure) extra.push(['버팀', endure]);
+    if (extra.length) row(extra);
+    return;
+  }
+  element('adv-combat-head', parent).textContent = c.level === null ? '전투 수치' : `전투 수치 · Lv. ${bigText(c.level)} 상대`;
+  const grid = element('adv-combat', parent);
+  const cell = (key: string, value: string, sub: (string | [string, string])[] = [], paren: string[] = [], short = false) => {
+    const el = element(`adv-cb${short ? ' short' : ''}`, grid);
+    element('adv-cb-key', el, 'span').textContent = key;
+    element('adv-cb-val', el, 'b').textContent = value;
+    if (sub.length) line('adv-cb-sub', el, sub, 'span');
+    if (paren.length) element('adv-cb-paren', el, 'span').textContent = `(${paren.join(' · ')})`;
+  };
+  // 괄호 몫: 0인 것은 쓰지 않는다. 장신구 몫 = 합 − 칭호 몫
+  const some = (v: number) => v > 1e-9;
+  const titleExp = fx.titleExp ?? 0;
+  const titleGold = fx.titleGold ?? 0;
+  const expParts = [some(fx.exp - titleExp) ? `장신구 +${pct(fx.exp - titleExp)}` : '', some(titleExp) ? `칭호 +${pct(titleExp)}` : ''].filter(Boolean);
+  const goldParts =
+    c.goldLuc === null
+      ? []
+      : [`LUC ${times(c.goldLuc)}`, some(fx.gold - titleGold) ? `장신구 +${pct(fx.gold - titleGold)}` : '', some(titleGold) ? `칭호 +${pct(titleGold)}` : ''].filter(Boolean);
+  const guard = fx.guard ?? 0;
+  cell('크리티컬', crit, ['· ', ['피해 ', 'adv-cb-wide'], critMul]);
+  cell('연속 공격', combo, [`· 상한 ${comboMax}`]);
+  cell('받는 피해', taken, [], c.taken !== null && some(guard) ? [`막기 −${pct(guard)}`] : []);
+  cell('판 경험치', exp, [], expParts);
+  cell('판 금화', gold, [], goldParts);
+  cell('무기 드랍', drop);
+  if (leech) cell('흡혈', leech, [], [], true);
+  if (endure) cell('버팀', endure, [], [], true);
+}
+
+/**
+ * 나누기 [고치기] 창(기획 8-5, modal.ts): 이름 칸, HP·ATK·DEF·AGI·LUC 숫자 칸(0~10), [저장] [닫기].
+ * 저장하면 서버(adventure_save_preset)가 범위를 다시 보고 view를 돌려준다. 못 저장하면 창에 까닭을 쓰고 닫지 않는다.
+ */
+function editPreset(from: HTMLElement, adventure: Adventure, slot: number, preset: AdvPreset) {
+  const root = from.closest<HTMLElement>('#hud') ?? document.body;
+  const modal = new Modal(root, 'adv-preset-modal', preset.name);
+  const form = element('adv-preset-form', modal.box);
+  const nameField = element('adv-preset-field name', form, 'label');
+  element('adv-preset-label', nameField, 'span').textContent = '이름';
+  const name = element('adv-preset-input', nameField, 'input') as HTMLInputElement;
+  name.type = 'text';
+  name.autocomplete = 'off';
+  name.maxLength = 8;
+  name.value = preset.name;
+  const nums = element('adv-preset-nums', form);
+  const inputs = ADV_STATS.map((k) => {
+    const field = element('adv-preset-field', nums, 'label');
+    element('adv-preset-label', field, 'span').textContent = STAT_NAME[k];
+    const input = element('adv-preset-input', field, 'input') as HTMLInputElement;
+    input.type = 'number';
+    input.min = '0';
+    input.max = '10';
+    input.step = '1';
+    input.inputMode = 'numeric';
+    input.value = String(preset[k]);
+    return input;
+  });
+  const error = element('modal-error', modal.box);
+  const save = modal.button(
+    '저장',
+    async () => {
+      const label = name.value.trim();
+      const values = inputs.map((input) => Number(input.value));
+      const fail =
+        label.length < 1 || [...label].length > 8
+          ? 'bad preset name'
+          : values.some((v) => !Number.isInteger(v) || v < 0 || v > 10) || values.reduce((a, b) => a + b, 0) < 1
+            ? 'bad preset'
+            : null;
+      const view = fail ?? (await adventureSavePreset(slot, { name: label, ...(Object.fromEntries(ADV_STATS.map((k, i) => [k, values[i]])) as AdvStats) }));
+      if (typeof view === 'string') {
+        sound.play('deny');
+        error.textContent = failText(view);
+        return false;
+      }
+      adventure.set(view);
+      return undefined;
+    },
+    true,
+  );
+  modal.button('닫기', () => undefined);
+  for (const input of [name, ...inputs])
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') save.click();
+    });
+  window.setTimeout(() => name.select(), 0);
 }
 
 /**

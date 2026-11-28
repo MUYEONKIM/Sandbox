@@ -88,6 +88,28 @@ export interface AdvPowerView extends AdvStats {
   equip: { weapon: string; stat: AdvStat; pct: number; flat: number; fx: AdvEquipFx | null; value: number } | null;
 }
 
+/** 나누기 1~3 한 칸(서버 adventure_players.presets, 2026-11-28). 비율은 스텟마다 0~10, 합 1 이상. */
+export type AdvPreset = AdvStats & { name: string };
+
+/**
+ * 스텟 창 전투 수치(서버 adventure_combat, 2026-11-28 기획 growth-1127.md 9장). 기준 레벨은 지금 판 레벨이고 식은 adventure_battle과 같다.
+ * 판이 없으면 모두 null, 판이 있는 맵에 지역이 없으면(입구 맵) taken만 null.
+ */
+export interface AdvCombat {
+  /** 기준 레벨(지금 판 레벨, 글자) */
+  level: string | null;
+  crit: number | null;
+  combo: number | null;
+  /** 받는 피해 비율: 몬스터 ATK ÷ (몬스터 ATK + DEF) × (1 − 막기). 화면은 −(1 − taken)으로 보인다. */
+  taken: number | null;
+  /** 판 금화 배율 = goldLuc × (1 + fx.gold) */
+  goldMul: number | null;
+  goldLuc: number | null;
+  /** 무기 드랍 배율 = dropLuc × (1 + fx.drop) */
+  dropMul: number | null;
+  dropLuc: number | null;
+}
+
 /** 끝난 판의 결과(결과 화면). reason은 끝난 까닭: 'bp' BP가 0이 됨, 'return' 귀환. 가져가는 양은 둘이 같다. */
 export interface AdvResult {
   reason: 'bp' | 'return';
@@ -120,6 +142,12 @@ export interface AdvView {
   losses: number;
   drops: string[];
   auto: boolean;
+  /** 저절로 나누기와 레벨 업 창 "나누고 닫기"에 쓸 비율: 0 추천대로, 1~3 나누기 1~3(SQL 20261128300000_adventure_presets.sql) */
+  autoPreset?: number;
+  /** 나누기 1~3(판이 끝나도 남음) */
+  presets?: AdvPreset[];
+  /** 전투 수치(view를 만들 때 서버가 한 번 셈) */
+  combat?: AdvCombat;
   slots: number;
   mainWeapon: string | null;
   bosses: string[];
@@ -205,7 +233,12 @@ export const adventureReturn = () => call<AdvView & { result?: AdvResult }>('adv
 export const adventureMove = (target: string) => call<AdvView>('adventure_move', { target });
 /** 포인트 나누기. 큰 수는 글자로 보낸다(서버 numeric). */
 export const adventureAssign = (points: Record<AdvStat, number | string>) => call<AdvView>('adventure_assign', points);
-export const adventureSetAuto = (enabled: boolean) => call<AdvView>('adventure_set_auto', { enabled });
+/** 저절로 나누기 켜고 끄기. preset(0 추천대로, 1~3)을 주면 쓸 비율도 바꾼다. 켤 때 서버가 남은 포인트를 그 비율로 나눈다. */
+export const adventureSetAuto = (enabled: boolean, preset?: number) =>
+  call<AdvView>('adventure_set_auto', preset === undefined ? { enabled } : { enabled, preset });
+/** 나누기 칸 하나(1~3)의 이름과 비율을 저장한다. 서버가 범위를 본다(이름 1~8자, 스텟마다 0~10, 합 1 이상). */
+export const adventureSavePreset = (slot: number, preset: AdvPreset) =>
+  call<AdvView>('adventure_save_preset', { slot, name: preset.name, hp: preset.hp, atk: preset.atk, def: preset.def, agi: preset.agi, luc: preset.luc });
 export const adventureBuy = (item: string) => call<AdvView>('adventure_buy', { item });
 export const adventureSell = (item: number) => call<AdvView>('adventure_sell', { item });
 export const adventureEquip = (slot: number, item: number | null) => call<AdvView>('adventure_equip', { slot, item });

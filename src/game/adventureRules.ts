@@ -3,6 +3,8 @@
  * 결과는 서버가 정하고, 화면은 이 값으로 창에 값을 보이고 추천 나누기를 센다(이길 확률 칸 색은 2026-11-18 없앰).
  * 숫자와 식은 docs/balance/tools/dungeon-run.js 위쪽 값과 같다(fightOnce, expOf, levelFromExp, dropChance, monster, PER_POINT, START, 무기 고정 수치 flatOf).
  * 바꾸면 그 파일, 서버 SQL(adventure_battle, adventure_power, adventure_buy_slot, adventure_set_auto), 이 파일을 함께 고친다.
+ * 스텟 창 전투 수치(크리티컬, 연속 공격, 받는 피해, 판 금화·무기 드랍 배율)는 서버 adventure_combat(SQL 20261128300000_adventure_presets.sql)이
+ * adventure_battle과 같은 식으로 셈해 view.combat으로 보낸다. 아래 fightOnce의 combo·crit·hit 식을 바꾸면 그 함수도 함께 고친다.
  * 몬스터 레벨은 몬스터마다 자료에 있다(adventureMaps.ts, 서버 몬스터 표).
  * 2026-11-23부터 서버 전투의 드랍 0.08·0.15, 경험치 10·보스 3, 몬스터 체력 2·공격 1.5·세기 0.8, 구역 보너스 배수는 설정 표 adventure_tuning 값이다
  * (SQL 20261123100000_adventure_tuning.sql, 사용자가 실제 DB에서 바로 고침). 아래 같은 이름의 상수와 식(monster, expOf, dropChance, bossDropChance)은
@@ -23,6 +25,9 @@ export interface AdvFx {
   endure: [number, number][];
   exp: number;
   gold: number;
+  /** exp·gold 가운데 단 칭호 몫(2026-11-28, 스텟 창 괄호에 장신구 몫과 나눠 보임) */
+  titleExp?: number;
+  titleGold?: number;
   /** 장착 무기(DEF ★4 이상): 받는 피해 줄임 몫 */
   guard?: number;
   /** 장착 무기(LUC ★4 이상): 보통 몬스터 무기 드랍 + 몫 */
@@ -48,6 +53,7 @@ export const PER_POINT: AdvStats = { hp: 5, atk: 1, def: 3, agi: 1, luc: 1 };
 /**
  * "추천대로 나누기"(기획 6장): 마을 AGI와 상관없이 HP 3 : ATK 3 : DEF 1 : AGI 1(2026-11-18 기획 결정, 예전은 마을 AGI가 있으면 3 : 3 : 1).
  * 서버 adventure_battle·adventure_set_auto의 저절로 나누기, 계산기 SPLIT과 같다.
+ * 2026-11-28부터 저절로 나누기는 이것(추천대로)과 나누기 1~3 가운데 고른 비율이다(서버 adventure_split_ratio, auto_preset 0이 이 값).
  */
 export const SPLIT: AdvStats = { hp: 3, atk: 3, def: 1, agi: 1, luc: 0 };
 export const MAX_TURNS = 20;

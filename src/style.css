@@ -5540,6 +5540,239 @@ canvas {
   min-width: 0;
 }
 
+/* 나누기 1~3(2026-11-28 기획 growth-1127.md 8-5): 한 줄 세 칸(휴대폰도). 버튼은 이름만, 아래 작은 글씨로 비율과 [고치기].
+   이름이 칸보다 길면 버튼 안에서 줄임표로 자른다(에이전트가 정함). */
+.adv-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.adv-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+#hud .adv-preset .adv-btn {
+  min-width: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adv-preset-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#hud .adv-preset-edit {
+  padding: 0 4px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  border-width: 3px 3px 4px;
+  border-image-width: 3px 3px 4px;
+  cursor: pointer;
+}
+
+#hud .adv-preset-edit:active:not(:disabled) {
+  border-width: 4px 3px 3px;
+  border-image-width: 4px 3px 3px;
+}
+
+/* 휴대폰 폭: [추천대로 (3 : 3 : 1 : 1)]이 버튼보다 길어(375px에서 글 164px, 버튼 143px) 글이 버튼 밖으로 나가던 것을 두 줄로 꺾는다(에이전트가 정함) */
+@media (max-width: 620px) {
+  #hud .adv-quick .adv-btn {
+    white-space: normal;
+    line-height: 1.2;
+  }
+}
+
+/* 전투 수치(2026-11-28 기획 growth-1127.md 9-4): 스텟 다섯 줄 아래, 저절로 나누기 줄 위.
+   창은 두 칸 격자(이름은 스텟 이름과 같은 굵기, 숫자는 스텟 값과 같은 꼴), 휴대폰 폭(620px 이하)은 한 줄에 하나(흡혈·버팀은 한 줄에 둘)이고 괄호 몫을 숨긴다.
+   필드 판(compact)은 줄바꿈되는 세 줄. */
+.adv-combat-head {
+  margin: 8px 0 4px;
+  font-weight: 800;
+}
+
+.adv-combat {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 12px;
+  padding: 4px 8px;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.adv-cb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  min-width: 0;
+}
+
+.adv-cb .adv-cb-key {
+  flex: none;
+  min-width: 5.4em;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.adv-cb-val {
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.adv-cb-sub,
+.adv-cb-paren {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.adv-cb-sub {
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .adv-cb {
+    grid-column: 1 / -1;
+  }
+
+  .adv-cb.short {
+    grid-column: auto;
+  }
+
+  .adv-cb-paren,
+  .adv-cb-wide {
+    display: none;
+  }
+}
+
+.adv-combat-lines {
+  margin-top: 6px;
+  padding: 3px 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--slot);
+  border: 2px solid var(--slot-sunken);
+}
+
+.adv-cb-item {
+  white-space: nowrap;
+}
+
+.adv-cb-line .adv-cb-key {
+  font-weight: 800;
+}
+
+/* 저절로 나누기 줄: 켜기 상자 + [추천대로] [나누기 1~3](고른 것은 #hud button.chosen 모양). 넘치면 버튼 묶음이 다음 줄로.
+   필드 판과 휴대폰 폭의 창은 나누기 버튼을 숫자만, 휴대폰 폭의 창은 글도 "저절로 나누기"만(기획 9-4). */
+.adv-auto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 8px;
+}
+
+.adv-auto-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+#hud .adv-auto-pick {
+  padding: 1px 6px;
+  font-size: 13px;
+  border-width: 4px 4px 5px;
+  border-image-width: 4px 4px 5px;
+}
+
+#hud .adv-auto-pick.chosen,
+#hud .adv-auto-pick:active:not(:disabled) {
+  border-width: 5px 4px 4px;
+  border-image-width: 5px 4px 4px;
+}
+
+/* 필드 판(420px)에서 켜기 글과 고르기 넷이 한 줄에 들게 글을 한 단계 작게 */
+.adv-stat-panel .adv-auto .adv-toggle {
+  font-size: 13px;
+}
+
+.adv-auto-num,
+.adv-stat-panel .adv-auto-full {
+  display: none;
+}
+
+.adv-stat-panel .adv-auto-num {
+  display: inline;
+}
+
+@media (max-width: 620px) {
+  .adv-window .adv-auto-long,
+  .adv-window .adv-auto-full {
+    display: none;
+  }
+
+  .adv-window .adv-auto-num {
+    display: inline;
+  }
+}
+
+/* 나누기 [고치기] 창(modal.ts): 이름 한 줄, 다섯 숫자 칸 한 줄(휴대폰도) */
+.adv-preset-form {
+  display: grid;
+  gap: 10px;
+}
+
+.adv-preset-field {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-weight: 700;
+  text-align: center;
+}
+
+.adv-preset-field.name {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.adv-preset-nums {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.adv-preset-input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px;
+  color: #2b2118;
+  background: #fffbea;
+  border: 2px solid var(--slot-sunken);
+  font: inherit;
+  font-size: 16px;
+}
+
+.adv-preset-nums .adv-preset-input {
+  text-align: center;
+}
+
 /* 게임에서 더한 것(코드 세션, 2026-11-18) */
 /* 입구 맵 지역 포탈 이름표 둘째 줄(레벨 범위, 흐린 크림 #d8c6a8 디자인). 이길 확률 색은 없앴다(2026-11-18 사용자). */
 .portal-line2 {
