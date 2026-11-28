@@ -12,6 +12,7 @@ import type { Profile } from './auth';
 import type { BoardPost, PostCategory, WriteResult } from '../ui/board';
 import type { Notice } from '../ui/notice';
 import type { WantedEntry } from '../ui/wanted';
+import type { TendAct } from '../ui/farmPanel';
 import type { Quote } from '../game/market';
 import { isTitleId, type MyTitles, type TitleKind } from '../game/titles';
 import type { HeldArm } from '../game/weaponGlow';
@@ -1056,11 +1057,12 @@ export class GameSession {
   }
 
   /**
-   * 구획 돌보기(2026-11-28, SQL tend_plots): (x, y)가 든 6×6 구획의 내 땅을 한 번에 거두고, 빈 칸에 seed를 심고, 자라는 것을 칭찬한다.
+   * 한 번에 돌보기(2026-11-28, SQL tend_plots): (x, y)가 든 6×6 구획의 내 땅을 한 번에 다룬다.
+   * act: 'harvest' 다 자란 것을 거둠, 'plant' 빈 칸에 seed를 심음, 'praise' 자라는 것을 칭찬, null 셋 다(F 길게 누르기).
    * plots는 돌본 뒤 그 구획의 내 땅(모두 내 것이라 owner를 채운다).
    */
-  async tendPlots(x: number, y: number, seed: CropId | null): Promise<TendResult | string> {
-    const { data, error } = await supabase.rpc('tend_plots', { px: x, py: y, seed });
+  async tendPlots(x: number, y: number, seed: CropId | null, act: TendAct | null): Promise<TendResult | string> {
+    const { data, error } = await supabase.rpc('tend_plots', act ? { px: x, py: y, seed, act } : { px: x, py: y, seed });
     if (error) return farmFail(error.message);
     const d = data as { harvested: { crop: CropId; grade: Grade; count: number }[]; planted: number; praised: number; seeds: number | null; plots: Record<string, unknown>[] };
     const owner = this.profile.id;

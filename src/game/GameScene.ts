@@ -105,6 +105,7 @@ import type {
   SessionEvents,
 } from '../net/session';
 import { dropFailText, type GroundUi } from '../ui/ground';
+import type { TendAct } from '../ui/farmPanel';
 import { GroundItems } from './drops';
 import type { ChatBox } from '../ui/chat';
 import type { Hud, RunStatus, Toast } from '../ui/hud';
@@ -302,8 +303,10 @@ const SMOKE_FRAME_MS = 240;
 const NOTICE_MS = 2000;
 /** 거둔 알림을 한 줄로 묶는 시간(2026-11-28 농장 UX 6번 "2초 안에 거둔 것") */
 const HARVEST_TOAST_MS = 2000;
-/** F를 이만큼 누르고 있으면 구획 돌보기(제가 정한 것, life-1127.md 2.2) */
+/** F를 이만큼 누르고 있으면 셋 다 한 번에(제가 정한 것, life-1127.md 2.2) */
 const TEND_HOLD_MS = 500;
+/** 한 번에 돌보기에서 한 칸도 바뀌지 않았을 때 알림(그 일의 0, 2026-11-28 농장 1-1) */
+const TEND_NONE: Record<TendAct | 'all', string> = { harvest: '거둔 작물 0', plant: '심은 칸 0', praise: '칭찬한 칸 0', all: '돌본 칸 0' };
 /** 한 작물에 칭찬·비난하는 간격(서버 vote_crop의 10분) */
 const VOTE_GAP_MS = 10 * 60_000;
 
@@ -847,7 +850,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (!this.canAct) return;
       if (button === 'action') this.farmKey();
       else if (button === 'second') this.farmBlame();
-      else this.farmTend();
+      else this.farmTend(button);
     };
     this.groundUi.farm.onSeed = (crop) => this.holdSeed(crop);
     // 미니맵을 펴면 바로 한 번 그린다(접혀 있는 동안은 그리지 않았다).
@@ -3753,7 +3756,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       lines: plotCardLines(situation),
       action: action && FARM_DO_LABEL[action],
       second: second && '비난',
-      tend: plot.owner === situation.myId,
+      tend: plot.owner === situation.myId ? { canPlant: !!seedId && this.economy.seedCount(cropOfSeed(seedId)) > 0 } : null,
       seeds: showsSeeds(situation) ? this.economy.ownedSeeds : null,
       held: seedId ? cropOfSeed(seedId) : null,
     });
@@ -5775,7 +5778,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     });
   }
 
-  /** PC: F를 0.5초 누르고 있으면 구획 돌보기(제가 정한 것, life-1127.md 2.2). 한 번 누를 때 한 번만 */
+  /** PC: F를 0.5초 누르고 있으면 셋 다 한 번에(거두기 → 심기 → 칭찬, 제가 정한 것, life-1127.md 2.2). 한 번 누를 때 한 번만 */
   private checkTendHold() {
     const since = this.keys.workHeldSince;
     if (since === null) {
@@ -5784,15 +5787,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     if (this.tendHeldDone || performance.now() - since < TEND_HOLD_MS) return;
     this.tendHeldDone = true;
-    if (this.canAct) this.farmTend();
+    if (this.canAct) this.farmTend(null);
   }
 
   /**
-   * 구획 돌보기(2026-11-28 농장 UX, SQL tend_plots): 안내 창이 다루는 칸이 든 6×6 구획의 내 땅을 한 번에
-   * 거두고 → 든 씨앗을 빈 칸에 심고 → 자라는 것을 칭찬한다. 그 구획에 가는 한 칸 요청이 있으면 끝나기를 기다렸다 보낸다.
-   * 결과는 알림 한 줄("가지 120개 거둠 · 30칸 심음 · 30칸 칭찬").
+   * 한 번에 돌보기(2026-11-28 농장 UX, SQL tend_plots, 농장 1-1에서 버튼 셋): 안내 창이 다루는 칸이 든 6×6 구획의 내 땅을 한 번에
+   * 거두기('harvest')·심기('plant', 든 씨앗)·칭찬하기('praise'), null이면 셋 다(F 길게 누르기). 그 구획에 가는 한 칸 요청이 있으면 끝나기를 기다렸다 보낸다.
+   * 결과는 알림 한 줄("가지 120개 거둠 · 30칸 심음 · 30칸 칭찬", 하나도 없으면 그 일의 0).
    */
-  private farmTend() {
+  private farmTend(act: TendAct | null) {
     const plot = this.farm ? this.farmTarget() : null;
     const myId = this.session.profile.id;
     if (!plot || plot.owner !== myId) return;
@@ -5809,10 +5812,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return x >= sector.x0 && x < sector.x0 + 6 && y >= sector.y0 && y < sector.y0 + 6;
     };
     const waiting = [...this.farmPending].filter(([k]) => inSector(k)).map(([, job]) => job);
-    void this.sendTend(plot, sector, seed, waiting).finally(() => this.farmTending.delete(sk));
+    void this.sendTend(plot, sector, seed, act, waiting).finally(() => this.farmTending.delete(sk));
   }
 
-  private async sendTend(plot: Plot, sector: { x0: number; y0: number }, seed: CropId | null, waiting: Promise<void>[]) {
+  private async sendTend(plot: Plot, sector: { x0: number; y0: number }, seed: CropId | null, act: TendAct | null, waiting: Promise<void>[]) {
     await Promise.all(waiting);
     const myId = this.session.profile.id;
     // 앞 요청이 이 구획 칸을 바꾼 뒤의 모습과 견주어 이번에 칭찬한 칸을 안다.
@@ -5823,7 +5826,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         if (p && p.owner === myId) before.set(x + y * 1000, p);
       }
     }
-    const result = await this.session.tendPlots(plot.x, plot.y, seed && this.economy.seedCount(seed) > 0 ? seed : null);
+    const result = await this.session.tendPlots(plot.x, plot.y, seed && this.economy.seedCount(seed) > 0 ? seed : null, act);
     if (typeof result === 'string') {
       this.notice('돌보지 못했습니다', '잠시 후 다시 시도해 주세요.');
       return;
@@ -5848,7 +5851,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
     if (result.planted) parts.push(`${result.planted}칸 심음`);
     if (result.praised) parts.push(`${result.praised}칸 칭찬`);
-    this.hud.toast(parts.length ? parts.join(' · ') : '돌본 칸 0');
+    this.hud.toast(parts.length ? parts.join(' · ') : TEND_NONE[act ?? 'all']);
   }
 
   /**
