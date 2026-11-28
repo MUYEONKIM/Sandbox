@@ -5,6 +5,7 @@ import { profitText, STOCK_INFO, type Market } from '../game/market';
 import { statEffect } from '../game/stats';
 import { element } from './dom';
 import { goldText } from '../game/gold';
+import { titleEffect, titleLabel, type Titles } from '../game/titles';
 
 /** 정보창에 보일 내 상태. HUD가 서버에서 받은 값을 들고 있다. */
 export interface MyStatus {
@@ -30,8 +31,54 @@ export class InfoView {
     private readonly onRename: () => void,
     /** 휴대폰의 '킬/데스 순위'를 누르면 부른다(키보드의 Tab). 버튼은 손가락 화면에만 보인다(touch.css). */
     private readonly onKillBoard: () => void = () => undefined,
+    /** 칭호(2026-11-28). 가진 칭호와 단 칭호, 달기(null이면 떼기) */
+    private readonly titles: { store: Titles; wear: (id: string | null) => void } | null = null,
   ) {
     root.classList.add('info');
+  }
+
+  /** 칭호 목록을 펼쳤는지. 다시 그려도 그대로 둔다. */
+  private titlesOpen = false;
+
+  /**
+   * '칭호' 줄: 단 칭호(갑부면 함께), 누르면 가진 칭호 목록과 '달지 않음'(growth-1127.md 8-1). 못 얻은 칭호와 조건은 보이지 않는다.
+   * 목록에는 이름과 효과 숫자만(ranking-titles.md 6장). 갑부는 고를 수 없는 줄이다.
+   */
+  private renderTitles({ store, wear }: { store: Titles; wear: (id: string | null) => void }) {
+    const row = element('info-rename info-title', this.root);
+    element('info-label', row, 'span').textContent = '칭호';
+    const pick = element('info-rename-button info-title-button', row, 'button') as HTMLButtonElement;
+    pick.type = 'button';
+    pick.textContent = titleLabel(store.wornName, store.rich) || '없음';
+    pick.disabled = !store.owned.some((t) => t.kind !== 'rich') && !store.worn;
+    pick.addEventListener('click', () => {
+      this.titlesOpen = !this.titlesOpen;
+      this.render();
+    });
+    if (!this.titlesOpen || pick.disabled) return;
+
+    const list = element('info-list info-titles', this.root);
+    const choose = (id: string | null) => {
+      this.titlesOpen = false;
+      wear(id);
+    };
+    for (const title of store.owned) {
+      const effect = titleEffect(title);
+      if (title.kind === 'rich') {
+        const fixed = element('info-title-row fixed', list);
+        element('info-title-name', fixed, 'span').textContent = title.name;
+        continue;
+      }
+      const button = element(title.id === store.worn ? 'info-title-row chosen' : 'info-title-row', list, 'button') as HTMLButtonElement;
+      button.type = 'button';
+      element('info-title-name', button, 'span').textContent = title.name;
+      if (effect) element('info-title-effect', button, 'span').textContent = effect;
+      button.addEventListener('click', () => choose(title.id));
+    }
+    const none = element(store.worn === null ? 'info-title-row chosen' : 'info-title-row', list, 'button') as HTMLButtonElement;
+    none.type = 'button';
+    element('info-title-name', none, 'span').textContent = '달지 않음';
+    none.addEventListener('click', () => choose(null));
   }
 
   render() {
@@ -57,6 +104,8 @@ export class InfoView {
     change.textContent = '닉네임 바꾸기';
     change.disabled = tickets < 1;
     change.addEventListener('click', () => this.onRename());
+
+    if (this.titles) this.renderTitles(this.titles);
 
     const basics = element('info-grid', this.root);
     const line = (label: string, value: string) => {

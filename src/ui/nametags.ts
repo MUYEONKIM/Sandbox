@@ -1,5 +1,6 @@
 import { popLevel } from './levelUpAnim';
 import { element } from './dom';
+import { titleLabel } from '../game/titles';
 
 const BUBBLE_MS = 4000;
 
@@ -17,7 +18,15 @@ interface Tag {
   level: HTMLElement | null;
   hp: HTMLElement | null;
   progress: HTMLElement | null;
+  /** 이름 바로 위 칭호 줄(2026-11-28). 칭호가 생길 때 처음 만든다. */
+  title: HTMLElement | null;
   timer: number;
+}
+
+/** 플레이어마다 단 칭호 id와 갑부(이름표를 새로 만들 때도 쓴다) */
+interface TitleState {
+  title: string | null;
+  rich: boolean;
 }
 
 /** 캐릭터 머리 위에 뜨는 닉네임과 말풍선, 포탈과 건물의 이름표 */
@@ -25,6 +34,10 @@ export class NameTags {
   private readonly tags = new Map<string, Tag>();
   /** 플레이어 id → 악업(현상범 명단). 이름표를 새로 만들 때도 쓴다. */
   private karma: ReadonlyMap<string, number> = new Map();
+  /** 플레이어 id → 단 칭호. 사람 수만큼만 쌓인다. */
+  private readonly titles = new Map<string, TitleState>();
+  /** 칭호 id → 이름(칭호 표, main.ts가 넣음). 모르는 id면 null */
+  titleName: (id: string) => string | null = () => null;
 
   constructor(private readonly parent: HTMLElement) {}
 
@@ -42,9 +55,36 @@ export class NameTags {
     const hp = isPlayer ? element('player-hp-fill', element('player-hp', root)) : null;
     const progress = isPlayer ? element('player-work-fill', element('player-work', root)) : null;
     if (progress) progress.parentElement!.hidden = true;
-    const tag = { root, label: name, name: isPlayer ? name : null, wanted, bubble, level, hp, progress, timer: 0 };
+    const tag = { root, label: name, name: isPlayer ? name : null, wanted, bubble, level, hp, progress, title: null, timer: 0 };
     this.tags.set(id, tag);
     this.paintKarma(id, tag);
+    if (isPlayer) this.paintTitle(tag, this.titles.get(id));
+  }
+
+  /** 단 칭호와 갑부를 이름 위 한 줄에 쓴다("명장 · 갑부"). 글이 그대로면 DOM을 고치지 않는다. */
+  setTitle(id: string, title: string | null, rich: boolean) {
+    const state = this.titles.get(id);
+    if (state && state.title === title && state.rich === rich) return;
+    this.titles.set(id, { title, rich });
+    const tag = this.tags.get(id);
+    if (tag?.name) this.paintTitle(tag, { title, rich });
+  }
+
+  /** 칭호 이름 표를 늦게 받았을 때 이름표 칭호 줄을 다시 쓴다. */
+  repaintTitles() {
+    for (const [id, tag] of this.tags) if (tag.name) this.paintTitle(tag, this.titles.get(id));
+  }
+
+  private paintTitle(tag: Tag, state: TitleState | undefined) {
+    const text = state ? titleLabel(state.title ? this.titleName(state.title) : null, state.rich) : '';
+    if (!text && !tag.title) return;
+    if (!tag.title && tag.name) {
+      tag.title = element('player-title', tag.root);
+      tag.root.insertBefore(tag.title, tag.name);
+    }
+    if (!tag.title) return;
+    if (tag.title.textContent !== text) tag.title.textContent = text;
+    tag.title.hidden = text === '';
   }
 
   /** 현상범 명단이 바뀌면 이름 색과 "(현상범)"을 다시 칠한다(2026-11-12 사용자 요청). */

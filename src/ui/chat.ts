@@ -3,6 +3,7 @@ import { element } from './dom';
 import { foldButton, isFolded, saveFolded, showFoldButton } from './fold';
 import { TOUCH } from './touch';
 import { sound } from '../sound/engine';
+import { titleLabel } from '../game/titles';
 
 const MAX_MESSAGES = 50;
 /** 입력창에서 Tab으로 바꾸는 채팅 모드. 일반은 같은 맵, 전체는 모든 맵이다(2026-11-12 사용자 요청). */
@@ -13,8 +14,8 @@ const MODES = {
 // 휴대폰은 키보드가 없어 채팅을 여는 버튼과 보내기 버튼을 따로 둔다(에이전트가 정함, touch.css).
 type Mode = keyof typeof MODES;
 
-/** 새로고침해도 남기는 채팅 기록 한 줄(2026-11-12 사용자 요청). 브라우저에 계정별로 저장한다. */
-type Saved = { author: string; text: string; everyone: boolean } | { system: string };
+/** 새로고침해도 남기는 채팅 기록 한 줄(2026-11-12 사용자 요청). 브라우저에 계정별로 저장한다. tag는 칭호 글("명장 · 갑부", 2026-11-28) */
+type Saved = { author: string; text: string; everyone: boolean; tag?: string } | { system: string };
 const MAX_LENGTH = 100;
 /** 맨 아래에서 이만큼 안이면 맨 아래를 보고 있는 것으로 친다. */
 const BOTTOM_SLACK = 24;
@@ -154,9 +155,11 @@ export class ChatBox {
     }
   }
 
-  show({ id, author, text, everyone }: ChatMessage) {
-    this.draw({ author, text, everyone });
-    this.remember({ author, text, everyone });
+  show({ id, author, text, everyone, title, rich }: ChatMessage) {
+    const tag = titleLabel(title, rich);
+    const entry: Saved = tag ? { author, text, everyone, tag } : { author, text, everyone };
+    this.draw(entry);
+    this.remember(entry);
     if (this.folded && id !== this.me) {
       this.unreadCount++;
       this.unread.textContent = this.unreadCount > UNREAD_MAX ? `${UNREAD_MAX}+` : String(this.unreadCount);
@@ -188,6 +191,8 @@ export class ChatBox {
     } else {
       const line = this.addLine(entry.everyone ? 'chat-line chat-all' : 'chat-line');
       if (entry.everyone) element('chat-tag', line, 'span').textContent = '[전체]';
+      // 칭호: "[명장] 닉네임: 말", 전체 채팅은 "[전체] [명장] 닉네임: 말"(growth-1127.md 8-1)
+      if (entry.tag) element('chat-title', line, 'span').textContent = `[${entry.tag}]`;
       element('chat-author', line, 'span').textContent = entry.author;
       element('chat-text', line, 'span').textContent = entry.text;
     }
@@ -215,10 +220,12 @@ export class ChatBox {
     if (!Array.isArray(saved)) return;
     const isText = (v: unknown) => typeof v === 'string' && v.length <= 200;
     for (const entry of saved.slice(-MAX_MESSAGES)) {
-      const e = entry as Partial<{ author: unknown; text: unknown; everyone: unknown; system: unknown }> | null;
+      const e = entry as Partial<{ author: unknown; text: unknown; everyone: unknown; system: unknown; tag: unknown }> | null;
       if (e && isText(e.system)) this.history.push({ system: e.system as string });
       else if (e && isText(e.author) && isText(e.text)) {
-        this.history.push({ author: e.author as string, text: e.text as string, everyone: e.everyone === true });
+        const line: Exclude<Saved, { system: string }> = { author: e.author as string, text: e.text as string, everyone: e.everyone === true };
+        if (typeof e.tag === 'string' && e.tag.length > 0 && e.tag.length <= 30) line.tag = e.tag;
+        this.history.push(line);
       }
     }
     for (const entry of this.history) this.draw(entry);

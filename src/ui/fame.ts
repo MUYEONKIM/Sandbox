@@ -1,11 +1,52 @@
 import { formatNumber } from '../game/level';
-import type { RankEntry } from '../net/session';
+import { goldText } from '../game/gold';
+import { titleLabel } from '../game/titles';
+import type { FameKind, FameRow, RankEntry } from '../net/session';
 import { element } from './dom';
 import { byInput } from './touch';
 import { FoldBox } from './fold';
 import { sound } from '../sound/engine';
 
 type LoadRanking = () => Promise<RankEntry[] | null>;
+type LoadFame = (kind: FameKind) => Promise<{ rows: FameRow[]; me: FameRow | null } | null>;
+
+/** 명예의 전당 탭(2026-11-28 사용자 결정: 마을·무기·모험·골드·킬, 마을이 처음) */
+const FAME_TABS: [FameKind, string][] = [
+  ['village', '마을'],
+  ['forge', '무기'],
+  ['adventure', '모험'],
+  ['gold', '골드'],
+  ['kills', '킬'],
+];
+
+/** 줄에 보이는 값: 마을·모험 Lv., 무기 +단계, 골드 G, 킬 "킬 / 데스" */
+function fameValue(kind: FameKind, row: FameRow) {
+  const big = BigInt(row.value);
+  if (kind === 'forge') return `+${row.value}`;
+  if (kind === 'gold') return goldText(big);
+  if (kind === 'kills') return `${formatNumber(big)} / ${formatNumber(BigInt(row.extra ?? '0'))}`;
+  return `Lv. ${formatNumber(big)}`;
+}
+
+function showFame(list: HTMLElement, kind: FameKind, rows: FameRow[], me: FameRow | null) {
+  list.replaceChildren();
+  const add = (row: FameRow) => {
+    const line = element(row.me ? 'rank-row mine' : 'rank-row', list);
+    element('rank-place', line, 'span').textContent = String(row.rank);
+    const tag = titleLabel(row.title, row.rich);
+    // 칭호는 이름 앞, 폭이 좁으면 칭호만 줄임표로 잘린다(growth-1127.md 8-1)
+    if (tag) element('rank-title', line, 'span').textContent = tag;
+    element('rank-name', line, 'span').textContent = row.name;
+    element('rank-level', line, 'span').textContent = fameValue(kind, row);
+  };
+  rows.forEach(add);
+  // 내가 보인 줄 밖이면 맨 아래에 내 줄
+  if (me && !rows.some((row) => row.me)) {
+    element('rank-gap', list).textContent = '…';
+    add(me);
+  }
+  if (!rows.length && !me) element('rank-row', list).textContent = '-';
+}
 
 const HOUR_MS = 60 * 60 * 1000;
 const LOAD_FAILED = '순위를 불러오지 못했습니다.';
@@ -20,22 +61,33 @@ function showRanks(list: HTMLElement, entries: RankEntry[], me: string) {
   });
 }
 
-/** 명예의 전당 창: 포탈을 탈 때마다 지금의 레벨 순위를 읽어 온다. */
+/**
+ * 명예의 전당 창: 부문 탭 다섯(2026-11-28, SQL ranking). 열 때와 탭을 바꿀 때 한 번 읽는다(실시간 구독 없음).
+ * 줄마다 순위·칭호·이름·값, 내가 위 줄 밖이면 맨 아래 내 줄.
+ */
 export class FameWindow {
   private readonly root: HTMLElement;
   private readonly list: HTMLElement;
+  private readonly tabButtons = new Map<FameKind, HTMLButtonElement>();
+  /** 늦게 온 답이 다른 탭을 덮지 않게 읽을 때마다 번호를 올린다. */
+  private request = 0;
 
   constructor(
     parent: HTMLElement,
-    /** 내 닉네임. 바꿀 수 있어서 그릴 때마다 묻는다. */
-    private readonly me: () => string,
-    private readonly load: LoadRanking,
+    private readonly load: LoadFame,
   ) {
-    this.root = element('office', parent);
+    this.root = element('office fame', parent);
     this.root.hidden = true;
 
     element('office-title', this.root).textContent = '명예의 전당';
-    element('office-subtitle', this.root).textContent = '현재 레벨 순위입니다.';
+    const tabs = element('board-tabs', this.root);
+    for (const [kind, label] of FAME_TABS) {
+      const button = element('board-tab', tabs, 'button') as HTMLButtonElement;
+      button.type = 'button';
+      button.textContent = label;
+      button.addEventListener('click', () => void this.show(kind));
+      this.tabButtons.set(kind, button);
+    }
     this.list = element('rank-list', this.root);
 
     const close = element('office-close', this.root, 'button') as HTMLButtonElement;
@@ -51,10 +103,17 @@ export class FameWindow {
   async open() {
     if (this.root.hidden) sound.play('ui_open');
     this.root.hidden = false;
+    await this.show('village');
+  }
+
+  private async show(kind: FameKind) {
+    for (const [id, button] of this.tabButtons) button.classList.toggle('chosen', id === kind);
+    const request = ++this.request;
     this.list.textContent = '불러오는 중입니다.';
-    const entries = await this.load();
-    if (!entries) this.list.textContent = LOAD_FAILED;
-    else showRanks(this.list, entries, this.me());
+    const result = await this.load(kind);
+    if (request !== this.request || this.root.hidden) return;
+    if (!result) this.list.textContent = LOAD_FAILED;
+    else showFame(this.list, kind, result.rows, result.me);
   }
 
   close() {

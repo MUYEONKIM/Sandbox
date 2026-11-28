@@ -29,6 +29,8 @@ interface ForgeActions {
   hammer(gear: Gear, scrolls: ReadonlySet<ScrollId>): Promise<ForgeResult | ForgeFail>;
   /** 연출이 사라진 뒤 결과를 가방에 붙인다(단계 바꾸기, 부서진 무기 빼기). */
   land(gear: Gear, outcome: ForgeResult): void;
+  /** 최고 강화 기록(2026-11-28, 팔거나 부서져도 남음) */
+  best(): number;
 }
 
 const FAIL_TEXT: Record<ForgeFail, string> = {
@@ -89,6 +91,8 @@ export class ForgeWindow extends PurchaseWindow {
   private readonly anvilPane: HTMLElement;
   private readonly countLine: HTMLElement;
   private readonly gearList: HTMLElement;
+  /** '내 무기 · 최고 기록 +35' 줄 */
+  private readonly gearTitle: HTMLElement;
   private readonly bench: HTMLElement;
   private selected: number | null = null;
   private readonly scrolls = new Set<ScrollId>();
@@ -132,7 +136,7 @@ export class ForgeWindow extends PurchaseWindow {
     // 그 아래 고른 무기와 확률, 두루마리, 내 무기 목록 순서다(PM이 정함).
     this.anvilPane = element('forge-pane', this.root);
     this.bench = element('shop-stats', this.anvilPane);
-    element('office-section', this.anvilPane).textContent = '내 무기';
+    this.gearTitle = element('office-section', this.anvilPane);
     this.gearList = element('shop-stats', this.anvilPane);
 
     this.refreshers.push(() => this.renderPanes());
@@ -215,6 +219,8 @@ export class ForgeWindow extends PurchaseWindow {
   }
 
   private renderAnvil() {
+    // 최고 강화 기록(2026-11-28, growth-1127.md 8-1): 숫자만
+    this.gearTitle.textContent = `내 무기 · 최고 기록 +${this.actions.best()}`;
     const list = this.inventory.gearList;
     if (this.selected !== null && !list.some((g) => g.id === this.selected)) this.selected = null;
     if (this.selected === null && list.length) this.selected = list[0].id;

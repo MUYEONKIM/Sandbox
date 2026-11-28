@@ -19,7 +19,8 @@ import { showLogin } from './ui/login';
 import { KillBoard } from './ui/killboard';
 import { Minimap } from './ui/minimap';
 import { ChapterMap } from './ui/chapterMap';
-import { NoticeBar } from './ui/notice';
+import { NoticeBar, noticeText } from './ui/notice';
+import { Titles } from './game/titles';
 import { watchNewVersion } from './ui/newVersion';
 import { NameTags } from './ui/nametags';
 import { CasinoWindows } from './ui/casino';
@@ -58,6 +59,10 @@ const BOARD_SIZE = 50;
 const PANEL_SIZE = 10;
 /** Tab 킬/데스 순위표에 보여 줄 인원 */
 const KILL_BOARD_SIZE = 10;
+const HOUR_MS = 60 * 60 * 1000;
+/** 매시 정각 뒤 내 칭호를 다시 읽기까지 기다리는 시간(모두가 한꺼번에 부르지 않게 5~30초 사이로 흩음) */
+const TITLE_DELAY_MS = 5_000;
+const TITLE_SPREAD_MS = 25_000;
 
 function enterGame(
   profile: Profile,
@@ -127,7 +132,19 @@ function enterGame(
     void killBoard.show();
     window.addEventListener('pointerdown', () => killBoard.hide(), { once: true, capture: true });
   };
-  const info = new InfoView(hud.infoPane, myName, economy, market, () => hud.status, rename, showKillBoard);
+  // 칭호(2026-11-28): 가진 칭호·단 칭호·최고 강화 기록. 달기는 서버 set_title이 확인한다.
+  const titles = new Titles();
+  const wearTitle = async (id: string | null) => {
+    const result = await session.setTitle(id);
+    if (typeof result === 'string') {
+      sound.play('deny');
+      hud.toast('달지 못했습니다', '');
+      void refreshTitles();
+      return;
+    }
+    titles.setWorn(result.worn);
+  };
+  const info = new InfoView(hud.infoPane, myName, economy, market, () => hud.status, rename, showKillBoard, { store: titles, wear: (id) => void wearTitle(id) });
   hud.setInfoRenderer(() => info.render());
   void market.refresh();
 
@@ -249,7 +266,11 @@ function enterGame(
     land: (gear, outcome) => {
       if (outcome.level === null) inventory.removeGear(gear.id);
       else inventory.setGearLevel(gear.id, outcome.level);
+      // 최고 기록과 강화 첫 달성 칭호는 연출이 끝난 뒤 보인다(결과가 먼저 비치지 않게). 칭호는 다시 읽어 얻은 것을 알린다.
+      if (outcome.best !== null) titles.setBest(outcome.best);
+      if (outcome.title) void refreshTitles();
     },
+    best: () => titles.best,
   });
 
   const shop = new ShopWindow(root, economy, {
@@ -284,8 +305,38 @@ function enterGame(
     onBuyStat: (id, amount) => scene.buyStat(id, amount),
   });
 
-  const fame = new FameWindow(root, myName, () => session.fetchRanking(FAME_SIZE));
+  const fame = new FameWindow(root, (kind) => session.fameRanking(kind, FAME_SIZE));
   const notices = new NoticeBar(root);
+
+  // 칭호를 얻거나 잃으면 나에게만 위쪽 알림과 채팅 기록 한 줄(growth-1127.md 8-1·8-2). 처음 읽은 것은 알리지 않는다.
+  async function refreshTitles() {
+    const mine = await session.myTitles();
+    if (!mine) return;
+    const { gained, lost } = titles.apply(mine);
+    for (const [list, wasLost] of [[gained, false], [lost, true]] as const) {
+      for (const { name } of list) {
+        const notice = { kind: 'title', name, lost: wasLost } as const;
+        notices.show(notice);
+        chat.system(noticeText(notice));
+      }
+    }
+  }
+  // 내 이름표 칭호 줄과 접속 명단(다른 사람 화면), 정보창을 맞춘다.
+  titles.onChange(() => {
+    tags.setTitle(profile.id, titles.worn, titles.rich);
+    session.setMyTitle(titles.worn, titles.rich);
+    hud.refreshInfo();
+  });
+  tags.titleName = (id) => titles.nameOf(id);
+  void session.loadTitleNames().then((rows) => {
+    titles.setNames(rows);
+    tags.repaintTitles();
+  });
+  // 랭킹 칭호는 서버가 매시 정각에 다시 정한다. 그 뒤 한 번 읽는다(1시간에 한 번).
+  const scheduleTitles = () =>
+    window.setTimeout(() => void refreshTitles().finally(scheduleTitles), HOUR_MS - (Date.now() % HOUR_MS) + TITLE_DELAY_MS + Math.random() * TITLE_SPREAD_MS);
+  void refreshTitles();
+  scheduleTitles();
   const board = new BoardWindow(root, {
     load: (kind) => session.readBoard(BOARD_SIZE, kind),
     write: (body, category) => session.writePost(body, category),
@@ -419,7 +470,7 @@ function enterGame(
 
   // 개발 중 브라우저 콘솔에서 상태를 확인하기 위한 통로
   if (import.meta.env.DEV) {
-    Object.assign(window, { sandbox: { sound, weaponTip, scene, inventory, hud, chat, session, economy, office, dungeon, coop, shop, forge, castle, fame, board, exchange, market, elevator, casino, groundUi, adventure, adventureWindow } });
+    Object.assign(window, { sandbox: { sound, weaponTip, scene, inventory, hud, chat, session, economy, office, dungeon, coop, shop, forge, castle, fame, board, exchange, market, elevator, casino, groundUi, adventure, adventureWindow, titles } });
   }
 }
 

@@ -5114,7 +5114,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.level;
   }
 
-  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work, run, torch, pose }: PlayerMove) {
+  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work, run, torch, pose, title, rich }: PlayerMove) {
     let avatar = this.others.get(id);
     this.doorsDirty = true;
     // 남이 든 횃불: 전쟁터에서는 켜지 않는다(사용자 "전쟁터에서는 안 켜짐").
@@ -5137,6 +5137,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       // 남이 이 맵에 나타남(×0.5, 3초에 한 번, 내가 막 들어온 때는 빼고)
       if (performance.now() > this.quietArrivalsUntil) sound.play('portal', { at: { x, y }, who: id });
       this.tags.add(id, nickname);
+      this.tags.setTitle(id, title, rich);
       this.tags.setHp(id, hp, maxHp);
       this.showLevel(id, level);
       this.showRemoteWork(id, avatar, work);
@@ -5146,8 +5147,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       avatar.maxHp = maxHp;
       this.tags.setHp(id, avatar.hp, maxHp);
     }
-    // 닉네임 변경권으로 이름을 바꿨으면 이름표도 바꾼다.
+    // 닉네임 변경권으로 이름을 바꿨으면 이름표도 바꾼다. 칭호도 같다(바뀐 때만 DOM을 고침).
     this.tags.setName(id, nickname);
+    this.tags.setTitle(id, title, rich);
     if (runChanged && isAdventure(this.mapId)) this.showLevel(id, level);
     this.showRemoteWork(id, avatar, work);
     // 가구에 앉았거나 누웠다: 그 가구 칸으로 옮겨 그 자세로 그린다. 일어났으면 자세를 풀고 선 칸으로 옮긴다.
@@ -5243,9 +5245,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.startWorkFx(id, avatar, work);
   }
 
-  /** 접속 명단으로 아직 안 보이는 사람을 그린다. 이미 보이는 사람은 이동 알림이 더 새로우므로 그대로 둔다. */
+  /**
+   * 접속 명단으로 아직 안 보이는 사람을 그린다. 이미 보이는 사람은 이동 알림이 더 새로우므로 그대로 두고,
+   * 서 있는 채 칭호만 바꾼 것은 명단으로만 오므로 칭호만 맞춘다(2026-11-28).
+   */
   onPresence(move: PlayerMove) {
     if (!this.others.has(move.id)) this.onMove(move);
+    else this.tags.setTitle(move.id, move.title, move.rich);
   }
 
   onHarvest(id: string, rare: boolean) {

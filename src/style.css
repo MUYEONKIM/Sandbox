@@ -1063,6 +1063,43 @@ canvas {
   color: var(--text-dim);
 }
 
+/* 정보창 칭호 줄과 가진 칭호 목록(2026-11-28). 목록 줄은 버튼, 갑부는 고를 수 없는 글 줄이다. */
+.info-title-button {
+  min-width: 0;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-titles {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.info-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 2px 8px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.info-title-row.fixed {
+  font-weight: 700;
+  cursor: default;
+}
+
+.info-title-effect {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 /* 주가와 손익: 한국 시장처럼 오르면 빨강, 내리면 파랑 */
 .tone-up {
   color: #ff7b6e !important;
@@ -1243,6 +1280,13 @@ canvas {
   font-weight: 700;
 }
 
+/* 채팅 칭호 "[명장 · 갑부]"(2026-11-28) */
+.chat-title {
+  margin-right: 4px;
+  color: #f3dd94;
+  font-weight: 700;
+}
+
 .chat-entry {
   display: flex;
   pointer-events: auto;
@@ -1314,6 +1358,20 @@ canvas {
   background: rgb(31 21 16 / 62%);
   font-size: 14px;
   font-weight: 700;
+}
+
+/* 이름 바로 위 칭호 줄(2026-11-28, 제가 정한 것): 이름보다 작은 옅은 금색 */
+.player-title {
+  padding: 0 5px;
+  color: #f3dd94;
+  background: rgb(31 21 16 / 52%);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.player-title[hidden] {
+  display: none;
 }
 
 .bubble {
@@ -1437,6 +1495,32 @@ canvas {
   padding: 4px 10px;
   background: var(--slot);
   border: 2px solid var(--slot-sunken);
+}
+
+/* 명예의 전당 탭(2026-11-28): 탭은 게시판 탭 모양. 줄의 칭호는 이름 앞, 좁으면 칭호만 줄임표로 잘린다. */
+.fame .board-tabs {
+  margin: 8px 0 0;
+}
+
+.fame .rank-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  color: #7a4a17;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fame .rank-name {
+  flex: 1 0 auto;
+}
+
+.fame .rank-gap {
+  color: var(--text-dim);
+  text-align: center;
 }
 
 .minimap-canvas {
@@ -2019,6 +2103,16 @@ canvas {
 .notice-kill {
   color: #ff8a7a;
   border-color: #7a2a22;
+}
+
+/* 서버에서 처음 나온 +30 이상(모두에게)과 내 칭호 얻음·잃음(나에게만), 2026-11-28 */
+.notice-forge_first {
+  color: #f2cf6a;
+  border-color: #8a6a1c;
+}
+
+.notice-title {
+  color: #f3dd94;
 }
 
 @keyframes notice-in {

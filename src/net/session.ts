@@ -13,6 +13,7 @@ import type { BoardPost, PostCategory, WriteResult } from '../ui/board';
 import type { Notice } from '../ui/notice';
 import type { WantedEntry } from '../ui/wanted';
 import type { Quote } from '../game/market';
+import { isTitleId, type MyTitles, type TitleKind } from '../game/titles';
 import { supabase } from './supabase';
 
 export type Motion = 'walk' | 'run' | 'jump';
@@ -90,6 +91,10 @@ export interface ForgeResult {
   paid: Gold;
   /** 새 판매가. 파괴면 0이다. */
   price: Gold;
+  /** 최고 강화 기록(2026-11-28). 옛 서버는 보내지 않아 null이다. */
+  best: number | null;
+  /** 이번 성공으로 처음 얻은 강화 칭호 이름. 없으면 null이다. */
+  title: string | null;
 }
 
 /** 대장간 요청이 거절된 까닭 */
@@ -158,6 +163,10 @@ export interface PlayerMove {
   torch: boolean;
   /** 가구에 앉았거나 누웠는지(2026-11-27). 이때 x, y는 그 가구 칸이다. 옛 화면은 이 칸을 보내지 않아 null이다. */
   pose: Posture | null;
+  /** 단 칭호 id(2026-11-28). 달지 않았거나 옛 화면이면 null이다. */
+  title: string | null;
+  /** 골드 1위 '갑부'인지(단 칭호 옆에 늘 함께 보임) */
+  rich: boolean;
 }
 
 /** 가구를 쓰는 자세 */
@@ -181,6 +190,10 @@ export interface ChatMessage {
   text: string;
   /** true면 모든 맵에 보낸 전체 채팅, false면 같은 맵의 일반 채팅 */
   everyone: boolean;
+  /** 서버가 붙인 단 칭호 이름(2026-11-28). 없으면 null이다. */
+  title: string | null;
+  /** 골드 1위 '갑부'인지 */
+  rich: boolean;
 }
 
 /** 현상범이 잡혀 넘어간 현상금 */
@@ -204,6 +217,20 @@ export interface KillEntry {
 export interface RankEntry {
   nickname: string;
   level: bigint;
+}
+
+/** 명예의 전당 탭(2026-11-28, SQL ranking). 마을이 처음이다. */
+export type FameKind = 'village' | 'forge' | 'adventure' | 'gold' | 'kills';
+
+/** 명예의 전당 한 줄. value는 글자(레벨·골드는 큰 수), extra는 킬 탭의 데스 */
+export interface FameRow {
+  rank: number;
+  name: string;
+  title: string | null;
+  rich: boolean;
+  value: string;
+  extra: string | null;
+  me: boolean;
 }
 
 export interface PlacedBlock {
@@ -354,6 +381,8 @@ interface ProfilePatch {
 
 const MAX_NAME = 12;
 const MAX_TEXT = 100;
+/** 칭호 이름 글자 수 상한(가장 긴 것이 6자, 넉넉히) */
+const MAX_TITLE = 20;
 const MAX_STEP_MS = 1000;
 const SAVE_DELAY_MS = 2000;
 /** 블록을 한 번에 읽는 줄 수. Supabase API가 한 번에 돌려주는 최대(max_rows)와 같다. */
@@ -432,6 +461,8 @@ function parseMove(value: unknown): PlayerMove | null {
     run: parseRun(m.run),
     torch: (m as { torch?: unknown }).torch === true,
     pose: ((v) => (v === 'sit' || v === 'lie' ? v : null))((m as { pose?: unknown }).pose),
+    title: ((v) => (isTitleId(v) ? v : null))((m as { title?: unknown }).title),
+    rich: (m as { rich?: unknown }).rich === true,
   };
 }
 
@@ -459,8 +490,8 @@ function parseNotice(value: unknown): Notice | null {
     return { kind: 'rename', id: r.id, from: r.from.slice(0, MAX_NAME), to: r.to.slice(0, MAX_NAME) };
   }
   const forge = value as { name?: unknown; item?: unknown; level?: unknown } | null;
-  if (n?.kind === 'forge' && isName(forge?.name) && isWeapon(forge.item) && Number.isInteger(forge.level)) {
-    return { kind: 'forge', name: forge.name.slice(0, MAX_NAME), item: forge.item, level: Number(forge.level) };
+  if ((n?.kind === 'forge' || n?.kind === 'forge_first') && isName(forge?.name) && isWeapon(forge.item) && Number.isInteger(forge.level)) {
+    return { kind: n.kind, name: forge.name.slice(0, MAX_NAME), item: forge.item, level: Number(forge.level) };
   }
   if (n?.kind === 'kill' && isName(n.killer) && isName(n.victim)) {
     const wanted = (n as { wanted?: unknown }).wanted;
@@ -486,10 +517,44 @@ function parseBounty(value: unknown): Bounty | null {
   return { killer: b.killer, victim: b.victim, gold, items };
 }
 
+/** 칭호 이름 글(서버가 붙임). 너무 길면 버린다. */
+const parseTitleName = (v: unknown) => (typeof v === 'string' && v.length > 0 && v.length <= MAX_TITLE ? v : null);
+
 function parseChat(value: unknown, everyone: boolean): ChatMessage | null {
   const m = value as Partial<ChatMessage> | null;
   if (!m || typeof m.id !== 'string' || typeof m.author !== 'string' || typeof m.text !== 'string') return null;
-  return { id: m.id, author: m.author.slice(0, MAX_NAME), text: m.text.slice(0, MAX_TEXT), everyone };
+  return { id: m.id, author: m.author.slice(0, MAX_NAME), text: m.text.slice(0, MAX_TEXT), everyone, title: parseTitleName(m.title), rich: m.rich === true };
+}
+
+const isTitleKind = (v: unknown): v is TitleKind => v === 'forge' || v === 'rank' || v === 'rich';
+
+/** 서버 my_titles의 답을 읽는다. 이상한 줄은 건너뛴다. */
+function parseMyTitles(value: unknown): MyTitles | null {
+  const d = value as { titles?: unknown; worn?: unknown; best?: unknown } | null;
+  if (!d || !Array.isArray(d.titles)) return null;
+  const titles = (d.titles as (Record<string, unknown> | null)[]).flatMap((row) => {
+    const name = parseTitleName(row?.name);
+    if (!row || !isTitleId(row.id) || !name || !isTitleKind(row.kind)) return [];
+    return [{ id: row.id, name, kind: row.kind, exp: Number(row.exp) || 0, gold: Number(row.gold) || 0, cut: Number(row.cut) || 0 }];
+  });
+  const best = Number(d.best);
+  return { titles, worn: isTitleId(d.worn) ? d.worn : null, best: Number.isInteger(best) && best >= 0 ? best : 0 };
+}
+
+const isDigits = (v: unknown): v is string => typeof v === 'string' && /^\d{1,1100}$/.test(v);
+
+function parseFameRow(row: Record<string, unknown> | null): FameRow | null {
+  const rank = Number(row?.rank);
+  if (!row || !Number.isInteger(rank) || rank < 1 || typeof row.name !== 'string' || !isDigits(row.value)) return null;
+  return {
+    rank,
+    name: row.name.slice(0, MAX_NAME),
+    title: parseTitleName(row.title),
+    rich: row.rich === true,
+    value: row.value,
+    extra: isDigits(row.extra) ? row.extra : null,
+    me: row.me === true,
+  };
 }
 
 function parseBlock(row: { x?: unknown; y?: unknown; z?: unknown; block?: unknown }): PlacedBlock | null {
@@ -535,6 +600,9 @@ export class GameSession {
   private lastAnnounce = 0;
   private rejoinTimer = 0;
   private rejoinTries = 0;
+  /** 이동 알림과 접속 명단에 싣는 내 단 칭호 id와 갑부 */
+  private title: string | null = null;
+  private rich = false;
 
   constructor(readonly profile: Profile) {
     this.mapId = profile.map;
@@ -831,7 +899,17 @@ export class GameSession {
       run: this.events.currentRun(),
       torch: this.events.currentTorch(),
       pose: this.events.currentPose(),
+      title: this.title,
+      rich: this.rich,
     };
+  }
+
+  /** 내 단 칭호와 갑부(2026-11-28). 바뀌면 접속 명단을 고친다(15초 제한 안, 칭호는 거의 바뀌지 않음). */
+  setMyTitle(title: string | null, rich: boolean) {
+    if (title === this.title && rich === this.rich) return;
+    this.title = title;
+    this.rich = rich;
+    this.refreshPresence();
   }
 
   sendMove(x: number, y: number, ms: number, motion: Motion = 'walk') {
@@ -1068,8 +1146,53 @@ export class GameSession {
       boost: scrolls.has('boost'),
     });
     if (error) return forgeFail(error.message);
-    const d = data as { result: ForgeOutcome; saved: 'guard' | 'hold' | null; level: number | null; gold: unknown; paid: unknown; price: unknown };
-    return { result: d.result, saved: d.saved ?? null, level: d.level ?? null, gold: toGold(d.gold), paid: toGold(d.paid), price: toGold(d.price) };
+    const d = data as { result: ForgeOutcome; saved: 'guard' | 'hold' | null; level: number | null; gold: unknown; paid: unknown; price: unknown; best?: unknown; title?: unknown };
+    const best = Number(d.best);
+    return {
+      result: d.result,
+      saved: d.saved ?? null,
+      level: d.level ?? null,
+      gold: toGold(d.gold),
+      paid: toGold(d.paid),
+      price: toGold(d.price),
+      best: d.best !== undefined && d.best !== null && Number.isInteger(best) && best >= 0 ? best : null,
+      title: parseTitleName(d.title),
+    };
+  }
+
+  /** 모든 칭호의 id와 이름(다른 사람 이름표의 칭호 id를 이름으로 바꿈, 2026-11-28). 실패하면 빈 목록이다. */
+  async loadTitleNames(): Promise<{ id: string; name: string }[]> {
+    const { data, error } = await supabase.from('titles').select('id, name');
+    if (error || !data) return [];
+    return (data as { id: unknown; name: unknown }[]).flatMap(({ id, name }) => {
+      const label = parseTitleName(name);
+      return isTitleId(id) && label ? [{ id, name: label }] : [];
+    });
+  }
+
+  /** 내 칭호와 단 칭호, 최고 강화 기록. 정각이 지났으면 서버가 랭킹 칭호를 먼저 다시 정한다. 실패하면 null이다. */
+  async myTitles(): Promise<MyTitles | null> {
+    const { data, error } = await supabase.rpc('my_titles');
+    return error ? null : parseMyTitles(data);
+  }
+
+  /** 칭호를 단다(null이면 뗀다). 가진 칭호가 아니면 'not owned' */
+  async setTitle(id: string | null): Promise<{ worn: string | null } | 'not owned' | 'failed'> {
+    const { data, error } = await supabase.rpc('set_title', { title_id: id });
+    if (error) return error.message.includes('not owned') ? 'not owned' : 'failed';
+    return { worn: isTitleId(data) ? data : null };
+  }
+
+  /** 명예의 전당 한 탭의 위 size명과 내 줄. 실패하면 null이다. */
+  async fameRanking(kind: FameKind, size: number): Promise<{ rows: FameRow[]; me: FameRow | null } | null> {
+    const { data, error } = await supabase.rpc('ranking', { kind, how_many: size });
+    if (error) return null;
+    const d = data as { rows?: unknown; me?: unknown } | null;
+    if (!d || !Array.isArray(d.rows)) return null;
+    return {
+      rows: (d.rows as (Record<string, unknown> | null)[]).map(parseFameRow).filter((row) => row !== null),
+      me: parseFameRow(d.me as Record<string, unknown> | null),
+    };
   }
 
   /** 닉네임 변경권을 한 장 사고 새 골드와 변경권 수를 돌려준다. 실패하면 null이다. */

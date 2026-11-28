@@ -10,7 +10,11 @@ export type Notice =
   /** 닉네임 변경(2026-11-13 사용자 요청 "전체에 알림"). id로 같은 맵 사람의 이름표를 바꾼다. */
   | { kind: 'rename'; id: string; from: string; to: string }
   /** 대장간에서 +35 이상으로 올렸다(weapons.md 6장 "+35 이상 알림") */
-  | { kind: 'forge'; name: string; item: WeaponId; level: number };
+  | { kind: 'forge'; name: string; item: WeaponId; level: number }
+  /** 서버에서 처음 나온 +30 이상 단계(2026-11-28, growth-1127.md 8-1). 이때는 forge 알림이 오지 않는다. */
+  | { kind: 'forge_first'; name: string; item: WeaponId; level: number }
+  /** 내 칭호를 얻었거나 잃었다(나에게만, 서버가 보내지 않고 화면이 만든다) */
+  | { kind: 'title'; name: string; lost: boolean };
 
 /** 한 번에 화면에 남겨 두는 알림 수와 보이는 시간 */
 const MAX_NOTICES = 3;
@@ -52,6 +56,12 @@ export function josaRo(word: string) {
 export function noticeText(notice: Notice) {
   if (notice.kind === 'join') return `${notice.name}님이 입장했습니다`;
   if (notice.kind === 'forge') return `${notice.name}님이 +${notice.level} ${josa(WEAPONS[notice.item].name, '을', '를')} 띄웠습니다`;
+  if (notice.kind === 'forge_first') return `${notice.name}님이 서버에서 처음으로 +${notice.level} ${josa(WEAPONS[notice.item].name, '을', '를')} 띄웠습니다`;
+  if (notice.kind === 'title') {
+    // 따옴표 뒤 조사는 칭호 이름의 받침으로 고른다: 칭호 '명장'을 / 칭호 '대장장이'가
+    const tail = (a: string, b: string) => josa(notice.name, a, b).slice(notice.name.length);
+    return notice.lost ? `칭호 '${notice.name}'${tail('이', '가')} 없어졌습니다.` : `칭호 '${notice.name}'${tail('을', '를')} 얻었습니다.`;
+  }
   if (notice.kind === 'rename') return `${josa(notice.from, '이', '가')} 닉네임을 ${josaRo(notice.to)} 바꿨습니다`;
   if (notice.wanted > 0) return `${josa(notice.killer, '이', '가')} 현상범 ${josa(notice.victim, '을', '를')} 잡았습니다`;
   return `${josa(notice.killer, '이', '가')} ${josa(notice.victim, '을', '를')} 죽였습니다`;
