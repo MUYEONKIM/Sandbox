@@ -2,7 +2,7 @@
 
 배포했거나, 기획이 바뀌었거나, 배포하지 않은 변경을 남긴 채 일을 멈출 때 이 문서를 고친다. 마지막 수정: 2026-11-28.
 
-**이어받는 세션에게(2026-11-28 서른넷째 배포, 코드 세션 10)**: 묶음 4-1·4-3·4-4가 서른두째(425b4f8), 4-2가 서른셋째(9ae96a9, 새 SQL 운영 DB에서 실행함), 4-5 칭호 꾸밈이 서른넷째(fb6e948)로 올라갔다. 로컬에만 있는 것: 5 무기 금빛(따로 된 worktree에서 진행 중, 나중에 패치로 gold에 옮김). 할 일: 이름표 비용을 PC가 한가할 때 다시 재서 PM에게 알림. 차례는 5 → 7 펫 → 8 주간 랭킹 → 9 주방·요리.
+**이어받는 세션에게(2026-11-28 서른여섯째 배포, 코드 세션 10)**: 묶음 4-1·4-3·4-4가 서른두째(425b4f8), 4-2가 서른셋째(9ae96a9, 새 SQL 운영 DB에서 실행함), 4-5 칭호 꾸밈이 서른넷째(fb6e948), 5 무기 금빛이 서른다섯째(2a36ba9), 7 펫·레벨 TOP 10 창 빼기·profiles 권한이 서른여섯째(새 SQL 둘 운영 DB에서 실행함)로 올라갔다. 사용자 결정(2026-11-28): 이번에는 5·7까지만. **미룬 것: 묶음 8·9, 오락실** — 묶음 8(주간 랭킹·지난주 1위 칭호), 9(주방·요리·마을 캠프파이어 굽기·주방 앞 전나무 (38, 18)), 오락실·리듬게임. 인계 노트는 공유 노트 `code-handover-1128.md`.
 
 **이어받는 세션에게(2026-11-28 서른한째 배포, 코드 세션 9 → 다음 코드 세션)**: 새 기능 묶음 1·2·3·4가 스물여덟째~서른한째 배포로 올라갔고 로컬에만 있는 코드 변경은 없다(`.claude/launch.json`만 커밋 안 함, 이 문서의 배포 뒤 확인 줄은 다음 커밋에 올라감). 다음은 묶음 4-1(길 안내 표지판 빼기, 캠프파이어 고침 25×25 맵, 상점 입구 안 A) → 4-2(모험 프리셋 + 전투 수치, 기준 '지금 판 레벨', `growth-1127.md` 8-5·9장) → 4-3(NPC 대사 늘리기) → 4-4(소리) → 5 무기 금빛 → 7 펫 → 8 주간 랭킹 → 9 주방·요리. 자료 위치·일하는 법·조심할 것은 공유 노트 `code-handover-1128.md`, 묶음 표는 `code-batches-1128.md`.
 
@@ -20,6 +20,16 @@
 
 위가 최근이다. 각 배포의 커밋은 `git log`로 본다.
 
+- **펫·레벨 TOP 10 창 빼기·profiles 권한(2026-11-28 서른여섯째 배포, 묶음 7, PM 전달, 새 SQL 둘 운영 DB에서 실행함)**.
+  - 펫: 기획 `pet-care-1127.md`(사용자 결정 끝), 그림·화면 `pets.md`. 사용자 결정 ⑦⑧⑨는 추천안(⑧ 상태 창은 PC 펼침, 휴대폰 접음). 구현은 코드 세션 10이 띄운 Opus 보조 에이전트가 따로 된 worktree에서 하고, 코드 세션 10이 패치(공유 노트 `code-pets-1128.patch`)로 gold에 옮김(충돌 없음). 기록 `code-pets-1128.md`, 그림 `code-pets-shots-1128\`.
+  - 레벨 TOP 10 창 빼기: 1280×720·1366×768에서 펼친 펫 상태 창이 TOP 10 창을 덮어 PM이 물었더니 사용자 "레벨 top10을 빼라. 랭킹은 그냥 앞으로 명예의전당에서 본다". `fame.ts` RankPanel·매시 정각 읽기, `session.ts` fetchRanking, `fold.ts`의 'rank', `.rank-panel*` CSS를 뺌. SQL `top_players`는 남김. 빼고 나서 펫 창 위 끝 y=282(1280×720), 미니맵 아래 끝 259로 겹치지 않음.
+  - profiles 권한: 펫 확인 쿼리 `tables_locked`가 f여서 PM이 찾음. `20261128410000_profiles_grants.sql`로 처음 설계대로 되돌림. 앞으로 SQL 배포마다 권한 5칸을 확인 쿼리에 붙인다(`workflow.md` 3절).
+  - 바꾼 파일: 새 `src/game/pets.ts`·`petLines.ts`·`petFollower.ts`·`petCare.ts`, `src/net/pets.ts`, `src/ui/pet.css`·`petPanel.ts`·`petWindows.ts`, `public/sprites/pets/` 그림 여덟, SQL 둘. 고친 파일 `sprites.ts`, `GameScene.ts`, `avatar.ts`, `economy.ts`, `main.ts`, `session.ts`, `hud.ts`, `info.ts`, `modal.ts`, `shop.ts`, `fame.ts`, `fold.ts`, `style.css`, `updates.ts`, 문서 `game.md`·`workflow.md`.
+  - 업데이트 내역: 2026-11-28 아홉째 항목 3줄(사용자 "짧은 문구", 셋째 줄은 PM이 더함).
+  - 배포 전 확인: SQL 롤백 시험 59/59, 화면 시험 120/120(가짜 장면·세션으로 실제 코드), 40명 펫 한 프레임 약 0.03ms. 권한 SQL은 로컬에서 두 번 넣어도 5칸 true. tsc·build 통과. 게임 안 두 화면 펫 신호는 로그인이 필요해 보지 못했고 사용자가 배포 뒤 본다.
+  - 배포 뒤 바뀌는 것: 처음 접속하는 모든 계정에 펫 고르는 창이 뜨고, 고를 때까지 닫히지 않는다(사용자 결정).
+  - 커밋하지 않은 것: `.claude/launch.json`, `art-source/`, `docs/balance/`.
+
 - **무기 강화 금빛(2026-11-28 서른다섯째 배포, 묶음 5, 사용자 "짧은 문구로 배포 (추천)", PM 전달, 새 SQL 없음)**.
   - 디자인 `weapon-glow.md`(사용자 결정: +20~+29 은은, +30 이상 찬란 안 C, 모든 맵에서 손에 들기, 다른 사람에게도 보임, 아이콘 금빛, +30 금빛 칼자국·총구 터짐·총알). 구현은 코드 세션 10이 띄운 Opus 보조 에이전트가 따로 된 worktree에서 하고, 코드 세션 10이 패치(공유 노트 `code-weapon-glow-1128.patch`)로 gold에 3-way로 옮김(충돌 없음). 기록 `code-weapon-glow-1128.md`, 그림 `code-weapon-glow-shots-1128\`.
   - 바꾼 파일: 새 `src/game/weaponGlow.ts`·`src/art/goldArt.ts`·`public/sprites/forge/gold-*.png` 여섯, `avatar.ts`(hold, 금빛 칸, 공격 효과), `GameScene.ts`(updateAim·trackArm·onMove·onShot), `session.ts`(move·presence `arm`), `bullets.ts`, `hud.ts`·`forge.ts`·`weapons.ts`·`items.ts`(아이콘), `sprites.ts`.
@@ -28,6 +38,7 @@
   - 배포 전 확인: 에이전트 시험 검사 47/47, 신호 6/6, 아이콘 12/12(가짜 장면·세션으로 실제 코드), 120명 그리기 +0 0.44ms·+30 밤 0.54~0.82ms(60fps). 커밋 내용만으로 만든 임시 폴더에서 tsc·build 통과. 게임 안 두 화면 신호는 로그인이 필요해 보지 못했고 사용자가 배포 뒤 본다.
   - 이름표 비용 다시 재기(4-5, PC가 한가할 때 한 번): 이름표 40개 중 24개 반짝임, 모두 걸을 때 165~188ms/초(디자인 노트 146~147과 비슷, 60fps). 사용자에게 알렸고 지금 그대로 둔다(PM).
   - 커밋하지 않은 것: `.claude/launch.json`, `art-source/`, `docs/balance/`. 묶음 7 펫은 따로 된 worktree에서 만드는 중이라 gold에 없음.
+  - 배포 뒤 확인: 커밋 2a36ba9(20개 파일), `fb6e948..2a36ba9 big-gold -> main`. 사용자가 코드 세션 10 창에 직접 "푸시해"라고 한 뒤 푸시함. Actions "Deploy to GitHub Pages" 46125878205 성공. 실제 사이트가 새 번들 `assets/index-jaBXXr7a.js`(업데이트 줄, `forge/gold-held`·`gold-slash`)를 주고, 금빛 그림 여섯(`public/sprites/forge/gold-*.png`)이 저장소와 같음. 이 줄은 다음 커밋에 올라간다.
   - 배포 뒤 사용자가 해 볼 것: 공유 노트 `code-weapon-glow-1128.md`, PM에게 보낸 9개.
 
 - **칭호 꾸밈(2026-11-28 서른넷째 배포, 묶음 4-5, 사용자 "지금 배포", PM 전달, 새 SQL 없음)**.
@@ -993,6 +1004,10 @@ UI 스킨·글꼴·조작 안내·마우스 손전등·놓는 범위의 테스�
 
 ## 실제 DB에 들어간 SQL
 
+`20261128410000_profiles_grants.sql`(profiles 권한을 처음 설계대로: anon 권한 없음, authenticated는 읽기와 x·y·inventory·map 고치기만)은 2026-11-28에 사용자가 운영 관리 화면 SQL Editor에서 실행했다(PM 전달). 자체 운영으로 옮긴 뒤 profiles에 표 전체 권한이 다시 붙어 로그인한 사람이 REST로 자기 줄 모든 칸을 고칠 수 있던 것을 펫 확인 쿼리가 찾았다. PM이 운영 DB를 읽기만으로 확인: 권한 5칸 모두 true, profiles 표 UPDATE f·gold UPDATE f·x UPDATE t.
+
+`20261128400000_pets.sql`(profiles.pet, 표 pet_rules·pet_care·player_items, 펫 함수, 고친 함수 adventure_settle·throw_log)은 2026-11-28에 사용자가 백업 뒤 운영 관리 화면 SQL Editor에서 실행했다(PM 전달, 확인 쿼리 12칸은 권한 SQL 실행 뒤 모두 true, PM이 운영 DB를 읽기만으로 확인).
+
 `20261128200000_titles_ranking.sql`(강화 최고 기록·칭호·랭킹: profiles 칸 넷, 표 다섯, 함수 여섯, 고친 함수 여덟, 지난 값 채우기, 시험용 계정 rank_excluded)은 2026-11-28에 사용자가 백업 뒤 운영 관리 화면 SQL Editor에서 실행했다(PM 전달, 확인 쿼리 23칸 모두 true, rank_excluded 1, 코드 세션 9가 운영 DB를 읽기만으로 다시 봄).
 
 `20261128100000_village_campfire.sql`(시작마을 새 건물·광장·산길 칸 블록 지움(가로등 하나)과 새로 막히는 칸에 선 사람 옮김, `plains_reserved`와 블록 놓기 정책(광장 원·캠프파이어 맵 금지), `hit_player` 공격 금지에 campfire, `campfire_tuning`·`campfire_stats`·`throw_log()`)은 2026-11-28에 사용자가 백업 뒤 운영 관리 화면 SQL Editor에서 실행했다(PM 전달, 사용자 "모두 true, 배포해 줘", 확인 쿼리 8칸 모두 true, 코드 세션 9가 운영 DB를 읽기만으로 다시 봐 8칸 true).
@@ -1028,6 +1043,12 @@ UI 스킨·글꼴·조작 안내·마우스 손전등·놓는 범위의 테스�
 
 사용자가 직접 해 보면서 밸런스를 맞추려고 SQL Editor나 Table Editor로 실제 DB 값을 바꾸고 PM에게 알린 것이다(2026-11-23 사용자 "내가 임의로 바꿀때마다 말해주겠다."). 위가 최근이다. 저장소의 마이그레이션 파일과 로컬 DB에는 바뀌기 전 값이 그대로 있다. 기획 계산기(`docs/balance/dungeon-run.js`)는 2026-11-24부터 기본값이 '나'(D_RAMP 1.15)라서, 지금 실제 DB 값(1.12)으로 셈하려면 `D_RAMP=1.12`를 붙인다. 평원 보스 5.76은 `BOSS_D=5.76`을 붙여야 쓴다.
 
+- 2026-11-28: 별 하늘(`adv_7`, sort 7)부터 화산 폭풍(`adv_14`, sort 14)까지 보통·보스·중간 보스 세기 **× 1.35**. PM이 sort ≥ 9 × 1.5 SQL을 드렸고, 사용자가 sort ≥ 7, × 1.35로 바꿔 실행한 뒤 "이렇게 해놨다. 기억해둬라". PM이 실제 DB를 읽기만으로 한 번 곱해진 값임을 확인함(예: 별 하늘 7.40 → 9.99). 아래 2026-11-25 값을 대신한다(sort 7~14만).
+  - 실행한 SQL: `update public.adventure_zones set strength = strength * 1.35, boss_strength = boss_strength * 1.35 where sort >= 7;` `update public.adventure_minis as m set strength = m.strength * 1.35 from public.adventure_zones as z where z.id = m.zone and z.sort >= 7;`(begin … commit 안에서, 확인 select 포함)
+  - 새 값(sort 7 → 14 차례). 지역 세기 9.99, 11.0025, 12.3255, 14.7555, 16.794, 19.3995, 22.734, 26.2035 / 보스 세기 14.5665, 17.6445, 20.817, 22.1265, 26.109, 28.944, 37.098, 39.6765 / 중간 보스 adv_9 20.3985·21.033, adv_10 23.0715·22.3695, adv_11 25.0425·24.786, adv_12 28.944·28.647, adv_13 37.098·37.773, adv_14 40.8105·40.0545(adv_7·adv_8은 중간 보스 없음).
+  - 앞 값은 아래 2026-11-25 줄(지역 7.40, 8.15, 9.13, 10.93, 12.44, 14.37, 16.84, 19.41 / 보스 10.79, 13.07, 15.42, 16.39, 19.34, 21.44, 27.48, 29.39 / 중간 보스 adv_9 15.11·15.58 … adv_14 30.23·29.67).
+  - 구름 정원(sort 6)까지와 평원 보스 5.76은 그대로다. 평원 수문장은 `adventure_spots` 줄의 지역이 `adv_4`(벼랑길)라 바뀌지 않는다.
+  - 곱하는 SQL이라 다시 실행하면 또 곱해진다. 계산기로 셈하려면 sort 7~14에 × 1.35를 더 붙인다.
 - 2026-11-28: 장신구 흡혈 목걸이 효과를 열 배로. 3단계 `leech_3` 0.01 → **0.10**, 4단계 `leech_4` 0.02 → **0.20**(값·이름·값어치 다른 칸은 그대로). 사용자 "장신구에서 흡혈 목걸이의 효과를 늘린다. 1% -> 10% , 2% -> 20% 로 늘린다." → PM이 SQL을 드림 → 사용자가 `backup-prod.ps1`로 백업한 뒤 실행("실행했어"). PM이 실제 DB를 읽기만으로 0.10·0.20을 확인함.
   - 실행한 SQL: `update public.adventure_items set value = 0.10 where id = 'leech_3' and kind = 'leech';` `update public.adventure_items set value = 0.20 where id = 'leech_4' and kind = 'leech';`
   - 앞 값은 `20261119200000_adventure_expansion.sql`이 넣은 것(그 뒤 SQL은 이 값을 바꾸지 않음). 서버 전투(`adventure_power`의 장신구 흡혈 = 낀 것 가운데 가장 큰 값)가 바로 읽고, 화면 설명("때린 피해의 10% 회복", "흡혈 10%")은 새로 고치면 바뀐다. 코드는 바꾸지 않았다.

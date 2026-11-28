@@ -1402,27 +1402,6 @@ canvas {
   text-align: center;
 }
 
-.rank-panel {
-  align-self: stretch;
-  padding: 6px 8px 6px;
-  background: rgb(31 21 16 / 78%);
-  border: 2px solid var(--panel-edge);
-  font-size: 14px;
-}
-
-.rank-panel-title {
-  margin-bottom: 2px;
-  font-weight: 700;
-  text-align: center;
-}
-
-.rank-panel-note {
-  margin-top: 2px;
-  color: var(--text-dim);
-  font-size: 13px;
-  text-align: center;
-}
-
 .rank-row {
   display: flex;
   align-items: baseline;
@@ -3031,7 +3010,6 @@ canvas {
 .help,
 .account,
 .minimap,
-.rank-panel,
 .wanted,
 .toast,
 .announce,
@@ -3171,8 +3149,7 @@ canvas {
 .help,
 .help-or,
 .help-note,
-.wanted-level,
-.rank-panel-note {
+.wanted-level {
   color: var(--text);
 }
 
@@ -3474,13 +3451,12 @@ canvas {
 }
 
 /* ───────── 늘 떠 있는 창 접기(2026-11-16 사용자 "기본으로 화면에 뜨는 여러 팝업창들 최소화 버튼", 디자인 세션 ui-minimize.md) ─────────
- * 접는 창: 조작 안내, 현상범, 미니맵, 레벨 TOP 10, 채팅(src/ui/fold.ts). 계정 줄과 아래 막대는 접지 않는다.
+ * 접는 창: 조작 안내, 현상범, 미니맵, 채팅(src/ui/fold.ts). 레벨 TOP 10 창은 2026-11-28에 뺐다. 계정 줄과 아래 막대는 접지 않는다.
  * 버튼은 게임 버튼 그림(#hud button)을 그대로 쓰고, 안의 −/+는 2px 막대로 그린다(그림 파일 없음).
  * 접으면 제목 줄만 남기고 나머지는 display: none이라 배치·그리기 비용이 없다. */
 
 /* 채팅(.chat)은 이미 absolute라 그대로 둔다. */
 .minimap.foldable,
-.rank-panel.foldable,
 .wanted.foldable,
 .help.foldable {
   position: relative;
@@ -3547,8 +3523,7 @@ canvas {
 }
 
 /* 제목 줄은 버튼과 겹치지 않게 오른쪽을 비운다. */
-.foldable .minimap-title,
-.foldable .rank-panel-title {
+.foldable .minimap-title {
   padding: 0 22px;
 }
 
@@ -3557,15 +3532,12 @@ canvas {
 }
 
 /* 접힌 창: 제목 줄만. 제목 줄을 눌러도 펴진다. 오른쪽 열은 폭을 맞춰 가지런히 둔다. */
-.minimap.folded,
-.rank-panel.folded {
+.minimap.folded {
   align-self: stretch;
 }
 
 .minimap.folded .minimap-canvas,
 .minimap.folded .minimap-legend,
-.rank-panel.folded .rank-list,
-.rank-panel.folded .rank-panel-note,
 .wanted.folded .wanted-list {
   display: none;
 }
@@ -3575,7 +3547,6 @@ canvas {
 }
 
 .minimap.folded .minimap-title,
-.rank-panel.folded .rank-panel-title,
 .wanted.folded .wanted-title {
   margin-bottom: 0;
   pointer-events: auto;
@@ -3655,8 +3626,7 @@ canvas {
     top: 94px;
   }
 
-  .minimap.folded,
-  .rank-panel.folded {
+  .minimap.folded {
     align-self: auto;
   }
 }

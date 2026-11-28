@@ -1,13 +1,11 @@
 import { formatNumber } from '../game/level';
 import { goldText } from '../game/gold';
-import type { FameKind, FameRow, RankEntry } from '../net/session';
+import type { FameKind, FameRow } from '../net/session';
 import { element } from './dom';
 import { byInput } from './touch';
-import { FoldBox } from './fold';
 import { sound } from '../sound/engine';
 import { paintTitleChip } from './title/chip';
 
-type LoadRanking = () => Promise<RankEntry[] | null>;
 type LoadFame = (kind: FameKind) => Promise<{ rows: FameRow[]; me: FameRow | null } | null>;
 
 /** 명예의 전당 탭(2026-11-28 사용자 결정: 마을·무기·모험·골드·킬, 마을이 처음) */
@@ -55,18 +53,7 @@ function showFame(list: HTMLElement, kind: FameKind, rows: FameRow[], me: FameRo
   if (!rows.length && !me) element('rank-row', list).textContent = '-';
 }
 
-const HOUR_MS = 60 * 60 * 1000;
 const LOAD_FAILED = '순위를 불러오지 못했습니다.';
-
-function showRanks(list: HTMLElement, entries: RankEntry[], me: string) {
-  list.replaceChildren();
-  entries.forEach(({ nickname, level }, index) => {
-    const row = element(nickname === me ? 'rank-row mine' : 'rank-row', list);
-    element('rank-place', row, 'span').textContent = String(index + 1);
-    element('rank-name', row, 'span').textContent = nickname;
-    element('rank-level', row, 'span').textContent = `Lv. ${formatNumber(level)}`;
-  });
-}
 
 /**
  * 명예의 전당 창: 부문 탭 다섯(2026-11-28, SQL ranking). 열 때와 탭을 바꿀 때 한 번 읽는다(실시간 구독 없음).
@@ -128,32 +115,5 @@ export class FameWindow {
   close() {
     if (!this.root.hidden) sound.play('ui_close');
     this.root.hidden = true;
-  }
-}
-
-/** 미니맵 밑의 레벨 순위: 접속할 때 읽고, 그 뒤로는 매시 정각에 다시 읽는다. */
-export class RankPanel {
-  private readonly list: HTMLElement;
-
-  constructor(
-    parent: HTMLElement,
-    private readonly me: () => string,
-    private readonly load: LoadRanking,
-  ) {
-    const box = element('rank-panel', parent);
-    const title = element('rank-panel-title', box);
-    title.textContent = '레벨 TOP 10';
-    this.list = element('rank-list', box);
-    element('rank-panel-note', box).textContent = '매시 정각 갱신';
-    // 접으면 제목 줄만 남는다. 매시 정각 읽기는 그대로 한다(1시간에 한 번).
-    new FoldBox('rank', box, title);
-    void this.refresh();
-  }
-
-  private async refresh() {
-    const entries = await this.load();
-    if (entries) showRanks(this.list, entries, this.me());
-    else if (!this.list.childElementCount) this.list.textContent = LOAD_FAILED;
-    window.setTimeout(() => void this.refresh(), HOUR_MS - (Date.now() % HOUR_MS));
   }
 }

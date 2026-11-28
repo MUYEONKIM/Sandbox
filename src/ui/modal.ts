@@ -13,13 +13,16 @@ export function anyModalOpen() {
 }
 
 export function closeTopModal() {
-  open[open.length - 1]?.close();
+  const top = open[open.length - 1];
+  if (top && !top.locked) top.close();
 }
 
 export class Modal {
   readonly box: HTMLElement;
   private readonly backdrop: HTMLElement;
   private onClose: (() => void) | null = null;
+  /** 닫을 수 없는 창(펫 처음 고르는 창, 2026-11-28 사용자 결정 "고를 때까지 닫히지 않음"). Esc와 close()를 받지 않는다. */
+  locked = false;
 
   /** openSound·closeSound: 열고 닫을 때 소리(메모 창은 paper, 상자 창은 box_open·box_close) */
   constructor(root: HTMLElement, className: string, title: string, openSound: SfxKey = 'ui_open', private readonly closeSound: SfxKey = 'ui_close') {
@@ -30,7 +33,7 @@ export class Modal {
     this.backdrop.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
-      this.close();
+      if (!this.locked) this.close();
     });
     open.push(this);
     sound.play(openSound);
@@ -63,7 +66,7 @@ export class Modal {
 
   close() {
     const at = open.indexOf(this);
-    if (at < 0) return;
+    if (at < 0 || this.locked) return;
     open.splice(at, 1);
     sound.play(this.closeSound);
     this.backdrop.remove();

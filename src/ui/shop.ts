@@ -5,13 +5,16 @@ import { element } from './dom';
 import { byInput } from './touch';
 import { PLACE_ICONS } from './office';
 import { PurchaseWindow } from './purchase';
-import { goldText } from '../game/gold';
+import { goldText, type Gold } from '../game/gold';
 
 interface ShopActions {
   onBuyTool(tool: ShopTool): Promise<void>;
   onBuyRenameTicket(): Promise<void>;
   onBuyPotion(id: PotionId, amount: number): Promise<void>;
   onSell(): void;
+  /** 펫 간식(2026-11-28 펫): 사기와 한 개 값(서버 pet_rules.treat_price) */
+  onBuyPetTreats(amount: number): Promise<void>;
+  petTreatPrice(): Gold;
 }
 
 /**
@@ -48,6 +51,10 @@ export class ShopWindow extends PurchaseWindow {
       const potionList = element('shop-stats', this.root);
       for (const potion of economy.potions) this.addPotion(potionList, potion);
     }
+
+    // 펫 간식(2026-11-28 펫, 기획 pet-care-1127.md 3.3): 한 개 200G, 배부름 +50. 하나씩 또는 열 개씩 산다.
+    element('office-section', this.root).textContent = '펫';
+    this.addPetTreat(element('shop-stats', this.root));
 
     element('office-section', this.root).textContent = '기타';
     this.addRenameTicket(element('shop-stats', this.root));
@@ -93,6 +100,27 @@ export class ShopWindow extends PurchaseWindow {
       ten.textContent = `10개 ${goldText(price * 10)}`;
       one.disabled = this.busy || this.economy.gold < price;
       ten.disabled = this.busy || this.economy.gold < price * 10;
+    });
+  }
+
+  private addPetTreat(list: HTMLElement) {
+    const row = element('shop-stat', list);
+    const icon = element('shop-tool-icon', row, 'img') as HTMLImageElement;
+    icon.src = spriteUrl('pets/pet-treat-32');
+    icon.alt = '';
+    icon.style.imageRendering = 'pixelated';
+    const text = element('shop-stat-text', row);
+    element('shop-stat-name', text).textContent = '펫 간식';
+    const note = element('shop-stat-blurb', text);
+    const one = this.buyButton(row, () => this.actions.onBuyPetTreats(1));
+    const ten = this.buyButton(row, () => this.actions.onBuyPetTreats(10));
+    this.refreshers.push(() => {
+      const price = this.actions.petTreatPrice();
+      note.textContent = `가진 것 ${this.economy.petTreats.toLocaleString()}개`;
+      one.textContent = `1개 ${goldText(price)}`;
+      ten.textContent = `10개 ${goldText(price * 10n)}`;
+      one.disabled = this.busy || this.economy.gold < price;
+      ten.disabled = this.busy || this.economy.gold < price * 10n;
     });
   }
 

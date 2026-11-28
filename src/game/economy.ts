@@ -289,6 +289,43 @@ export class Economy {
     this.changed();
   }
 
+  /** 펫 먹이(2026-11-28): 거둔 작물 수(등급 합) */
+  cropCount(crop: CropId) {
+    let n = 0;
+    for (const grade of ['normal', 'praise', 'blame'] as Grade[]) n += this.harvested.get(`${grade}:${crop}`) ?? 0;
+    return n;
+  }
+
+  /** 펫이 작물 하나를 먹었다: 그 등급의 남은 수를 서버 값으로 맞춘다. */
+  setCropCount(crop: CropId, grade: Grade, count: number) {
+    const k = `${grade}:${crop}`;
+    if (count > 0) this.harvested.set(k, count);
+    else this.harvested.delete(k);
+    this.changed();
+  }
+
+  /** 가진 자원 수(펫 먹이: 말 안 듣는 붕어, 길가의 그냥 풀) */
+  stashCount(item: string) {
+    return this.stash.get(item) ?? 0;
+  }
+
+  /** 펫이 자원 하나를 먹었다: 남은 수를 서버 값으로 맞춘다. */
+  setStashCount(item: string, count: number) {
+    if (count > 0) this.stash.set(item, count);
+    else this.stash.delete(item);
+    this.changed();
+  }
+
+  /** 가진 펫 간식 수(서버 player_items 'pet_treat', 상점·인벤토리 펫 탭이 보임) */
+  petTreats = 0;
+
+  setPetTreats(count: number, gold = this.gold) {
+    if (count === this.petTreats && gold === this.gold) return;
+    this.petTreats = count;
+    this.gold = gold;
+    this.changed();
+  }
+
   /** 거둔 작물(종류마다 한 줄)과 팔면 받는 값 */
   get cropStock() {
     const rows: { crop: CropInfo; grade: Grade; count: number; value: number }[] = [];

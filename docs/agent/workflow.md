@@ -64,6 +64,7 @@
   docker exec supabase-db psql -U postgres -c "begin read only;" -c "<확인 쿼리>" -c "rollback;"
   ```
   운영 DB에 쓰는 일(SQL 실행, 값 고치기)은 사용자가 관리 화면에서 한다. 개발용 로컬 DB는 지금처럼 `npx supabase migration up`으로만 바꾼다(컨테이너 이름이 다르니 헷갈리지 않는다).
+- SQL이 있는 배포마다 확인 쿼리에 권한 다섯 칸을 붙인다(`20261128410000_profiles_grants.sql` 머리말에서 복사: profiles 고칠 칸 네 개, 그 밖엔 읽기만, anon 권한 없음, RLS 꺼진 표·뷰에 쓰기 권한 없음, 쓰기 정책 셋). 2026-11-28에 운영 profiles가 표 전체 권한으로 열려 있던 것을 펫 확인 쿼리가 찾았다(자체 운영으로 옮기며 기본 권한이 다시 붙음). 새 표는 Supabase 기본값 때문에 anon·authenticated에 모든 권한이 붙으니 마이그레이션에서 `revoke all`부터 한다. 화면 쓰기 정책을 새로 더하면 다섯째 칸의 값도 고친다.
 - 바깥 주소로 확인할 때의 공개 키는 운영 `prod\.env`의 `ANON_KEY`(= `gh variable list`의 `VITE_SUPABASE_KEY`)다. 문서와 노트에는 키 값을 적지 않는다.
   ```bash
   curl -s "https://its-sandbox.tailc69c42.ts.net/rest/v1/<표>?select=<열>&limit=1" -H "apikey: <공개 키>"

@@ -7,6 +7,7 @@ import { element } from './dom';
 import { goldText } from '../game/gold';
 import { titleEffect, titleGrade, type Titles } from '../game/titles';
 import { paintTitleChip, richNodes, titleIcon } from './title/chip';
+import { PET_FRAMES, PET_KINDS, PET_NAMES, type PetKind } from '../game/pets';
 
 /** 정보창에 보일 내 상태. HUD가 서버에서 받은 값을 들고 있다. */
 export interface MyStatus {
@@ -40,6 +41,9 @@ export class InfoView {
 
   /** 칭호 목록을 펼쳤는지. 다시 그려도 그대로 둔다. */
   private titlesOpen = false;
+
+  /** 펫 줄(2026-11-28, pets.md 4절·9-5): 펫 종류(없으면 null). 펫 서버 함수가 없으면 undefined라 줄을 그리지 않는다. */
+  pet: (() => PetKind | null | undefined) | null = null;
 
   /**
    * 단 칭호 카드(칭호 꾸밈 title-look.md 6절): 큰 등급 아이콘, '칭호', 칭호 이름(갑부면 옆에 [금화]갑부), 효과 숫자. 달지 않았으면 갑부, 둘 다 없으면 '없음'.
@@ -119,6 +123,17 @@ export class InfoView {
     change.textContent = '닉네임 바꾸기';
     change.disabled = tickets < 1;
     change.addEventListener('click', () => this.onRename());
+
+    // 펫: '[펫 그림] 펫 · 검은 고양이', 없으면 '[빈 방석] 펫 · 없음'. 바꿀 수 없어 단추는 없다.
+    const pet = this.pet?.();
+    if (pet !== undefined) {
+      const row = element('info-pet', this.root);
+      if (pet) {
+        const icon = element('pet-icon', row, 'span');
+        icon.style.backgroundPosition = `${-PET_FRAMES.indexOf('stand') * 34 * 2 - 14}px ${-PET_KINDS.indexOf(pet) * 32 * 2 - 12}px`;
+      } else element('pet-cushion icon', row, 'span').style.setProperty('--fs', '32px');
+      element('pet-name', row, 'span').textContent = `펫 · ${pet ? PET_NAMES[pet] : '없음'}`;
+    }
 
     if (this.titles) this.renderTitles(this.titles);
 

@@ -15,6 +15,7 @@ import type { WantedEntry } from '../ui/wanted';
 import type { Quote } from '../game/market';
 import { isTitleId, type MyTitles, type TitleKind } from '../game/titles';
 import type { HeldArm } from '../game/weaponGlow';
+import { isPetKind, isSentMood, type PetKind, type SentMood } from '../game/pets';
 import { supabase } from './supabase';
 
 export type Motion = 'walk' | 'run' | 'jump';
@@ -170,6 +171,10 @@ export interface PlayerMove {
   rich: boolean;
   /** 고른 칸의 무기와 그 자루의 단계(2026-11-28 무기 금빛, 손에 든 모습). 무기를 고르지 않았거나 옛 화면이면 null이다. */
   arm: HeldArm | null;
+  /** 데리고 다니는 펫(2026-11-28). 없거나(잃음 포함) 옛 화면이면 null이다. 7종 목록에 있는 값만 믿는다. */
+  pet: PetKind | null;
+  /** 펫 기분 얼굴(좋음·보통·시무룩·배고픔·졸림·외로움·힘없음). 펫이 없으면 null */
+  petMood: SentMood | null;
 }
 
 /** 가구를 쓰는 자세 */
@@ -215,11 +220,6 @@ export interface KillEntry {
   nickname: string;
   kills: number;
   deaths: number;
-}
-
-export interface RankEntry {
-  nickname: string;
-  level: bigint;
 }
 
 /** 명예의 전당 탭(2026-11-28, SQL ranking). 마을이 처음이다. */
@@ -334,6 +334,8 @@ export interface SessionEvents {
   currentArm(): HeldArm | null;
   /** 내가 가구에 앉았거나 누웠는지 */
   currentPose(): Posture | null;
+  /** 내 펫과 기분(이동 알림과 접속 명단에 싣는다). 없으면 null */
+  currentPet(): { kind: PetKind; mood: SentMood } | null;
   onMove(move: PlayerMove): void;
   onShot(shot: PlayerShot): void;
   /** 서버가 알려 주는 체력 변화. max는 그 사람의 최대 체력이고, 옛 서버 함수는 보내지 않아 null이다. */
@@ -469,7 +471,14 @@ export function parseMove(value: unknown): PlayerMove | null {
     title: ((v) => (isTitleId(v) ? v : null))((m as { title?: unknown }).title),
     rich: (m as { rich?: unknown }).rich === true,
     arm: parseArm((m as { arm?: unknown }).arm),
+    ...parsePet((m as { pet?: unknown }).pet, (m as { petMood?: unknown }).petMood),
   };
+}
+
+/** 펫 칸: 7종 가운데 하나일 때만. 기분은 펫이 있을 때만(모르는 기분이면 null) */
+function parsePet(pet: unknown, mood: unknown): { pet: PetKind | null; petMood: SentMood | null } {
+  if (!isPetKind(pet)) return { pet: null, petMood: null };
+  return { pet, petMood: isSentMood(mood) ? mood : null };
 }
 
 /** 손에 든 무기: 종류가 무기이고 단계가 0~LEVEL_MAX 정수일 때만(기본 권총은 0). 옛 화면은 이 칸이 없어 null이다. */
@@ -915,6 +924,8 @@ export class GameSession {
       torch: this.events.currentTorch(),
       arm: this.events.currentArm(),
       pose: this.events.currentPose(),
+      pet: this.events.currentPet()?.kind ?? null,
+      petMood: this.events.currentPet()?.mood ?? null,
       title: this.title,
       rich: this.rich,
     };
@@ -1287,16 +1298,6 @@ export class GameSession {
   async fetchKillRanking(size: number): Promise<KillEntry[] | null> {
     const { data, error } = await supabase.rpc('top_killers', { how_many: size });
     return error ? null : (data as KillEntry[]);
-  }
-
-  /** 레벨 순위를 위에서 size명까지 읽어 온다. 실패하면 null이다. */
-  async fetchRanking(size: number): Promise<RankEntry[] | null> {
-    const { data, error } = await supabase.rpc('top_players', { how_many: size });
-    if (error) return null;
-    return (data as { nickname: string; level: string }[]).map(({ nickname, level }) => ({
-      nickname,
-      level: parseLevel(level) ?? 1n,
-    }));
   }
 
   /** 스텟을 amount만큼 올리고 새 골드와 스텟 값을 돌려준다. 실패하면 null이다. */

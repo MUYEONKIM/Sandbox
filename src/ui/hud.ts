@@ -59,18 +59,20 @@ const HELP_ROWS: [string, string[], string?][] = [
 const HELP_CLOSED_KEY = 'help-closed';
 
 /** 인벤토리 창의 작은 탭: 블록과 무기 탭(inventory.ts의 TABS)과 주운 메모 탭 */
-type BagTab = TabId | 'memo';
-const BAG_TABS: Record<BagTab, string> = { ...TABS, memo: '메모' };
+type BagTab = TabId | 'memo' | 'petfood';
+const BAG_TABS: Record<BagTab, string> = { ...TABS, memo: '메모', petfood: '먹이' };
 /**
  * 큰 탭과 그 안의 작은 탭(2026-11-25 사용자 "꾸미기 탭, 전투(무기, 포션) 탭, 농사 탭, 메모 탭 이렇게 나뉘면 괜찮다").
  * 꾸미기 안 차례(타일·장식품·가구·벽·벽지, 벽지는 2026-11-25 사용자 "따로 '벽지' 탭으로")와 전투 안 차례(무기·포션)는 PM이 정했다. 작은 탭이 하나뿐인 큰 탭은 작은 탭 줄을 숨긴다.
  */
-type BagGroup = 'build' | 'battle' | 'farm' | 'memo';
+type BagGroup = 'build' | 'battle' | 'farm' | 'memo' | 'pet';
 const BAG_GROUPS: { id: BagGroup; label: string; tabs: BagTab[] }[] = [
   { id: 'build', label: '꾸미기', tabs: ['tile', 'decor', 'furniture', 'wall', 'paper'] },
   { id: 'battle', label: '전투', tabs: ['weapon', 'potion'] },
   { id: 'farm', label: '농사', tabs: ['seed'] },
   { id: 'memo', label: '메모', tabs: ['memo'] },
+  // 펫(2026-11-28): 가진 펫 간식과 먹이(작물·붕어·풀). 단축키 칸에는 넣지 않고 펫 상태 창 [먹이주기]로 준다.
+  { id: 'pet', label: '펫', tabs: ['petfood'] },
 ];
 
 /** 끌고 있는 것: 단축키 칸에서 집었으면 칸 번호, 인벤토리 목록에서 집었으면 그 물건 */
@@ -139,6 +141,8 @@ export class Hud {
   /** 인벤토리의 '메모' 탭 내용. 그리는 것은 GroundUi다. */
   private readonly memoPane: HTMLElement;
   private renderMemos: ((pane: HTMLElement) => void) | null = null;
+  private readonly petPane: HTMLElement;
+  private renderPet: ((pane: HTMLElement) => void) | null = null;
   private readonly bagGold: HTMLElement;
   private readonly tabButtons = new Map<BagTab, HTMLButtonElement>();
   private readonly groupButtons = new Map<BagGroup, HTMLButtonElement>();
@@ -301,6 +305,8 @@ export class Hud {
     }
     this.bag = element('slots bag', this.bagPane);
     this.memoPane = element('memo-bag', this.bagPane);
+    this.petPane = element('pet-bag', this.bagPane);
+    this.petPane.hidden = true;
     this.bagHint = element('bag-hint', this.bagPane);
     this.bagHint.textContent =
       '아래 단축키 칸으로 끌어다 놓거나, 누르면 지금 고른 칸에 들어갑니다. 단축키 칸에서 이 창으로 끌면 칸이 비워집니다. 가구는 R(휴대폰은 고른 칸을 한 번 더 누름)로 방향을 돌립니다.';
@@ -587,6 +593,16 @@ export class Hud {
     this.refreshMemos();
   }
 
+  /** 인벤토리 '펫' 탭(가진 먹이)을 그리는 함수를 받는다. */
+  setPetRenderer(render: (pane: HTMLElement) => void) {
+    this.renderPet = render;
+  }
+
+  /** 먹이 수가 바뀌면 부른다. '펫' 탭이 보이고 있으면 다시 그린다. */
+  refreshPetBag() {
+    if (this.isOpen && this.view === 'bag' && this.tab === 'petfood') this.renderPet?.(this.petPane);
+  }
+
   /** 주운 메모가 바뀌면 부른다. '메모' 탭이 보이고 있으면 다시 그린다. */
   refreshMemos() {
     if (this.isOpen && this.view === 'bag' && this.tab === 'memo') this.renderMemos?.(this.memoPane);
@@ -766,11 +782,17 @@ export class Hud {
     for (const [kind, button] of this.kindButtons) button.classList.toggle('chosen', kind === this.kind);
     this.bag.replaceChildren();
     const memo = this.tab === 'memo';
-    this.bag.hidden = memo;
-    this.bagHint.hidden = memo;
+    const pet = this.tab === 'petfood';
+    this.bag.hidden = memo || pet;
+    this.bagHint.hidden = memo || pet;
     this.memoPane.hidden = !memo;
+    this.petPane.hidden = !pet;
     if (this.tab === 'memo') {
       this.renderMemos?.(this.memoPane);
+      return;
+    }
+    if (this.tab === 'petfood') {
+      this.renderPet?.(this.petPane);
       return;
     }
     for (const id of kinds ? this.inventory.furnitureOf(this.kind) : this.inventory.catalog(this.tab)) {

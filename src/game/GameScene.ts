@@ -125,6 +125,9 @@ import type { ShopWindow } from '../ui/shop';
 import type { ForgeWindow } from '../ui/forge';
 import { opaqueAt } from './alphaMask';
 import { Avatar, memberOf, TEAM_H, TEAM_W } from './avatar';
+import { lieSeat, sitSeat, type PetSeat } from './petFollower';
+import type { PetCare } from './petCare';
+import type { PetKind, SentMood } from './pets';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
 import { sameArm, setGoldNight, type HeldArm } from './weaponGlow';
 import { BlockChunks } from './blockChunks';
@@ -285,6 +288,8 @@ const DEPTH_OVERLAY = 1;
 
 /** 닉네임을 띄울 높이: 발에서 머리 위까지 (아트 픽셀) */
 const HEAD_HEIGHT = 40;
+/** 펫 말풍선이 떠 있는 시간(기획 4.1) */
+const PET_BUBBLE_MS = 2500;
 const PORTAL_TAG_HEIGHT = 44;
 const PORTAL_FRAME_MS = 100;
 
@@ -563,6 +568,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 고른 무기와 단계(이동 알림에 싣는 값, 2026-11-28 무기 금빛)와 마지막으로 알린 값. 횃불과 같은 묶음으로 알린다. */
   private armState: HeldArm | null = null;
   private armSent: HeldArm | null = null;
+  /** 내 펫(2026-11-28): 상태는 PetCare(main.ts가 넣음), 마지막으로 알린 '종류:기분'. 횃불·무기와 같은 0.3초 묶음으로 알린다. */
+  petCare: PetCare | null = null;
+  private petSent = '';
+  /** 펫 활동 셈(10분 틱): 마지막으로 본 내 칸 */
+  private petLastTile: Tile | null = null;
+  /** 맵 위 내 펫 말풍선(내 화면에만, 2.5초) */
+  private petBubble: HTMLElement | null = null;
+  private petBubbleTimer = 0;
   /** 전쟁터의 손전등 시야 */
   private flashlight!: Flashlight;
   private gloom!: Gloom;
@@ -846,10 +859,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.me = new Avatar(this, id, this.startTile(), hp, skin, maxHp);
     if (this.mapId === 'campfire') this.me.setNight(CAMP_NIGHT_TINT);
     this.me.floorLift = this.floorLiftAt;
+    this.me.canStand = this.petWalkable;
     this.me.sounds = (key) => sound.play(key);
     this.tags.add(id, nickname);
     this.tags.setHp(id, hp, maxHp);
     this.showLevel(id, this.level);
+    // 펫 상태를 먼저 읽었으면 바로 데리고 나온다(아니면 읽은 뒤 main.ts가 부름).
+    this.syncMyPet();
 
     this.bullets = new Bullets(this, {
       inBounds: (tx, ty) => this.world.inBounds(tx, ty),
@@ -896,7 +912,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       }
       this.updateHover();
       if (pointer.rightButtonDown()) void this.collectBlock();
-      else if (pointer.leftButtonDown() && !this.clickMonster() && !this.clickNpc()) this.useSelectedItem();
+      else if (pointer.leftButtonDown() && !this.clickMonster() && !this.clickNpc() && !this.clickMyPet()) this.useSelectedItem();
     });
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       this.touchFiring = false;
@@ -1934,6 +1950,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // Phaser의 delta는 포커스가 바뀐 뒤 잠시 16.7ms로 묶여 프레임이 낮으면 움직임이 느려진다.
     const delta = Math.min(this.game.loop.rawDelta, MAX_FRAME_MS);
     this.advancePlayer(delta);
+    this.trackPetActivity(delta);
     this.updatePress(time);
     this.checkHush(time);
     for (const avatar of this.others.values()) avatar.update(delta);
@@ -2176,6 +2193,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.clickMonster(wx, wy)) return;
     // NPC를 누르면 말을 건다(범위 밖이면 범위 안까지 걸어가서). 블록 놓기보다 먼저다.
     if (this.clickNpc(wx, wy)) return;
+    if (this.clickMyPet(wx, wy)) return;
     const g = worldToGrid(wx, wy);
     const goal = { x: Math.floor(g.gx), y: Math.floor(g.gy) };
     this.advPending = null;
@@ -3119,6 +3137,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     for (const { image, tag } of this.portalSprites) place(tag, image.x, image.y - PORTAL_TAG_HEIGHT);
     for (const { tag, x, y } of this.signs) place(tag, x, y);
     this.npcs.placeTags(place, HEAD_HEIGHT);
+    // 내 펫 말풍선(보일 때만 자리를 고침)
+    const pet = this.me.pet;
+    if (this.petBubble && !this.petBubble.hidden && pet) {
+      const head = pet.head;
+      this.petBubble.style.left = `${(head.x - cam.worldView.x) * cam.zoom}px`;
+      this.petBubble.style.top = `${(head.y - 2 - cam.worldView.y) * cam.zoom}px`;
+    }
   }
 
   /**
@@ -4757,15 +4782,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const c = gridToWorld(prop.cx, prop.cy);
       const skinAt = Math.min(POSE_FRAMES.length - 1, avatar.skinIndex);
       const [, , pw, ph, pax, pay] = POSE_FRAMES[skinAt][propPose];
+      const person = { x: Math.round(c.x + prop.dx), y: Math.round(c.y + prop.dy - prop.z), depth: depthOf(x, y) + (back ? -0.5 : 0.5) };
       avatar.setPosture({
         kind,
         frame: `${skinAt}:${propPose}`,
-        x: Math.round(c.x + prop.dx),
-        y: Math.round(c.y + prop.dy - prop.z),
+        x: person.x,
+        y: person.y,
         originX: (propFlip ? pw - pax : pax) / pw,
         originY: pay / ph,
         flip: propFlip,
-        depth: depthOf(x, y) + (back ? -0.5 : 0.5),
+        depth: person.depth,
+        pet: sitSeat({ cx: c.x, cy: c.y, spot: prop, furniture: null, person, inside: (tx, ty) => tx === x && ty === y, walkable: this.petWalkable }),
       });
       return;
     }
@@ -4775,6 +4802,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     let flip = false;
     let at = tileCenter(x, y);
     at.y -= this.world.supportOf(x, y, height).lift;
+    // 펫 자리(pets.md 3절): 앉는 자리·눕는 자리를 정한 뒤 깊이와 함께 셈한다. 자리 자료가 없는 옛 가구는 칸 가운데에서 앞으로 앉은 것으로 본다.
+    const tc = tileCenter(x, y);
+    const plain = { x: Math.round(at.x), y: Math.round(at.y), lift: tc.y - at.y };
+    let petAt = (depth: number): PetSeat =>
+      sitSeat({ cx: tc.x, cy: tc.y, spot: { dx: 0, dy: 0, z: plain.lift, face: 'SW' }, furniture: id ?? null, person: { x: plain.x, y: plain.y, depth }, inside: (tx, ty) => tx === x && ty === y, walkable: this.petWalkable });
     if (id && seat) {
       const { x0, y0, a, b } = footprintOf(id, owner.x, owner.y);
       const c = gridToWorld(x0 + a / 2, y0 + b / 2);
@@ -4787,6 +4819,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         pose = up ? 'lieHeadUp' : 'lieHeadDown';
         flip = up ? !left : left;
         at = { x: c.x + (head[0] + foot[0]) / 2, y: base + (head[1] + foot[1]) / 2 - z };
+        const lie = seat.lie;
+        petAt = (depth) => lieSeat({ cx: c.x, cy: base, lie, a, b, furniture: id, person: { depth } });
       } else if (seat.sit?.length) {
         // 그 칸에서 가장 가까운 앉는 자리
         const t = tileCenter(x, y);
@@ -4795,14 +4829,20 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         pose = `sit${spot.z <= 5 ? 'Floor' : ''}${back ? 'Back' : ''}`;
         flip = spot.face === 'SE' || spot.face === 'NE';
         at = { x: c.x + spot.dx, y: base + spot.dy - spot.z };
+        const person = { x: Math.round(at.x), y: Math.round(at.y) };
+        const inside = (tx: number, ty: number) => tx >= x0 && tx < x0 + a && ty >= y0 && ty < y0 + b;
+        petAt = (depth) => sitSeat({ cx: c.x, cy: base, spot, furniture: id, person: { ...person, depth }, inside, walkable: this.petWalkable });
       }
     }
     const behind = pose.endsWith('Back') && !(id && /^rd_(sofa_corner|drum_set)_/.test(id));
     const depth = furnitureDepth + (behind ? -0.5 : 0.5);
     const skin = Math.min(POSE_FRAMES.length - 1, avatar.skinIndex);
     const [, , w, h, ax, ay] = POSE_FRAMES[skin][pose];
-    avatar.setPosture({ kind, frame: `${skin}:${pose}`, x: Math.round(at.x), y: Math.round(at.y), originX: (flip ? w - ax : ax) / w, originY: ay / h, flip, depth });
+    avatar.setPosture({ kind, frame: `${skin}:${pose}`, x: Math.round(at.x), y: Math.round(at.y), originX: (flip ? w - ax : ax) / w, originY: ay / h, flip, depth, pet: petAt(depth) });
   }
+
+  /** 펫이 설 수 있는 바닥 칸(앉은 사람 옆자리 고르기) */
+  private readonly petWalkable = (x: number, y: number) => this.world.isWalkable(x, y);
 
   /** 앉은 칸의 가구가 치워졌으면 일어난다(나와 남 모두 자세를 푼다). */
   private checkSeats() {
@@ -5059,6 +5099,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.seated?.kind ?? null;
   }
 
+  /** 내 펫과 기분(이동 알림·접속 명단, 2026-11-28). 잃었거나 고르지 않았으면 null */
+  currentPet(): { kind: PetKind; mood: SentMood } | null {
+    const kind = this.petCare?.kind;
+    return kind ? { kind, mood: this.petCare!.sentMood() } : null;
+  }
+
   currentTile() {
     return this.me.tile;
   }
@@ -5137,9 +5183,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     if (this.torchTimer) return;
     this.torchTimer = window.setTimeout(() => {
       this.torchTimer = 0;
-      if ((this.torchState === this.torchSent && sameArm(this.armState, this.armSent)) || !this.me) return;
+      const pet = this.petKey();
+      if ((this.torchState === this.torchSent && sameArm(this.armState, this.armSent) && pet === this.petSent) || !this.me) return;
       this.torchSent = this.torchState;
       this.armSent = this.armState;
+      this.petSent = pet;
       const { x, y } = this.me.tile;
       this.session.sendMove(x, y, 0);
     }, TORCH_ANNOUNCE_MS);
@@ -5155,13 +5203,15 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.level;
   }
 
-  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work, run, torch, arm, pose, title, rich }: PlayerMove) {
+  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work, run, torch, arm, pose, title, rich, pet, petMood }: PlayerMove) {
     let avatar = this.others.get(id);
     this.doorsDirty = true;
     // 남이 든 횃불: 전쟁터에서는 켜지 않는다(사용자 "전쟁터에서는 안 켜짐").
     avatar?.setTorch(torch && MAPS[this.mapId].dark !== true);
     // 남이 고른 무기(2026-11-28 무기 금빛): 공격하지 않아도 손에 든다. 일하는 동안은 들지 않는다.
     avatar?.hold(arm && !work ? arm.kind : null, arm?.level ?? 0);
+    // 남의 펫과 기분 얼굴(2026-11-28): 바뀐 때만 그림이 바뀐다. 힘없음이면 느린 걸음.
+    avatar?.setPet(pet, petMood, petMood === 'weak');
     // 모험 맵 이름표의 판 레벨: 바뀌었을 때만 고친다.
     const runChanged = (this.otherRuns.get(id) ?? null) !== run;
     this.otherRuns.set(id, run);
@@ -5169,6 +5219,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       avatar = new Avatar(this, id, { x, y }, hp, skin, maxHp);
       if (this.mapId === 'campfire') avatar.setNight(CAMP_NIGHT_TINT);
       avatar.floorLift = this.floorLiftAt;
+      avatar.canStand = this.petWalkable;
       avatar.setTorch(torch && MAPS[this.mapId].dark !== true);
       avatar.hold(arm && !work ? arm.kind : null, arm?.level ?? 0);
       this.others.set(id, avatar);
@@ -5176,6 +5227,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         this.otherPoses.set(id, pose);
         this.applyPose(avatar, pose);
       }
+      avatar.setPet(pet, petMood, petMood === 'weak');
       const shown = avatar;
       shown.sounds = (key) => sound.play(key, { at: shown.tile, who: id });
       // 남이 이 맵에 나타남(×0.5, 3초에 한 번, 내가 막 들어온 때는 빼고)
@@ -5299,7 +5351,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
    */
   onPresence(move: PlayerMove) {
     if (!this.others.has(move.id)) this.onMove(move);
-    else this.tags.setTitle(move.id, move.title, move.rich);
+    else {
+      this.tags.setTitle(move.id, move.title, move.rich);
+      this.others.get(move.id)?.setPet(move.pet, move.petMood, move.petMood === 'weak');
+    }
   }
 
   onHarvest(id: string, rare: boolean) {
@@ -5969,6 +6024,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.lastFuelAt = this.time.now;
     this.economy.setGold(result.gold);
     this.economy.setCampfireLogs(result.total);
+    // 하루 첫 장작이면 서버가 펫 친밀도 +3을 더했다(throw_log). 막대를 맞춘다.
+    void this.petCare?.refresh();
     if (this.mapId !== 'campfire') return;
     this.playFuel(this.me);
     this.session.sendFuel();
@@ -6045,6 +6102,123 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   onConnection(connected: boolean, reason: string | null) {
     this.hud.setConnected(connected, reason);
+  }
+
+  // ───────── 펫(2026-11-28 코드 묶음 7, pets.md·pet-care-1127.md) ─────────
+
+  /** 이동 알림에 싣는 '종류:기분'(바뀌면 횃불·무기와 같은 0.3초 묶음으로 알림) */
+  private petKey() {
+    const pet = this.currentPet();
+    return pet ? `${pet.kind}:${pet.mood}` : '';
+  }
+
+  /** 작별 연출 중(끝날 때까지 펫 그림을 남김) */
+  private farewelling = false;
+
+  /** 내 펫 그림을 PetCare에 맞춘다(고름·입양·잃음·기분). 다른 사람에게 바뀐 것을 알린다. */
+  syncMyPet() {
+    if (!this.me || this.farewelling) return;
+    const kind = this.petCare?.kind ?? null;
+    this.me.setPet(kind, null, kind ? this.petCare!.zero : false);
+    if (this.petKey() !== this.petSent) this.queueTorchAnnounce();
+  }
+
+  /** 작별 연출(내 펫이 보일 때만, 약 2초). 끝나면 done */
+  petFarewell(done: () => void) {
+    const pet = this.me?.pet;
+    if (!pet || !pet.visibleNow) {
+      this.me?.setPet(null);
+      done();
+      return;
+    }
+    this.farewelling = true;
+    // 0.3초 뒤 일어나 돌아보며 "......"(9-4)
+    this.time.delayedCall(300, () => this.petSay('......'));
+    pet.farewell(() => {
+      this.farewelling = false;
+      this.syncMyPet();
+      done();
+    });
+  }
+
+  /** 돌볼 수 있는 때(다른 창이 열렸거나 쓰러졌거나 맵을 옮기는 중이면 안 됨, 기획 3.1) */
+  get canCarePet() {
+    return this.canAct && !!this.me?.pet;
+  }
+
+  /** 펫이 무릎·침대 위에서 자는 중 */
+  get petAsleep() {
+    return this.me?.pet?.asleep ?? false;
+  }
+
+  /** 맵 위 돌보기 동작(내 화면에만) */
+  playPetCare(kind: 'pat' | 'praise' | 'feed' | 'shake' | 'shakeOnly' | 'play', hearts: boolean) {
+    this.me?.pet?.playCare(kind, hearts);
+  }
+
+  /** 펫 머리 위 말풍선(2.5초, 내 화면에만) */
+  petSay(text: string) {
+    if (!this.me?.pet) return;
+    if (!this.petBubble) {
+      const root = document.getElementById('hud');
+      if (!root) return;
+      this.petBubble = document.createElement('div');
+      this.petBubble.className = 'player-tag pet-say';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      this.petBubble.append(bubble);
+      root.append(this.petBubble);
+    }
+    (this.petBubble.firstChild as HTMLElement).textContent = text;
+    this.petBubble.hidden = false;
+    window.clearTimeout(this.petBubbleTimer);
+    this.petBubbleTimer = window.setTimeout(() => {
+      if (this.petBubble) this.petBubble.hidden = true;
+    }, PET_BUBBLE_MS);
+  }
+
+  /** 말 목록의 곳(캠프파이어 곁·캠프파이어 맵·모험·농장)과 한국 시간 시 */
+  petTalkPlace(): { place: 'campfire' | 'campfireMap' | 'adventure' | 'farm' | null; hour: number } {
+    const hour = (new Date().getUTCHours() + 9) % 24;
+    const seat = this.seated?.seat;
+    if (this.mapId === 'campfire') return { place: 'campfireMap', hour };
+    if (seat && propSeatAt(this.mapId, seat.x, seat.y)) return { place: 'campfire', hour };
+    if (isAdventure(this.mapId)) return { place: 'adventure', hour };
+    if (this.mapId === 'farm') return { place: 'farm', hour };
+    return { place: null, hour };
+  }
+
+  /** 맵 위 내 펫을 눌렀으면 쓰다듬기(기획 3.1). 눌렀으면 true */
+  private clickMyPet(wx?: number, wy?: number) {
+    const pet = this.me?.pet;
+    if (!pet || !pet.visibleNow || !this.onPetClick) return false;
+    const at = wx === undefined || wy === undefined ? this.pointerWorld() : { x: wx, y: wy };
+    const { x, y } = pet.anchor;
+    if (Math.abs(at.x - x) > 9 || at.y < y - 16 || at.y > y + 3) return false;
+    this.onPetClick();
+    return true;
+  }
+
+  /** 펫 그림을 누름(main.ts가 상태 창의 쓰다듬기로 잇는다) */
+  onPetClick: (() => void) | null = null;
+
+  /**
+   * 10분 틱에 보낼 펫 활동(기획 5.2): 걸은 칸(맞닿은 칸으로 옮길 때마다 1), 앉거나 누운 시간, 그 가운데 캠프파이어 통나무·의자에 앉은 시간.
+   * 쉬는 동안은 화면의 기운이 +20/시간으로 찬다. 매 프레임 내 칸을 견주는 것뿐이다.
+   */
+  private trackPetActivity(delta: number) {
+    const care = this.petCare;
+    if (!care?.kind || !this.me) return;
+    const tile = this.me.tile;
+    const last = this.petLastTile;
+    if (last !== tile) {
+      const d = last ? Math.max(Math.abs(last.x - tile.x), Math.abs(last.y - tile.y)) : 0;
+      if (!this.traveling && !this.seated && d >= 1 && d <= 2) care.walked++;
+      this.petLastTile = tile;
+    }
+    const seat = this.seated;
+    care.setResting(!!seat);
+    if (seat) care.addRest(delta, !!propSeatAt(this.mapId, seat.seat.x, seat.seat.y));
   }
 }
 

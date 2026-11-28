@@ -20,6 +20,8 @@ import { ensureGold, goldNightOf, type GoldNight } from './weaponGlow';
 import type { BulletLook } from './bullets';
 import type { Tile } from './world';
 import type { SfxKey } from '../sound/catalog';
+import { PetFollower, type PetSeat } from './petFollower';
+import type { PetKind, SentMood } from './pets';
 
 /** 캐릭터 시트의 칸 크기와, 칸 안에서 발이 닿는 높이 */
 export const TEAM_W = 22;
@@ -102,6 +104,8 @@ export interface Pose {
   originY: number;
   flip: boolean;
   depth: number;
+  /** 이 자세일 때 펫 자리(2026-11-28 펫, GameScene.applyPose가 정함) */
+  pet?: PetSeat;
 }
 
 /** 맵 위의 캐릭터 하나. 내 캐릭터와 다른 플레이어가 함께 쓴다. */
@@ -176,6 +180,10 @@ export class Avatar {
   hp: number;
   /** 최대 체력. HP 스텟에 따라 사람마다 다르다. */
   maxHp: number;
+  /** 따라오는 펫(2026-11-28). 없으면 null */
+  pet: PetFollower | null = null;
+  /** 펫이 설 수 있는 칸인지(주인 뒤로 옮길 때, GameScene이 넣음). 없으면 어디든 */
+  canStand: ((x: number, y: number) => boolean) | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -272,6 +280,34 @@ export class Avatar {
 
   get postureKind() {
     return this.posture?.kind ?? null;
+  }
+
+  /** 지금 자세(펫이 자리를 읽음). 서 있으면 null */
+  get posturePose() {
+    return this.posture;
+  }
+
+  /** 마지막 한 칸 걸음 시간(펫이 같은 빠르기로 따라옴). 아직 걷지 않았으면 0 */
+  get stepMs() {
+    return this.ms > 1 ? this.ms : 0;
+  }
+
+  /**
+   * 펫을 데리고 다닌다(kind null이면 없앰). 같은 종류면 그대로 두고 기분 얼굴만 바꾼다. mood는 다른 사람 펫 머리 위 기분 얼굴(내 펫은 null).
+   * weak: 배부름이나 함께함이 0인 동안의 힘없는 걸음.
+   */
+  setPet(kind: PetKind | null, mood: SentMood | null = null, weak = false) {
+    if (this.pet && this.pet.kind !== kind) {
+      this.pet.destroy();
+      this.pet = null;
+    }
+    if (!kind) return;
+    if (!this.pet) {
+      this.pet = new PetFollower(this.scene, this, kind);
+      if (this.night !== 0xffffff) this.pet.setTint(this.night);
+    }
+    this.pet.weak = weak;
+    this.pet.setMood(mood);
   }
 
   /** 지금 바라보는 화면 방향. 오른쪽이 1이다. */
@@ -525,6 +561,7 @@ export class Avatar {
     this.night = next;
     this.image.setTint(next);
     this.gun.setTint(next);
+    this.pet?.setTint(tint);
   }
 
   update(delta: number) {
@@ -538,6 +575,7 @@ export class Avatar {
     if (this.scene.time.now >= this.lowerGunAt) this.lowerGun();
     if (this.slashFrame >= 0) this.stepGoldSlash();
     this.sync();
+    this.pet?.update(delta);
   }
 
   /** 빠르게 밀려났다가 천천히 돌아오는 정도 (0~1) */
@@ -690,6 +728,8 @@ export class Avatar {
   }
 
   destroy() {
+    this.pet?.destroy();
+    this.pet = null;
     this.image.destroy();
     this.torch?.destroy();
     this.gun.destroy();

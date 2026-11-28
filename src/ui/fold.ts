@@ -1,20 +1,20 @@
 /**
  * 늘 떠 있는 창 접기(2026-11-16 사용자 "기본으로 화면에 뜨는 여러 팝업창들 최소화 버튼이 있으면 좋겠다",
- * 설계는 디자인 세션 공유 노트 ui-minimize.md). 접는 창은 미니맵, 레벨 TOP 10, 현상범, 채팅이고
- * 조작 안내는 예전 H와 'help-closed'를 그대로 쓴다(hud.ts).
+ * 설계는 디자인 세션 공유 노트 ui-minimize.md). 접는 창은 미니맵, 현상범, 채팅이고
+ * 조작 안내는 예전 H와 'help-closed'를 그대로 쓴다(hud.ts). 레벨 TOP 10 창은 2026-11-28에 뺐다(사용자 "랭킹은 명예의전당에서 본다").
  *
  * 접은 창 이름은 이 브라우저의 localStorage 'ui-folded'에 목록으로 남긴다(계정은 나누지 않음, 에이전트가 정함).
- * 아직 저장한 것이 없고 화면 폭이 620px 이하(휴대폰)이면 레벨 TOP 10과 현상범을 접은 채로 시작한다(사용자가 정함).
- * 저장소를 못 쓰면 모두 펼친 채로 시작한다.
+ * 아직 저장한 것이 없고 화면 폭이 620px 이하(휴대폰)이면 현상범을 접은 채로 시작한다(사용자가 정함).
+ * 저장소를 못 쓰면 모두 펼친 채로 시작한다. 예전에 저장한 'rank'는 읽을 때 걸러지고 다음 저장 때 빠진다.
  */
 
-export type FoldId = 'minimap' | 'rank' | 'wanted' | 'chat';
+export type FoldId = 'minimap' | 'wanted' | 'chat';
 
-const FOLD_IDS: readonly FoldId[] = ['minimap', 'rank', 'wanted', 'chat'];
+const FOLD_IDS: readonly FoldId[] = ['minimap', 'wanted', 'chat'];
 const STORAGE_KEY = 'ui-folded';
 /** 휴대폰 폭. style.css의 휴대폰 배치(@media (max-width: 620px))와 같다. */
 const PHONE_QUERY = '(max-width: 620px)';
-const PHONE_DEFAULT: readonly FoldId[] = ['rank', 'wanted'];
+const PHONE_DEFAULT: readonly FoldId[] = ['wanted'];
 
 let folded: Set<FoldId> | null = null;
 
@@ -72,7 +72,7 @@ export function showFoldButton(button: HTMLElement, isFolded: boolean) {
 }
 
 /**
- * 제목 줄만 남기고 접히는 상자(미니맵, 레벨 TOP 10, 현상범). 상자 오른쪽 위에 버튼을 달고, 접힌 제목 줄을 눌러도 편다.
+ * 제목 줄만 남기고 접히는 상자(미니맵, 현상범). 상자 오른쪽 위에 버튼을 달고, 접힌 제목 줄을 눌러도 편다.
  * 접힌 내용은 CSS(.folded)가 display: none으로 숨긴다.
  */
 export class FoldBox {
