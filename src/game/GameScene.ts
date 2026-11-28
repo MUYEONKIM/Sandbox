@@ -126,6 +126,7 @@ import type { ForgeWindow } from '../ui/forge';
 import { opaqueAt } from './alphaMask';
 import { Avatar, memberOf, TEAM_H, TEAM_W } from './avatar';
 import { BULLET_HEIGHT, Bullets, type BulletTarget } from './bullets';
+import { sameArm, setGoldNight, type HeldArm } from './weaponGlow';
 import { BlockChunks } from './blockChunks';
 import { CoverFader } from './covers';
 import { KEEP_CLEAR_ALPHA, KeepClear } from './keepClear';
@@ -559,6 +560,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   private torchState = false;
   private torchSent = false;
   private torchTimer = 0;
+  /** 고른 무기와 단계(이동 알림에 싣는 값, 2026-11-28 무기 금빛)와 마지막으로 알린 값. 횃불과 같은 묶음으로 알린다. */
+  private armState: HeldArm | null = null;
+  private armSent: HeldArm | null = null;
   /** 전쟁터의 손전등 시야 */
   private flashlight!: Flashlight;
   private gloom!: Gloom;
@@ -786,6 +790,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.daylight.onPhase = (phase, fade) => {
       this.glows.setPhase(phase, fade);
       this.setDayPhase(phase);
+      // 무기 금빛의 밤 빛 그림 진하기와 +30 효과 깊이(맵에 들어갈 때도 불림, weaponGlow.ts)
+      setGoldNight(this, this.mapId, phase, DEPTH_DAYLIGHT);
       // 시간대가 바뀌면 시작마을 곡을 낮·밤으로 3초 겹쳐 바꾼다(sound-plan.md 1절 2번).
       if (fade && this.mapId === 'plains') this.syncBgm(3);
     };
@@ -3208,21 +3214,35 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.cameras.main.getWorldPoint(pointer.x, pointer.y);
   }
 
-  /** 무기를 들고 있으면 마우스 쪽으로 겨누고 커서를 조준점으로 바꾼다. */
+  /**
+   * 무기를 들고 있으면 마우스 쪽으로 겨누고 커서를 조준점으로 바꾼다. 고른 칸이 무기면 모든 맵에서 손에 들고(2026-11-28 무기 금빛),
+   * 공격 금지 맵에서는 겨누지 않고 내려 든다. 작업 중에는 들지 않는다(쓰러지면 Avatar가 숨김).
+   */
   private updateAim() {
-    const arm = this.down || this.isSafeMap || this.workStartedAt !== null ? null : this.inventory.selectedArm;
+    const selected = this.inventory.selectedArm;
+    this.trackArm(selected);
+    this.me.hold(this.workStartedAt === null ? (selected?.kind ?? null) : null, selected?.gear?.level ?? 0);
+    const arm = this.down || this.isSafeMap || this.workStartedAt !== null ? null : selected;
     const key = arm?.key ?? null;
     if (key !== this.armedWith) {
       this.armedWith = key;
       this.input.setDefaultCursor(arm ? 'crosshair' : 'default');
-      if (arm) this.me.setWeapon(arm.kind);
-      else this.me.lowerGun();
+      if (!arm) this.me.lowerGun();
       this.showAmmo();
     }
     if (!arm) return;
     const w = this.pointerWorld();
     const { x, y } = this.me.sprite;
     this.me.aim(Math.atan2(w.y - (y - BULLET_HEIGHT), w.x - x));
+  }
+
+  /** 고른 무기나 그 단계가 바뀌면(칸 넘기기, 강화, 팔기·파괴) 횃불과 같은 묶음(TORCH_ANNOUNCE_MS)으로 같은 맵에 알린다(weapon-glow.md 14-3). */
+  private trackArm(arm: Arm | null) {
+    const kind = arm?.kind ?? null;
+    const level = arm?.gear?.level ?? 0;
+    if (kind === (this.armState?.kind ?? null) && level === (this.armState?.level ?? 0)) return;
+    this.armState = kind ? { kind, level } : null;
+    this.queueTorchAnnounce();
   }
 
   /** 연사 무기는 누르고 있는 동안 계속 쏜다. */
@@ -3419,6 +3439,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (target) hit(target);
     } else {
       const pellets = this.economy.weapon(weapon)?.pellets ?? 1;
+      // +30 총은 총구 금빛 터짐과 금빛 총알(weapon-glow.md 13-2). 그 밖은 look이 null이라 지금 총알이다.
+      const look = this.me.bulletLook;
+      this.me.muzzleFlash();
       if (pellets > 1) {
         const counts = new Map<string, number>();
         let left = pellets;
@@ -3427,11 +3450,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
           for (const [target, count] of counts) hit(target, count);
         };
         for (const p of this.fan(weapon, pellets, fromX, fromY, aim.gx, aim.gy)) {
-          this.bullets.fire(myId, fromX, fromY, p.x, p.y, range, (target) => counts.set(target, (counts.get(target) ?? 0) + 1), done);
+          this.bullets.fire(myId, fromX, fromY, p.x, p.y, range, (target) => counts.set(target, (counts.get(target) ?? 0) + 1), done, look);
         }
       } else {
         const shotAt = this.scatter(weapon, fromX, fromY, aim.gx, aim.gy);
-        this.bullets.fire(myId, fromX, fromY, shotAt.x, shotAt.y, range, hit);
+        this.bullets.fire(myId, fromX, fromY, shotAt.x, shotAt.y, range, hit, undefined, look);
       }
     }
 
@@ -5056,6 +5079,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.torchState;
   }
 
+  currentArm() {
+    return this.armState;
+  }
+
   /**
    * 횃불(2026-11-24 사용자 "횃불도 추가해서 밤 같은 경우 자기 반경 어느정도 범위로 아침처럼 밝게", 고른 것 "9번 칸을 골랐을 때만 켜짐",
    * "전쟁터에서는 안 켜짐"): 고른 칸이 횃불이면 들고(쓰러지면 끔), 들거나 내리면 같은 맵에 알린다(TORCH_ANNOUNCE_MS 묶음).
@@ -5102,13 +5129,17 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.daylight.setHoles(view, mine, feet, time);
   }
 
-  /** 횃불을 들거나 내린 것을 알린다. 칸을 빠르게 넘겨도 TORCH_ANNOUNCE_MS 안의 마지막 상태 하나만 보낸다. */
+  /**
+   * 횃불을 들거나 내린 것과 고른 무기·단계(trackArm)를 알린다. 칸을 빠르게 넘겨도 TORCH_ANNOUNCE_MS 안의 마지막 상태 하나만 보내고,
+   * 둘을 함께 바꾸면 한 번에 실린다.
+   */
   private queueTorchAnnounce() {
     if (this.torchTimer) return;
     this.torchTimer = window.setTimeout(() => {
       this.torchTimer = 0;
-      if (this.torchState === this.torchSent || !this.me) return;
+      if ((this.torchState === this.torchSent && sameArm(this.armState, this.armSent)) || !this.me) return;
       this.torchSent = this.torchState;
+      this.armSent = this.armState;
       const { x, y } = this.me.tile;
       this.session.sendMove(x, y, 0);
     }, TORCH_ANNOUNCE_MS);
@@ -5124,11 +5155,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     return this.level;
   }
 
-  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work, run, torch, pose, title, rich }: PlayerMove) {
+  onMove({ id, nickname, x, y, ms, hp, maxHp, level, motion, skin, work, run, torch, arm, pose, title, rich }: PlayerMove) {
     let avatar = this.others.get(id);
     this.doorsDirty = true;
     // 남이 든 횃불: 전쟁터에서는 켜지 않는다(사용자 "전쟁터에서는 안 켜짐").
     avatar?.setTorch(torch && MAPS[this.mapId].dark !== true);
+    // 남이 고른 무기(2026-11-28 무기 금빛): 공격하지 않아도 손에 든다. 일하는 동안은 들지 않는다.
+    avatar?.hold(arm && !work ? arm.kind : null, arm?.level ?? 0);
     // 모험 맵 이름표의 판 레벨: 바뀌었을 때만 고친다.
     const runChanged = (this.otherRuns.get(id) ?? null) !== run;
     this.otherRuns.set(id, run);
@@ -5137,6 +5170,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (this.mapId === 'campfire') avatar.setNight(CAMP_NIGHT_TINT);
       avatar.floorLift = this.floorLiftAt;
       avatar.setTorch(torch && MAPS[this.mapId].dark !== true);
+      avatar.hold(arm && !work ? arm.kind : null, arm?.level ?? 0);
       this.others.set(id, avatar);
       if (pose) {
         this.otherPoses.set(id, pose);
@@ -5191,10 +5225,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     }
   }
 
-  onShot({ id, weapon, fromX, fromY, toX, toY }: PlayerShot) {
+  onShot({ id, weapon, level, fromX, fromY, toX, toY }: PlayerShot) {
     const avatar = this.others.get(id);
     if (!avatar) return;
-    avatar.setWeapon(weapon);
+    // 쏜 자루의 단계로 그린다(+20부터 금빛, +30이면 금빛 칼자국·총구 터짐·총알, weapon-glow.md 13-2).
+    avatar.setWeapon(weapon, level);
     const { melee, auto, range } = WEAPONS[weapon];
     const key = weaponSfx(weapon);
     const by = () => ({ at: avatar.tile, who: id });
@@ -5208,10 +5243,12 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const to = gridToWorld(toX, toY);
     avatar.aim(Math.atan2(to.y - from.y, to.x - from.x), REMOTE_AIM_MS);
 
+    const look = avatar.bulletLook;
     const pellets = this.economy.weapon(weapon)?.pellets ?? 1;
     if (pellets > 1) {
       sound.play(key, by());
-      for (const p of this.fan(weapon, pellets, fromX, fromY, toX, toY)) this.bullets.fire(id, fromX, fromY, p.x, p.y, range);
+      avatar.muzzleFlash();
+      for (const p of this.fan(weapon, pellets, fromX, fromY, toX, toY)) this.bullets.fire(id, fromX, fromY, p.x, p.y, range, undefined, undefined, look);
       return;
     }
     const cooldown = this.economy.cooldownOf(weapon);
@@ -5220,8 +5257,9 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
         if (this.others.get(id) !== avatar) return;
         // 3발 묶음은 받은 쪽이 한 발마다 낸다
         sound.play(key, by());
+        avatar.muzzleFlash();
         const shot = this.scatter(weapon, fromX, fromY, toX, toY);
-        this.bullets.fire(id, fromX, fromY, shot.x, shot.y, range);
+        this.bullets.fire(id, fromX, fromY, shot.x, shot.y, range, undefined, undefined, look);
       });
     }
   }

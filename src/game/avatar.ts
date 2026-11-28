@@ -1,8 +1,23 @@
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import { BASE_HP, TEAM_SIZE } from '../config';
 import { depthOf, gridToWorld, keepDepth } from '../iso';
 import { WEAPONS, type WeaponId } from '../items';
 import { ensureTorchTexture, TORCH_FLAME, TORCH_FRAME_MS, TORCH_GRIP, TORCH_HAND, TORCH_ORDER, TORCH_TEXTURE } from '../art/torch';
+import {
+  GOLD_BRIGHT_MS,
+  GOLD_BRIGHT_ORDER,
+  GOLD_HELD,
+  GOLD_HELD_COLS,
+  GOLD_HELD_SIZE,
+  GOLD_MUZZLE,
+  GOLD_SLASH,
+  GOLD_SOFT_MS,
+  GOLD_SOFT_ORDER,
+  goldTier,
+  type GoldTier,
+} from '../art/goldArt';
+import { ensureGold, goldNightOf, type GoldNight } from './weaponGlow';
+import type { BulletLook } from './bullets';
 import type { Tile } from './world';
 import type { SfxKey } from '../sound/catalog';
 
@@ -38,6 +53,27 @@ const SWING_ARC = 2.4;
 const SLASH_RADIUS = 20;
 const SLASH_FADE_MS = 180;
 const SLASH_FLATTEN = 0.6;
+
+/**
+ * 무기를 고르고 겨누지 않을 때 내려 든 각도(라디안, 2026-11-28 무기 금빛 weapon-glow.md 14-1): 앞모습은 바라보는 쪽 아래로,
+ * 뒷모습은 바라보는 쪽 위로(몸 뒤). 공격 금지 맵의 나와, 공격하지 않을 때의 다른 사람이 이 자세다.
+ */
+const REST_ANGLE = 0.35;
+/** 카메라 화면 밖 이만큼(월드 px)까지는 금빛 칸을 고르고 빛·효과를 보인다. 더 밖이면 건너뛴다(weapon-glow.md 13-3). */
+const GOLD_VIEW_MARGIN = 64;
+type GoldWeapon = keyof typeof GOLD_HELD;
+
+/** 무기 그림의 금빛 단계. 기본 권총(과 금빛 그림 줄이 없는 무기)은 늘 0이다. */
+function tierOf(id: WeaponId, level: number): GoldTier {
+  return Object.hasOwn(GOLD_HELD, id) ? goldTier(level) : 0;
+}
+
+/** 사람마다 금빛 움직임 시작을 엇갈리게 하는 값(0~1999ms, id로 정해 어느 화면에서나 같음) */
+function goldPhaseOf(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return hash % 2000;
+}
 
 /** 점프의 가장 높은 지점 (아트 픽셀). 벽 블록 높이보다 높아야 넘어가 보인다. */
 const JUMP_HEIGHT = 24;
@@ -113,6 +149,30 @@ export class Avatar {
    * 둘 월드 자리(앉는 면·눕는 면), origin은 기준점(뒤집었으면 뒤집은 값), depth는 그 가구 바로 앞 깊이다.
    */
   private posture: Pose | null = null;
+  /** 손에 든 무기 그림의 종류와 금빛 단계(0 없음, 1 은은 +20~+29, 2 찬란 +30~) */
+  private weapon: WeaponId | null = null;
+  private tier: GoldTier = 0;
+  /** 고른 칸의 무기(모든 맵에서 손에 듦, 2026-11-28). 겨누지 않으면 내려 든다. 무기를 고르지 않았으면 null */
+  private carryKind: WeaponId | null = null;
+  private carryTier: GoldTier = 0;
+  /** 금빛 칸: 사람마다 엇갈림(ms), 지금 무기의 첫 칸 번호(줄 × 23), 지금 칸 */
+  private readonly goldPhase: number;
+  private goldRow = 0;
+  private goldFrame = -1;
+  /** 장면이 정한 밤 빛 그림 진하기·깊이(weaponGlow.ts) */
+  private readonly goldNight: GoldNight;
+  /** 밤 빛 그림(가산 혼합, 밤 덮개 위). 금빛 무기를 밤에 처음 그릴 때 만든다. */
+  private glow: Phaser.GameObjects.Image | null = null;
+  private glowFrame = -1;
+  /** +30 금빛 칼자국(납작한 컨테이너 안에서 돌린 그림)과 총구 터짐. 처음 쓸 때 만들어 다시 쓴다. 칸이 -1이면 쉬는 중 */
+  private goldSlash: { box: Phaser.GameObjects.Container; image: Phaser.GameObjects.Image } | null = null;
+  private slashAt = 0;
+  private slashFrame = -1;
+  private muzzle: Phaser.GameObjects.Image | null = null;
+  private muzzleAt = 0;
+  private muzzleFrame = -1;
+  /** 성능 확인용: 모든 사람의 금빛 그림(손에 든 것, 빛, 칼자국, 총구) 칸을 바꾼 횟수 */
+  static goldFrameSets = 0;
   hp: number;
   /** 최대 체력. HP 스텟에 따라 사람마다 다르다. */
   maxHp: number;
@@ -129,6 +189,8 @@ export class Avatar {
     this.hp = hp;
     this.maxHp = maxHp;
     this.firstFrame = (skin ?? memberOf(id)) * TEAM_FRAMES;
+    this.goldPhase = goldPhaseOf(id);
+    this.goldNight = goldNightOf(scene);
     this.image = scene.add.image(0, 0, 'team', this.firstFrame).setOrigin(0.5, TEAM_FOOT_Y / TEAM_H);
     this.gun = scene.add.image(0, 0, 'pistol').setVisible(false);
     this.setWeapon('pistol');
@@ -188,7 +250,10 @@ export class Avatar {
     this.hidden = hidden;
     this.image.setVisible(!hidden);
     this.shadow.setVisible(!hidden && !this.posture);
-    if (hidden) this.gun.setVisible(false);
+    if (hidden) {
+      this.gun.setVisible(false);
+      this.hideGoldLights();
+    }
     return true;
   }
 
@@ -302,19 +367,65 @@ export class Avatar {
     };
   }
 
-  /** 손에 든 무기 그림을 바꾼다. */
-  setWeapon(id: WeaponId) {
-    const { size, grip } = WEAPONS[id].art;
-    this.gun.setTexture(id).setOrigin(grip.x / size, grip.y / size);
+  /** 손에 든 무기 그림을 바꾼다. level은 그 자루의 강화 단계(+20부터 금빛, weapon-glow.md). 같은 그림이면 아무것도 하지 않는다. */
+  setWeapon(id: WeaponId, level = 0) {
+    this.showWeapon(id, tierOf(id, level));
   }
 
-  /** 칼을 화면 각도 angle 쪽으로 휘두르고 칼자국을 남긴다. */
+  private showWeapon(id: WeaponId, tier: GoldTier) {
+    if (id === this.weapon && tier === this.tier) return;
+    this.weapon = id;
+    this.tier = tier;
+    this.glowFrame = -1;
+    if (!tier) {
+      const { size, grip } = WEAPONS[id].art;
+      this.gun.setTexture(id).setOrigin(grip.x / size, grip.y / size);
+      this.hideGoldLights();
+      return;
+    }
+    // 금빛: gold-held.png의 그 무기 줄. 첫 칸을 두고, 움직이는 칸은 sync가 고른다.
+    const { row, x, y } = GOLD_HELD[id as GoldWeapon];
+    this.goldRow = row * GOLD_HELD_COLS;
+    this.goldFrame = this.goldRow + (tier === 2 ? GOLD_BRIGHT_ORDER[0] : GOLD_SOFT_ORDER[0]);
+    this.gun.setTexture(ensureGold(this.scene, 'held'), this.goldFrame).setOrigin(x / GOLD_HELD_SIZE, y / GOLD_HELD_SIZE);
+  }
+
+  /**
+   * 고른 칸의 무기를 손에 든다(2026-11-28 "모든 맵에서", 다른 사람은 이동 알림의 arm). null이면 들지 않는다.
+   * 겨누지 않을 때는 내려 든 자세로 그린다. 바뀐 때만 그림을 바꾼다(매 프레임 불러도 된다).
+   */
+  hold(id: WeaponId | null, level = 0) {
+    const tier = id ? tierOf(id, level) : 0;
+    if (id === this.carryKind && tier === this.carryTier) return;
+    this.carryKind = id;
+    this.carryTier = tier;
+    if (id) this.showWeapon(id, tier);
+  }
+
+  /** +30 총을 쏠 때 총구 금빛 터짐(weapon-glow.md 13-2). 그 밖의 무기와 화면 밖에서는 아무것도 하지 않는다. */
+  muzzleFlash() {
+    if (this.tier !== 2 || WEAPONS[this.weapon!].melee) return;
+    this.muzzleAt = this.scene.time.now;
+    this.muzzleFrame = -2;
+  }
+
+  /** 이 사람이 쏘는 총알 그림: +30이면 금빛 총알과 그 깊이(밤에는 덮개 위), 아니면 null(지금 총알) */
+  get bulletLook(): BulletLook | null {
+    if (this.tier !== 2) return null;
+    return { texture: ensureGold(this.scene, 'bullet'), depth: this.goldNight.fxDepth };
+  }
+
+  /** 칼을 화면 각도 angle 쪽으로 휘두르고 칼자국을 남긴다. +30이면 금빛 칼자국이다. */
   swing(angle: number, holdMs?: number) {
     this.aim(angle, holdMs);
     this.swingT = 0;
 
     const { x, y, depth } = this.image;
     const center = Math.atan2(Math.sin(angle) / SLASH_FLATTEN, Math.cos(angle));
+    if (this.tier === 2) {
+      this.goldSwing(x, y - HAND_HEIGHT, center, depth + 1);
+      return;
+    }
     const slash = this.scene.add
       .graphics()
       .setPosition(x, y - HAND_HEIGHT)
@@ -331,6 +442,54 @@ export class Avatar {
     });
   }
 
+  /**
+   * +30 금빛 칼자국(gold-slash.png 4장 × 50ms): 흰 호와 같은 자리·납작함·각도. 사람마다 하나를 만들어 다시 쓴다.
+   * 밤 덮개가 있는 밤에는 덮개 위에 둔다. 화면 밖이면 그리지 않는다.
+   */
+  private goldSwing(x: number, y: number, center: number, depth: number) {
+    if (!this.onScreen(x, y)) return;
+    let slash = this.goldSlash;
+    if (!slash) {
+      const image = this.scene.add.image(0, 0, ensureGold(this.scene, 'slash'), 0);
+      const box = this.scene.add.container(0, 0, [image]).setScale(1, SLASH_FLATTEN);
+      slash = this.goldSlash = { box, image };
+    }
+    slash.box.setPosition(x, y).setDepth(this.goldNight.fxDepth ?? depth).setVisible(true);
+    slash.image.setRotation(center).setFrame(0);
+    this.slashAt = this.scene.time.now;
+    this.slashFrame = 0;
+    Avatar.goldFrameSets++;
+  }
+
+  /** 금빛 칼자국 칸을 넘기고, 다 보였으면 숨긴다. */
+  private stepGoldSlash() {
+    const slash = this.goldSlash!;
+    const k = Math.floor((this.scene.time.now - this.slashAt) / GOLD_SLASH.ms);
+    if (k >= GOLD_SLASH.frames) {
+      slash.box.setVisible(false);
+      this.slashFrame = -1;
+    } else if (k !== this.slashFrame) {
+      this.slashFrame = k;
+      slash.image.setFrame(k);
+      Avatar.goldFrameSets++;
+    }
+  }
+
+  /** 카메라 화면(여백 GOLD_VIEW_MARGIN) 안의 자리인지 */
+  private onScreen(x: number, y: number) {
+    const view = this.scene.cameras.main.worldView;
+    return x > view.x - GOLD_VIEW_MARGIN && x < view.right + GOLD_VIEW_MARGIN && y > view.y - GOLD_VIEW_MARGIN && y < view.bottom + GOLD_VIEW_MARGIN;
+  }
+
+  /** 밤 빛 그림과 총구 터짐을 숨긴다(무기를 숨기거나 금빛이 아니게 될 때). */
+  private hideGoldLights() {
+    if (this.glow?.visible) this.glow.setVisible(false);
+    if (this.muzzleFrame !== -1) {
+      this.muzzle?.setVisible(false);
+      this.muzzleFrame = -1;
+    }
+  }
+
   /** 총을 화면 각도 angle로 겨눈다. holdMs를 주면 그 시간이 지나 내린다. */
   aim(angle: number, holdMs?: number) {
     this.aimAngle = angle;
@@ -340,6 +499,8 @@ export class Avatar {
   lowerGun() {
     this.aimAngle = null;
     this.lowerGunAt = Infinity;
+    // 다른 사람이 공격할 때 바꿔 든 무기(shot)가 고른 무기와 다르면 고른 무기로 돌아간다.
+    if (this.carryKind) this.showWeapon(this.carryKind, this.carryTier);
   }
 
   setHp(hp: number) {
@@ -375,6 +536,7 @@ export class Avatar {
     if (this.knockT < 1) this.knockT = Math.min(1, this.knockT + delta / KNOCK_MS);
     if (this.swingT < 1) this.swingT = Math.min(1, this.swingT + delta / SWING_MS);
     if (this.scene.time.now >= this.lowerGunAt) this.lowerGun();
+    if (this.slashFrame >= 0) this.stepGoldSlash();
     this.sync();
   }
 
@@ -394,6 +556,7 @@ export class Avatar {
       this.image.setTexture('poses', p.frame).setFlipX(p.flip).setOrigin(p.originX, p.originY).setRotation(0).setPosition(p.x, p.y);
       keepDepth(this.image, p.depth);
       this.gun.setVisible(false);
+      this.hideGoldLights();
       this.torch?.setVisible(false);
       return;
     }
@@ -446,22 +609,93 @@ export class Avatar {
       }
     }
 
-    const armed = this.aimAngle !== null && !this.isDown && !this.hidden;
+    // 겨누는 중이면 겨눈 쪽, 아니면 고른 무기를 내려 든 자세(모든 맵, 2026-11-28 weapon-glow.md 14-1). 쓰러지면 숨긴다.
+    const aiming = this.aimAngle !== null;
+    const armed = (aiming || this.carryKind !== null) && !this.isDown && !this.hidden;
     this.gun.setVisible(armed);
     if (armed) {
-      const angle = this.aimAngle! + (this.swingT < 1 ? (this.swingT - 0.5) * SWING_ARC : 0);
-      this.gun
-        .setPosition(drawX + Math.cos(angle) * HAND_REACH, drawY - HAND_HEIGHT + Math.sin(angle) * HAND_REACH * 0.5)
-        .setRotation(angle)
-        .setFlipY(Math.abs(angle) > Math.PI / 2);
+      let angle: number;
+      let bob = 0;
+      if (aiming) angle = this.aimAngle! + (this.swingT < 1 ? (this.swingT - 0.5) * SWING_ARC : 0);
+      else {
+        angle = this.back ? (this.flip ? -REST_ANGLE : REST_ANGLE - Math.PI) : this.flip ? REST_ANGLE : Math.PI - REST_ANGLE;
+        // 쉬는 그림 둘째 장은 손이 1px 내려간다(횃불과 같음).
+        if (!walking && idleFrame === 1) bob = 1;
+      }
+      const flipY = Math.abs(angle) > Math.PI / 2;
+      const gx = drawX + Math.cos(angle) * HAND_REACH;
+      const gy = drawY - HAND_HEIGHT + bob + Math.sin(angle) * HAND_REACH * 0.5;
+      this.gun.setPosition(gx, gy).setRotation(angle).setFlipY(flipY);
       keepDepth(this.gun, Math.sin(angle) < 0 ? depth - 0.5 : depth + 0.5);
+      if (this.tier) this.syncGold(gx, gy, angle, flipY, depth);
+    } else this.hideGoldLights();
+  }
+
+  /**
+   * 금빛 무기(weapon-glow.md 5·13절): 지금 칸을 골라 바뀔 때만 setFrame, 밤이면 같은 칸의 빛 그림을 무기에 겹치고,
+   * +30 총이면 쏜 뒤 0.12초 총구 터짐을 총구에 둔다. 화면 밖이면 칸을 고르지 않고 빛·효과를 숨긴다.
+   */
+  private syncGold(x: number, y: number, angle: number, flipY: boolean, depth: number) {
+    if (!this.onScreen(x, y)) {
+      this.hideGoldLights();
+      return;
     }
+    const now = this.scene.time.now;
+    const bright = this.tier === 2;
+    const order = bright ? GOLD_BRIGHT_ORDER : GOLD_SOFT_ORDER;
+    const frame = this.goldRow + order[Math.floor((now + this.goldPhase) / (bright ? GOLD_BRIGHT_MS : GOLD_SOFT_MS)) % order.length];
+    if (frame !== this.goldFrame) {
+      this.goldFrame = frame;
+      this.gun.setFrame(frame, false, false);
+      Avatar.goldFrameSets++;
+    }
+
+    // 밤 빛 그림: 몸 앞에 든 무기만. 몸 뒤로 든 무기(뒷모습, 위로 겨눔)는 빛을 덮개 위에 두면 몸 위로 무기 빛이 비치고,
+    // 몸 아래에 두면 사람 사이에 가산 그림이 끼어 그리기 묶음이 끊겨(120명 밤 그리기 약 0.57 → 0.85ms) 빛을 끈다(제가 정한 것).
+    const night = this.goldNight;
+    if (night.strength > 0 && Math.sin(angle) >= 0) {
+      let glow = this.glow;
+      if (!glow) glow = this.glow = this.scene.add.image(0, 0, ensureGold(this.scene, 'light'), frame).setBlendMode(Phaser.BlendModes.ADD);
+      if (frame !== this.glowFrame) {
+        this.glowFrame = frame;
+        glow.setFrame(frame, false, false);
+        Avatar.goldFrameSets++;
+      }
+      if (glow.originX !== this.gun.originX || glow.originY !== this.gun.originY) glow.setOrigin(this.gun.originX, this.gun.originY);
+      if (glow.alpha !== night.strength) glow.setAlpha(night.strength);
+      keepDepth(glow.setPosition(x, y).setRotation(angle).setFlipY(flipY).setVisible(true), night.lightDepth);
+    } else if (this.glow?.visible) this.glow.setVisible(false);
+
+    if (this.muzzleFrame === -1) return;
+    const k = Math.floor((now - this.muzzleAt) / GOLD_MUZZLE.ms);
+    if (k >= GOLD_MUZZLE.frames || !bright) {
+      this.muzzle?.setVisible(false);
+      this.muzzleFrame = -1;
+      return;
+    }
+    const muzzle = (this.muzzle ??= this.scene.add.image(0, 0, ensureGold(this.scene, 'muzzle'), 0));
+    if (k !== this.muzzleFrame) {
+      this.muzzleFrame = k;
+      muzzle.setFrame(k);
+      Avatar.goldFrameSets++;
+    }
+    // 총구 자리: 손잡이에서 총구까지(그림 안)를 무기와 같이 뒤집고 돌린다.
+    const art = GOLD_HELD[this.weapon as GoldWeapon];
+    const tx = art.tipX - art.x;
+    const ty = (flipY ? -1 : 1) * (art.tipY - art.y);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    muzzle.setPosition(x + cos * tx - sin * ty, y + sin * tx + cos * ty).setRotation(angle).setFlipY(flipY).setVisible(true);
+    keepDepth(muzzle, night.fxDepth ?? depth + 1);
   }
 
   destroy() {
     this.image.destroy();
     this.torch?.destroy();
     this.gun.destroy();
+    this.glow?.destroy();
+    this.goldSlash?.box.destroy();
+    this.muzzle?.destroy();
     this.shadow.destroy();
   }
 }

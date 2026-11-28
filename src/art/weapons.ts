@@ -1,4 +1,5 @@
 import { FORGE_HELD, FORGE_HELD_SIZE, FORGE_ICON_SIZE, FORGE_ICONS, type ForgeIconId, type ForgeWeaponArtId } from './forgeArt';
+import { GOLD_HELD, GOLD_ICON_SIZE, GOLD_ICON_SMALL } from './goldArt';
 import { Pixels } from './pixels';
 import { sprite } from './sprites';
 
@@ -72,6 +73,19 @@ export function paintForgeIcon(id: ForgeIconId) {
   canvas.width = size;
   canvas.height = size;
   canvas.getContext('2d')!.drawImage(sprite('forge/icons'), col * size, row * size, size, size, 0, 0, size, size);
+  return canvas;
+}
+
+/**
+ * 금빛 아이콘(2026-11-28 무기 금빛, weapon-glow.md 5절): public/sprites/forge/gold-icons.png의 그 무기 줄, 칸 0 은은 · 1 찬란.
+ * 기관총은 지금 아이콘과 같은 24×24(칸 왼쪽 위)다.
+ */
+export function paintGoldIcon(id: keyof typeof GOLD_HELD, tier: 1 | 2) {
+  const size = GOLD_ICON_SMALL[id] ?? GOLD_ICON_SIZE;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  canvas.getContext('2d')!.drawImage(sprite('forge/gold-icons'), (tier - 1) * GOLD_ICON_SIZE, GOLD_HELD[id].row * GOLD_ICON_SIZE, size, size, 0, 0, size, size);
   return canvas;
 }
 

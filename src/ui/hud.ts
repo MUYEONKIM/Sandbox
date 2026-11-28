@@ -3,7 +3,8 @@ import { FURNITURE_KIND_IDS, FURNITURE_KINDS, type FurnitureKind } from '../game
 import { HOTBAR_SIZE, MEMO_SLOT, TABS, type Inventory, type TabId } from '../game/inventory';
 import { formatNumber, levelNeed } from '../game/level';
 import { goldText, type Gold } from '../game/gold';
-import { isPotion, isSeed, paintItem, type GearRef, type ItemId, type PotionId, type SeedId } from '../items';
+import { isPotion, isSeed, isWeapon, paintItem, paintWeaponIcon, type GearRef, type ItemId, type PotionId, type SeedId } from '../items';
+import { goldTier } from '../art/goldArt';
 import { element } from './dom';
 import { foldButton } from './fold';
 import type { MyStatus } from './info';
@@ -17,11 +18,14 @@ import { sound } from '../sound/engine';
  * 그림을 읽은 뒤(Hud를 만든 뒤)에만 부른다.
  */
 const iconCache = new Map<string, string>();
-function iconUrl(id: Exclude<ItemId, GearRef>) {
-  let url = iconCache.get(id);
+/** level은 자루의 강화 단계(2026-11-28 무기 금빛): +20부터 금빛 아이콘이고 캐시 키는 '종류:금빛 단계'다. */
+function iconUrl(id: Exclude<ItemId, GearRef>, level = 0) {
+  const tier = isWeapon(id) ? goldTier(level) : 0;
+  const key = tier ? `${id}:${tier}` : id;
+  let url = iconCache.get(key);
   if (!url) {
-    url = paintItem(id).toDataURL();
-    iconCache.set(id, url);
+    url = (isWeapon(id) ? paintWeaponIcon(id, level) : paintItem(id)).toDataURL();
+    iconCache.set(key, url);
   }
   return url;
 }
@@ -821,7 +825,7 @@ export class Hud {
   }
 
   private iconOf(id: ItemId) {
-    return iconUrl(this.inventory.iconKey(id));
+    return iconUrl(this.inventory.iconKey(id), this.inventory.gearOf(id)?.level ?? 0);
   }
 
   private countText(id: ItemId) {

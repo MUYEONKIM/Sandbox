@@ -1,4 +1,5 @@
-import { forgeHeldArt, MACHINE_GUN_ART, paintForgeIcon, PISTOL_ART, type WeaponArt } from './art/weapons';
+import { forgeHeldArt, MACHINE_GUN_ART, paintForgeIcon, paintGoldIcon, PISTOL_ART, type WeaponArt } from './art/weapons';
+import { GOLD_HELD, goldTier } from './art/goldArt';
 import type { ForgeIconId } from './art/forgeArt';
 import { sprite } from './art/sprites';
 import { BLOCKS, paintBlockIcon, type BlockId } from './blocks';
@@ -141,8 +142,13 @@ export function itemName(id: ItemId): string {
   return BLOCKS[id].name;
 }
 
-/** 무기 아이콘: 대장간 무기는 forge/icons.png 칸, 기본 권총과 기관총은 손에 든 그림 그대로 */
-export function paintWeaponIcon(id: WeaponId) {
+/**
+ * 무기 아이콘: 대장간 무기는 forge/icons.png 칸, 기본 권총과 기관총은 손에 든 그림 그대로.
+ * level은 그 자루의 강화 단계: +20~+29 은은, +30 이상 찬란한 금빛 아이콘(2026-11-28, 기본 권총은 없음)
+ */
+export function paintWeaponIcon(id: WeaponId, level = 0) {
+  const tier = goldTier(level);
+  if (tier && id !== 'pistol' && Object.hasOwn(GOLD_HELD, id)) return paintGoldIcon(id, tier);
   const { icon, art } = WEAPONS[id];
   return icon ? paintForgeIcon(icon) : art.paint();
 }

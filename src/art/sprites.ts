@@ -75,6 +75,14 @@ const NAMES = [
   // 대장간 무기: 손에 든 그림과 아이콘(src/art/forgeArt.ts가 칸 자리)
   'forge/held',
   'forge/icons',
+  // 무기 강화 금빛(2026-11-28, 디자인 세션 16 art-source/weapon-glow/out/final, src/art/goldArt.ts가 칸 자리): 손에 든 그림·밤 빛·아이콘,
+  // +30 칼자국·총구 터짐·총알. 게임 텍스처는 처음 금빛 무기를 그릴 때 올린다(src/game/weaponGlow.ts).
+  'forge/gold-held',
+  'forge/gold-light',
+  'forge/gold-icons',
+  'forge/gold-slash',
+  'forge/gold-muzzle',
+  'forge/gold-bullet',
   // 건물 안 다시 꾸미기 소품 28장(디자인 세션, 2026-11-16, interior-restyle.md)
   'mart-freezer',
   'mart-freezer-x',

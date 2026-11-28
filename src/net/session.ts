@@ -14,6 +14,7 @@ import type { Notice } from '../ui/notice';
 import type { WantedEntry } from '../ui/wanted';
 import type { Quote } from '../game/market';
 import { isTitleId, type MyTitles, type TitleKind } from '../game/titles';
+import type { HeldArm } from '../game/weaponGlow';
 import { supabase } from './supabase';
 
 export type Motion = 'walk' | 'run' | 'jump';
@@ -167,6 +168,8 @@ export interface PlayerMove {
   title: string | null;
   /** 골드 1위 '갑부'인지(단 칭호 옆에 늘 함께 보임) */
   rich: boolean;
+  /** 고른 칸의 무기와 그 자루의 단계(2026-11-28 무기 금빛, 손에 든 모습). 무기를 고르지 않았거나 옛 화면이면 null이다. */
+  arm: HeldArm | null;
 }
 
 /** 가구를 쓰는 자세 */
@@ -327,6 +330,8 @@ export interface SessionEvents {
   currentRun(): string | null;
   /** 횃불을 들었는지(이동 알림과 접속 명단에 싣는다) */
   currentTorch(): boolean;
+  /** 고른 무기와 단계(이동 알림과 접속 명단에 싣는다) */
+  currentArm(): HeldArm | null;
   /** 내가 가구에 앉았거나 누웠는지 */
   currentPose(): Posture | null;
   onMove(move: PlayerMove): void;
@@ -440,7 +445,7 @@ const isLevel = (v: unknown): v is number => Number.isInteger(v) && (((v as numb
 const isSkin = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < TEAM_SIZE;
 
 /** 다른 플레이어가 보낸 값은 믿을 수 없으므로 형식을 확인한다. */
-function parseMove(value: unknown): PlayerMove | null {
+export function parseMove(value: unknown): PlayerMove | null {
   const m = value as (Partial<Omit<PlayerMove, 'level'>> & { level?: unknown }) | null;
   if (!m || typeof m.id !== 'string' || typeof m.nickname !== 'string') return null;
   if (!isTileCoord(m.x) || !isTileCoord(m.y) || typeof m.ms !== 'number') return null;
@@ -463,7 +468,17 @@ function parseMove(value: unknown): PlayerMove | null {
     pose: ((v) => (v === 'sit' || v === 'lie' ? v : null))((m as { pose?: unknown }).pose),
     title: ((v) => (isTitleId(v) ? v : null))((m as { title?: unknown }).title),
     rich: (m as { rich?: unknown }).rich === true,
+    arm: parseArm((m as { arm?: unknown }).arm),
   };
+}
+
+/** 손에 든 무기: 종류가 무기이고 단계가 0~LEVEL_MAX 정수일 때만(기본 권총은 0). 옛 화면은 이 칸이 없어 null이다. */
+function parseArm(value: unknown): HeldArm | null {
+  const a = value as { kind?: unknown; level?: unknown } | null | undefined;
+  if (!a || typeof a !== 'object' || !isWeapon(a.kind)) return null;
+  const level = a.level;
+  if (typeof level !== 'number' || !Number.isInteger(level) || level < 0 || level > LEVEL_MAX) return null;
+  return { kind: a.kind, level: a.kind === 'pistol' ? 0 : level };
 }
 
 /** 판 레벨 글자(숫자만, 너무 길지 않게). 아니면 null */
@@ -898,6 +913,7 @@ export class GameSession {
       work: this.events.currentWork(),
       run: this.events.currentRun(),
       torch: this.events.currentTorch(),
+      arm: this.events.currentArm(),
       pose: this.events.currentPose(),
       title: this.title,
       rich: this.rich,

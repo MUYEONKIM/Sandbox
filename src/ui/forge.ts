@@ -14,6 +14,7 @@ import { goldText, type Gold } from '../game/gold';
 import type { Inventory } from '../game/inventory';
 import { paintWeaponIcon, WEAPONS, type WeaponId } from '../items';
 import { paintForgeIcon } from '../art/weapons';
+import { goldTier } from '../art/goldArt';
 import type { ForgeFail, ForgeResult } from '../net/session';
 import { element } from './dom';
 import { ForgeFx } from './forgeFx';
@@ -60,13 +61,15 @@ const COUNTDOWN_MS = 100;
 
 const percent = (value: number) => `${Number(value.toFixed(1))}%`;
 
-/** 아이콘 그림은 한 번만 만든다(창을 다시 그릴 때마다 캔버스를 만들지 않게). */
+/** 아이콘 그림은 한 번만 만든다(창을 다시 그릴 때마다 캔버스를 만들지 않게). 자루는 단계가 +20부터 금빛 아이콘이다(2026-11-28). */
 const iconUrls = new Map<string, string>();
-function weaponIcon(kind: WeaponId) {
-  let url = iconUrls.get(kind);
+function weaponIcon(kind: WeaponId, level = 0) {
+  const tier = goldTier(level);
+  const key = tier ? `${kind}:${tier}` : kind;
+  let url = iconUrls.get(key);
   if (!url) {
-    url = paintWeaponIcon(kind).toDataURL();
-    iconUrls.set(kind, url);
+    url = paintWeaponIcon(kind, level).toDataURL();
+    iconUrls.set(key, url);
   }
   return url;
 }
@@ -230,7 +233,7 @@ export class ForgeWindow extends PurchaseWindow {
     for (const gear of list) {
       const row = element('shop-stat', this.gearList);
       const icon = element('shop-tool-icon', row, 'img') as HTMLImageElement;
-      icon.src = weaponIcon(gear.kind);
+      icon.src = weaponIcon(gear.kind, gear.level);
       icon.alt = '';
       const text = element('shop-stat-text', row);
       element('shop-stat-name', text).textContent = `+${gear.level} ${WEAPONS[gear.kind].name}`;
@@ -306,7 +309,7 @@ export class ForgeWindow extends PurchaseWindow {
 
     const head = element('shop-stat', this.bench);
     const icon = element('shop-tool-icon', head, 'img') as HTMLImageElement;
-    icon.src = weaponIcon(gear.kind);
+    icon.src = weaponIcon(gear.kind, gear.level);
     icon.alt = '';
     const text = element('shop-stat-text', head);
     const name = WEAPONS[gear.kind].name;
@@ -362,7 +365,7 @@ export class ForgeWindow extends PurchaseWindow {
     this.render();
     // 누르자마자 연출을 띄우고, 서버 결과는 받는 대로 넘겨 마지막 번개에 보인다.
     // 단계·목록과 결과 문구는 연출이 사라진 뒤에 붙인다(뒤 창에 결과가 먼저 비치지 않게). 골드는 바로 맞춘다.
-    const shown = this.fx.play(weaponIcon(gear.kind), hammerMs(this.basePrice(gear.kind)));
+    const shown = this.fx.play(weaponIcon(gear.kind, gear.level), hammerMs(this.basePrice(gear.kind)));
     let landed: ForgeResult | null = null;
     try {
       const outcome = await this.actions.hammer(gear, new Set(this.scrolls));

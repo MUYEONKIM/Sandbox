@@ -17,6 +17,12 @@ export interface BulletTarget {
   y: number;
 }
 
+/** 총알 그림을 바꿀 때(+30 금빛 총알, 2026-11-28 weapon-glow.md 13-2): 텍스처 키와 깊이(null이면 지금처럼 총알 칸 깊이) */
+export interface BulletLook {
+  texture: string;
+  depth: number | null;
+}
+
 export interface BulletWorld {
   /** 맵 안의 칸인지. 맵 밖으로 나간 총알은 사라진다. */
   inBounds(x: number, y: number): boolean;
@@ -37,6 +43,8 @@ interface Bullet {
   /** 맞았든 아니든 총알이 사라질 때 불린다(산탄 알 수를 모아 보낼 때). */
   onDone?: () => void;
   image: Phaser.GameObjects.Image;
+  /** 늘 이 깊이에 그린다(밤 덮개 위의 금빛 총알). null이면 칸 깊이 */
+  depth: number | null;
 }
 
 /** 날아가는 총알 전체. 격자 좌표로 움직이고, 벽이나 사람에 닿으면 사라진다. */
@@ -48,7 +56,7 @@ export class Bullets {
     private readonly world: BulletWorld,
   ) {}
 
-  /** (fromX, fromY)에서 (toX, toY) 쪽으로 쏜다. onHit, onDone은 내가 쏜 총알에만 준다. */
+  /** (fromX, fromY)에서 (toX, toY) 쪽으로 쏜다. onHit, onDone은 내가 쏜 총알에만 준다. look이 있으면 그 그림(금빛 총알)이다. */
   fire(
     ownerId: string,
     fromX: number,
@@ -58,6 +66,7 @@ export class Bullets {
     range: number,
     onHit?: (targetId: string) => void,
     onDone?: () => void,
+    look: BulletLook | null = null,
   ) {
     const length = Math.hypot(toX - fromX, toY - fromY);
     if (length === 0) {
@@ -69,10 +78,10 @@ export class Bullets {
 
     const start = gridToWorld(fromX, fromY);
     const ahead = gridToWorld(fromX + dx, fromY + dy);
-    const image = this.scene.add.image(0, 0, 'bullet');
+    const image = this.scene.add.image(0, 0, look?.texture ?? 'bullet');
     image.setRotation(Math.atan2(ahead.y - start.y, ahead.x - start.x));
 
-    const bullet = { x: fromX, y: fromY, dx, dy, left: range, ownerId, onHit, onDone, image };
+    const bullet = { x: fromX, y: fromY, dx, dy, left: range, ownerId, onHit, onDone, image, depth: look?.depth ?? null };
     this.bullets.push(bullet);
     this.place(bullet);
   }
@@ -81,7 +90,7 @@ export class Bullets {
     const pos = gridToWorld(bullet.x, bullet.y);
     bullet.image
       .setPosition(pos.x, pos.y - BULLET_HEIGHT)
-      .setDepth(depthOf(bullet.x - 0.5, bullet.y - 0.5) + 2);
+      .setDepth(bullet.depth ?? depthOf(bullet.x - 0.5, bullet.y - 0.5) + 2);
   }
 
   update(delta: number) {
