@@ -3,7 +3,8 @@ import { element } from './dom';
 import { foldButton, isFolded, saveFolded, showFoldButton } from './fold';
 import { TOUCH } from './touch';
 import { sound } from '../sound/engine';
-import { titleLabel } from '../game/titles';
+import { splitTitleLabel, titleLabel } from '../game/titles';
+import { paintTitleChip } from './title/chip';
 
 const MAX_MESSAGES = 50;
 /** 입력창에서 Tab으로 바꾸는 채팅 모드. 일반은 같은 맵, 전체는 모든 맵이다(2026-11-12 사용자 요청). */
@@ -39,6 +40,8 @@ export class ChatBox {
   private folded: boolean;
   /** 접혀 있는 동안 받은 사람의 채팅 수(입장·처치 같은 알림 줄과 내 채팅은 세지 않음) */
   private unreadCount = 0;
+  /** 칭호 이름 → id(칭호 표, main.ts가 넣음). 채팅은 칭호 이름만 받아 이것으로 등급을 정한다. 모르면 null */
+  titleId: (name: string) => string | null = () => null;
 
   /** storageKey는 계정마다 다른 이름이라 같은 브라우저에서 다른 계정의 기록이 섞이지 않는다. me는 내 id(내 채팅은 새 메시지로 세지 않음). */
   constructor(
@@ -191,12 +194,24 @@ export class ChatBox {
     } else {
       const line = this.addLine(entry.everyone ? 'chat-line chat-all' : 'chat-line');
       if (entry.everyone) element('chat-tag', line, 'span').textContent = '[전체]';
-      // 칭호: "[명장] 닉네임: 말", 전체 채팅은 "[전체] [명장] 닉네임: 말"(growth-1127.md 8-1)
-      if (entry.tag) element('chat-title', line, 'span').textContent = `[${entry.tag}]`;
+      // 칭호: "[아이콘]명장 닉네임: 말", 전체 채팅은 "[전체] [아이콘]명장 닉네임: 말"(growth-1127.md 8-1, 칭호 꾸밈 title-look.md 4절: 대괄호 없이 등급 아이콘과 색 글자, 움직임 없음)
+      if (entry.tag) this.paintTitle(element('chat-title', line, 'span'), entry.tag);
       element('chat-author', line, 'span').textContent = entry.author;
       element('chat-text', line, 'span').textContent = entry.text;
     }
     this.settle();
+  }
+
+  /** 칭호 칸: 남긴 칭호 글("명장 · 갑부")을 이름과 갑부로 나눠 칭호 표에서 등급을 찾는다. */
+  private paintTitle(span: HTMLElement, tag: string) {
+    span.dataset.tag = tag;
+    const { name, rich } = splitTitleLabel(tag);
+    paintTitleChip(span, 'chat-title', { id: name ? this.titleId(name) : null, name, rich });
+  }
+
+  /** 칭호 이름 표를 늦게 받았을 때(기록은 표보다 먼저 그린다) 칭호 칸의 등급을 다시 칠한다. 접속할 때 한 번 */
+  repaintTitles() {
+    for (const span of this.log.querySelectorAll<HTMLElement>('.chat-title')) if (span.dataset.tag) this.paintTitle(span, span.dataset.tag);
   }
 
   private remember(entry: Saved) {

@@ -1,11 +1,11 @@
 import { formatNumber } from '../game/level';
 import { goldText } from '../game/gold';
-import { titleLabel } from '../game/titles';
 import type { FameKind, FameRow, RankEntry } from '../net/session';
 import { element } from './dom';
 import { byInput } from './touch';
 import { FoldBox } from './fold';
 import { sound } from '../sound/engine';
+import { paintTitleChip } from './title/chip';
 
 type LoadRanking = () => Promise<RankEntry[] | null>;
 type LoadFame = (kind: FameKind) => Promise<{ rows: FameRow[]; me: FameRow | null } | null>;
@@ -28,14 +28,21 @@ function fameValue(kind: FameKind, row: FameRow) {
   return `Lv. ${formatNumber(big)}`;
 }
 
-function showFame(list: HTMLElement, kind: FameKind, rows: FameRow[], me: FameRow | null) {
+/** 칭호 이름 → id(칭호 표). 명예의 전당 줄은 칭호 이름만 받는다. */
+type TitleId = (name: string) => string | null;
+
+function showFame(list: HTMLElement, kind: FameKind, rows: FameRow[], me: FameRow | null, titleId: TitleId) {
   list.replaceChildren();
   const add = (row: FameRow) => {
-    const line = element(row.me ? 'rank-row mine' : 'rank-row', list);
+    // 그 부문 1·2·3위 줄(같은 순위가 둘이면 둘 다)은 금·은·동 바탕과 메달(칭호 꾸밈 title-look.md 5절)
+    const top = row.rank <= 3 ? ` top-${row.rank}` : '';
+    const line = element((row.me ? 'rank-row mine' : 'rank-row') + top, list);
     element('rank-place', line, 'span').textContent = String(row.rank);
-    const tag = titleLabel(row.title, row.rich);
-    // 칭호는 이름 앞, 폭이 좁으면 칭호만 줄임표로 잘린다(growth-1127.md 8-1)
-    if (tag) element('rank-title', line, 'span').textContent = tag;
+    // 칭호는 이름 앞, 폭이 좁으면 칭호 칸이 잘린다(growth-1127.md 8-1). 칸은 이름표와 같은 등급 아이콘과 색 글자, 움직임 없음
+    if (row.title || row.rich) {
+      const chip = { id: row.title ? titleId(row.title) : null, name: row.title, rich: row.rich };
+      paintTitleChip(element('rank-title', line, 'span'), 'rank-title', chip);
+    }
     element('rank-name', line, 'span').textContent = row.name;
     element('rank-level', line, 'span').textContent = fameValue(kind, row);
   };
@@ -71,6 +78,8 @@ export class FameWindow {
   private readonly tabButtons = new Map<FameKind, HTMLButtonElement>();
   /** 늦게 온 답이 다른 탭을 덮지 않게 읽을 때마다 번호를 올린다. */
   private request = 0;
+  /** 칭호 이름 → id(칭호 표, main.ts가 넣음). 모르면 null */
+  titleId: TitleId = () => null;
 
   constructor(
     parent: HTMLElement,
@@ -113,7 +122,7 @@ export class FameWindow {
     const result = await this.load(kind);
     if (request !== this.request || this.root.hidden) return;
     if (!result) this.list.textContent = LOAD_FAILED;
-    else showFame(this.list, kind, result.rows, result.me);
+    else showFame(this.list, kind, result.rows, result.me, this.titleId);
   }
 
   close() {

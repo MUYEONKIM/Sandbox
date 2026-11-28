@@ -2,7 +2,7 @@
 
 배포했거나, 기획이 바뀌었거나, 배포하지 않은 변경을 남긴 채 일을 멈출 때 이 문서를 고친다. 마지막 수정: 2026-11-28.
 
-**이어받는 세션에게(2026-11-28 서른두째 배포, 코드 세션 10)**: 묶음 4-1·4-3·4-4가 서른두째 배포(425b4f8)로 올라갔다. 로컬에만 있는 것: 묶음 4-2(모험 프리셋·전투 수치, 새 SQL `20261128300000_adventure_presets.sql`, 로컬 DB에는 넣음, 운영 DB는 사용자가 실행하기 전. 화면 코드는 gold에 있고 CSS는 공유 노트 `code-adv-presets-1128.patch`의 `src/style.css` 몫을 아직 합치지 않았을 수 있음), 4-5(칭호 꾸밈, 진행 중), 5 무기 금빛(따로 된 worktree에서 진행 중). 차례는 4-2 → 4-5 → 5 → 7 펫 → 8 주간 랭킹 → 9 주방·요리.
+**이어받는 세션에게(2026-11-28 서른셋째 배포, 코드 세션 10)**: 묶음 4-1·4-3·4-4가 서른두째(425b4f8), 4-2가 서른셋째(9ae96a9, 새 SQL 운영 DB에서 실행함)로 올라갔다. 로컬에만 있는 것: 4-5(칭호 꾸밈, gold 작업 파일), 5 무기 금빛(따로 된 worktree에서 진행 중, 나중에 패치로 gold에 옮김). 차례는 4-5 → 5 → 7 펫 → 8 주간 랭킹 → 9 주방·요리.
 
 **이어받는 세션에게(2026-11-28 서른한째 배포, 코드 세션 9 → 다음 코드 세션)**: 새 기능 묶음 1·2·3·4가 스물여덟째~서른한째 배포로 올라갔고 로컬에만 있는 코드 변경은 없다(`.claude/launch.json`만 커밋 안 함, 이 문서의 배포 뒤 확인 줄은 다음 커밋에 올라감). 다음은 묶음 4-1(길 안내 표지판 빼기, 캠프파이어 고침 25×25 맵, 상점 입구 안 A) → 4-2(모험 프리셋 + 전투 수치, 기준 '지금 판 레벨', `growth-1127.md` 8-5·9장) → 4-3(NPC 대사 늘리기) → 4-4(소리) → 5 무기 금빛 → 7 펫 → 8 주간 랭킹 → 9 주방·요리. 자료 위치·일하는 법·조심할 것은 공유 노트 `code-handover-1128.md`, 묶음 표는 `code-batches-1128.md`.
 
@@ -20,6 +20,15 @@
 
 위가 최근이다. 각 배포의 커밋은 `git log`로 본다.
 
+- **칭호 꾸밈(2026-11-28 서른넷째 배포, 묶음 4-5, 사용자 "지금 배포", PM 전달, 새 SQL 없음)**.
+  - 디자인 `title-look.md`(사용자 "제안 그대로"): 칭호 앞 등급 도트 아이콘, 등급별 금속 색 글자와 빛 테두리, 윗등급만 반짝임 띠(움직임 줄이기면 끔), 채팅도 같은 칸(대괄호 없음), 명예의 전당 1·2·3위 금·은·동 줄과 메달, 정보창 단 칭호 카드. 구현은 코드 세션 10이 띄운 Opus 보조 에이전트, 기록 `code-title-look-1128.md`, 그림 `code-title-look-shots-1128\`.
+  - 바꾼 파일: `src/game/titles.ts`(titleGrade 등), 새 `src/ui/title/`(chip.ts, 아이콘·메달 그림 셋), `nametags.ts`, `chat.ts`, `fame.ts`, `info.ts`, `main.ts`(칭호 표 id 찾기를 채팅·명예의 전당에 넘김), `style.css`.
+  - 업데이트 내역: 2026-11-28 일곱째 항목 3줄(제안 그대로).
+  - 비용(이름표 40개 중 반짝이 24개, 모두 걸을 때, 다른 에이전트가 돌아 PC가 바쁠 때 잼): 꾸밈 전 89~99ms/초 → 263~281ms/초, 초당 60장은 지킴. 같은 때 디자인 견본도 350~382라 측정이 흔들림. 사용자가 "지금 배포"를 골랐고, 배포 뒤 PC가 한가할 때 다시 재서 PM에게 알린다.
+  - 배포 전 확인: 커밋 내용만으로 만든 임시 폴더에서 tsc·build 통과. 게임 안 이름표·채팅은 로그인이 필요해 보지 못했고 사용자가 배포 뒤 본다.
+  - 커밋하지 않은 것: `.claude/launch.json`, `art-source/`, `docs/balance/`. 묶음 5 무기 금빛은 따로 된 worktree에 있어 gold에 없음.
+  - 배포 뒤 사용자가 해 볼 것: 공유 노트 `code-title-look-1128.md`, PM에게 보낸 8개.
+
 - **모험 나누기 프리셋·스텟 창 전투 수치(2026-11-28 서른셋째 배포, 묶음 4-2, 사용자 "이어서 배포해 줘", PM 전달, 새 SQL `20261128300000_adventure_presets.sql`을 운영 DB에서 실행함: 확인 쿼리 11칸 모두 true)**.
   - 기획 `growth-1127.md` 8-5(프리셋 셋, 저절로 나누기에 쓸 비율)·9장(전투 수치, 기준 '지금 판 레벨'). 구현은 코드 세션 10이 띄운 Opus 보조 에이전트가 따로 된 worktree에서 하고, 코드 세션 10이 패치(공유 노트 `code-adv-presets-1128.patch`)로 gold에 옮김. 기록 `code-adv-presets-1128.md`, 롤백 시험 `code-adventure-tools/adv_test_presets.sql`.
   - SQL: `adventure_players` 칸 둘(presets, auto_preset), 함수 새로 셋(adventure_save_preset, 안에서만 쓰는 adventure_split_ratio·adventure_combat), 다시 만든 함수 넷(adventure_set_auto(boolean, smallint), adventure_battle, adventure_view, adventure_power). 값 표(adventure_items·zones·tuning)는 읽기만(사용자가 직접 바꾼 값 그대로).
@@ -28,6 +37,7 @@
   - 배포 전 확인: 운영 DB(`supabase-db`)를 읽기만 해서 확인 쿼리 11칸 true, adventure_players 8명 모두 presets, 흡혈 leech_3 0.10·leech_4 0.20 그대로. `style.css`는 4-5(칭호 꾸밈, 아직 로컬)와 섞여 있어 4-2 몫만 `git apply --cached`로 스테이징함. 커밋 내용만으로 만든 임시 폴더에서 tsc·build 통과. 게임 안 실제 전투는 로그인이 필요해 보지 못했고 사용자가 배포 뒤 본다.
   - 남은 걱정: 레벨 업 창이 1280×700에서 판 안 스크롤이 생김(버튼 줄은 보임).
   - 커밋하지 않은 것: `.claude/launch.json`, `art-source/`, `docs/balance/`, 4-5 칭호 꾸밈 파일(titles.ts, nametags.ts, chat.ts, fame.ts, info.ts, main.ts, `src/ui/title/`, style.css의 칭호 몫).
+  - 배포 뒤 확인: 커밋 9ae96a9(9개 파일), `425b4f8..9ae96a9 big-gold -> main`. 사용자가 코드 세션 10 창에 직접 "푸시해"라고 한 뒤 푸시함. Actions "Deploy to GitHub Pages" 46123678154 성공. 실제 사이트가 새 번들 `assets/index-BLw5dntq.js`(adventure_save_preset, 업데이트 줄, '나누고 닫기 (Enter)', '연속 공격·크리티컬 확률'이 있고 '추천대로 나누고 닫기'는 없음)와 새 CSS `assets/index-JiN9N5fF.css`(adv-preset 칸, 칭호 꾸밈 CSS는 없음)를 줌. 이 줄은 다음 커밋에 올라간다.
   - 배포 뒤 사용자가 해 볼 것: 공유 노트 `code-adv-presets-1128.md`와 PM에게 보낸 9개.
 
 - **캠프파이어 넓힌 맵·상점 입구·길 안내 표지판 빼기·NPC 대사·레벨업 소리(2026-11-28 서른두째 배포, 묶음 4-1·4-3·4-4 한 커밋, 사용자 "한 번에 배포 (추천)", PM 전달, 새 SQL 없음)**.

@@ -1,8 +1,19 @@
 import { popLevel } from './levelUpAnim';
 import { element } from './dom';
-import { titleLabel } from '../game/titles';
+import { paintTitleChip } from './title/chip';
 
 const BUBBLE_MS = 4000;
+/** 이름표 반짝임 띠 한 바퀴(style.css title-shine 4초) */
+const SHINE_S = 4;
+
+/** 반짝임 시작을 사람마다 엇갈리게 하는 0~4초(id 해시 FNV-1a, 끝 글자만 다른 id도 흩어지게 한 번 더 섞음. 제가 정한 것) */
+function shineDelay(id: string) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 0x01000193);
+  hash = Math.imul(hash ^ (hash >>> 15), 0x2c1b3c6d);
+  hash ^= hash >>> 12;
+  return ((hash >>> 0) % (SHINE_S * 100)) / 100;
+}
 
 /** npc: 건물 안 NPC 이름표(2026-11-28, 플레이어 이름표와 같은 모양에 글자만 연노랑) */
 export type TagKind = 'player' | 'portal' | 'sign' | 'ticker' | 'plate' | 'npc';
@@ -20,6 +31,8 @@ interface Tag {
   progress: HTMLElement | null;
   /** 이름 바로 위 칭호 줄(2026-11-28). 칭호가 생길 때 처음 만든다. */
   title: HTMLElement | null;
+  /** 칭호 줄에 지금 그린 것(id|이름|갑부). 같으면 DOM을 고치지 않는다. */
+  titleKey: string;
   timer: number;
 }
 
@@ -55,10 +68,10 @@ export class NameTags {
     const hp = isPlayer ? element('player-hp-fill', element('player-hp', root)) : null;
     const progress = isPlayer ? element('player-work-fill', element('player-work', root)) : null;
     if (progress) progress.parentElement!.hidden = true;
-    const tag = { root, label: name, name: isPlayer ? name : null, wanted, bubble, level, hp, progress, title: null, timer: 0 };
+    const tag = { root, label: name, name: isPlayer ? name : null, wanted, bubble, level, hp, progress, title: null, titleKey: '', timer: 0 };
     this.tags.set(id, tag);
     this.paintKarma(id, tag);
-    if (isPlayer) this.paintTitle(tag, this.titles.get(id));
+    if (isPlayer) this.paintTitle(id, tag, this.titles.get(id));
   }
 
   /** 단 칭호와 갑부를 이름 위 한 줄에 쓴다("명장 · 갑부"). 글이 그대로면 DOM을 고치지 않는다. */
@@ -67,24 +80,33 @@ export class NameTags {
     if (state && state.title === title && state.rich === rich) return;
     this.titles.set(id, { title, rich });
     const tag = this.tags.get(id);
-    if (tag?.name) this.paintTitle(tag, { title, rich });
+    if (tag?.name) this.paintTitle(id, tag, { title, rich });
   }
 
   /** 칭호 이름 표를 늦게 받았을 때 이름표 칭호 줄을 다시 쓴다. */
   repaintTitles() {
-    for (const [id, tag] of this.tags) if (tag.name) this.paintTitle(tag, this.titles.get(id));
+    for (const [id, tag] of this.tags) if (tag.name) this.paintTitle(id, tag, this.titles.get(id));
   }
 
-  private paintTitle(tag: Tag, state: TitleState | undefined) {
-    const text = state ? titleLabel(state.title ? this.titleName(state.title) : null, state.rich) : '';
-    if (!text && !tag.title) return;
+  /**
+   * 칭호 칸(2026-11-28 칭호 꾸밈, title-look.md 3절): [등급 아이콘][등급색 글자](+ · [금화][갑부]).
+   * 윗등급은 반짝임 띠가 지나가고, 시작은 사람마다 엇갈린다(id 해시). 칭호·갑부가 그대로면 DOM을 고치지 않는다.
+   */
+  private paintTitle(id: string, tag: Tag, state: TitleState | undefined) {
+    const title = state?.title ?? null;
+    const name = title ? this.titleName(title) : null;
+    const rich = state?.rich ?? false;
+    const key = name || rich ? `${title}|${name}|${rich}` : '';
+    if (key === tag.titleKey) return;
+    tag.titleKey = key;
     if (!tag.title && tag.name) {
       tag.title = element('player-title', tag.root);
+      tag.title.style.setProperty('--shine-delay', `${-shineDelay(id)}s`);
       tag.root.insertBefore(tag.title, tag.name);
     }
     if (!tag.title) return;
-    if (tag.title.textContent !== text) tag.title.textContent = text;
-    tag.title.hidden = text === '';
+    paintTitleChip(tag.title, 'player-title', { id: title, name, rich }, true);
+    tag.title.hidden = key === '';
   }
 
   /** 현상범 명단이 바뀌면 이름 색과 "(현상범)"을 다시 칠한다(2026-11-12 사용자 요청). */

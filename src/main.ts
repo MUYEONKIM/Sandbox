@@ -328,9 +328,12 @@ function enterGame(
     hud.refreshInfo();
   });
   tags.titleName = (id) => titles.nameOf(id);
+  // 채팅·명예의 전당은 칭호 이름만 받아 칭호 표에서 id를 찾아 등급(색·아이콘)을 정한다(칭호 꾸밈 title-look.md 8절)
+  chat.titleId = fame.titleId = (name) => titles.idOf(name);
   void session.loadTitleNames().then((rows) => {
     titles.setNames(rows);
     tags.repaintTitles();
+    chat.repaintTitles();
   });
   // 랭킹 칭호는 서버가 매시 정각에 다시 정한다. 그 뒤 한 번 읽는다(1시간에 한 번).
   const scheduleTitles = () =>

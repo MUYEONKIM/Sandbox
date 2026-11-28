@@ -5,7 +5,8 @@ import { profitText, STOCK_INFO, type Market } from '../game/market';
 import { statEffect } from '../game/stats';
 import { element } from './dom';
 import { goldText } from '../game/gold';
-import { titleEffect, titleLabel, type Titles } from '../game/titles';
+import { titleEffect, titleGrade, type Titles } from '../game/titles';
+import { paintTitleChip, richNodes, titleIcon } from './title/chip';
 
 /** 정보창에 보일 내 상태. HUD가 서버에서 받은 값을 들고 있다. */
 export interface MyStatus {
@@ -41,15 +42,29 @@ export class InfoView {
   private titlesOpen = false;
 
   /**
-   * '칭호' 줄: 단 칭호(갑부면 함께), 누르면 가진 칭호 목록과 '달지 않음'(growth-1127.md 8-1). 못 얻은 칭호와 조건은 보이지 않는다.
-   * 목록에는 이름과 효과 숫자만(ranking-titles.md 6장). 갑부는 고를 수 없는 줄이다.
+   * 단 칭호 카드(칭호 꾸밈 title-look.md 6절): 큰 등급 아이콘, '칭호', 칭호 이름(갑부면 옆에 [금화]갑부), 효과 숫자. 달지 않았으면 갑부, 둘 다 없으면 '없음'.
+   * 누르면 가진 칭호 목록과 '달지 않음'(growth-1127.md 8-1). 못 얻은 칭호와 조건은 보이지 않는다.
+   * 목록에는 이름(이름표와 같은 칭호 칸)과 효과 숫자만(ranking-titles.md 6장). 갑부는 고를 수 없는 줄이다.
    */
   private renderTitles({ store, wear }: { store: Titles; wear: (id: string | null) => void }) {
-    const row = element('info-rename info-title', this.root);
-    element('info-label', row, 'span').textContent = '칭호';
-    const pick = element('info-rename-button info-title-button', row, 'button') as HTMLButtonElement;
+    const worn = store.owned.find((t) => t.id === store.worn) ?? null;
+    const shown = worn ?? store.owned.find((t) => t.kind === 'rich') ?? null;
+    const grade = shown ? titleGrade(shown.id) : null;
+    const pick = element(grade ? `info-title-card tg-${grade}` : 'info-title-card empty', this.root, 'button') as HTMLButtonElement;
     pick.type = 'button';
-    pick.textContent = titleLabel(store.wornName, store.rich) || '없음';
+    if (grade) {
+      // 큰 아이콘 오른쪽 위 작은 별은 2초마다 반짝인다(카드만, 이름표에는 없음)
+      const icon = titleIcon(grade, true);
+      icon.classList.add('twinkle');
+      pick.append(icon);
+    }
+    const body = element('card-body', pick, 'span');
+    element('card-label', body, 'span').textContent = '칭호';
+    const name = element('card-name', body, 'span');
+    element('title-text big', name, 'span').textContent = shown?.name ?? '없음';
+    if (worn && store.rich) name.append(richNodes('card-rich'));
+    const shownEffect = shown ? titleEffect(shown) : '';
+    if (shownEffect) element('card-effect', body, 'span').textContent = shownEffect;
     pick.disabled = !store.owned.some((t) => t.kind !== 'rich') && !store.worn;
     pick.addEventListener('click', () => {
       this.titlesOpen = !this.titlesOpen;
@@ -66,12 +81,12 @@ export class InfoView {
       const effect = titleEffect(title);
       if (title.kind === 'rich') {
         const fixed = element('info-title-row fixed', list);
-        element('info-title-name', fixed, 'span').textContent = title.name;
+        paintTitleChip(element('', fixed, 'span'), 'info-title-name info-title-chip', { id: null, name: null, rich: true });
         continue;
       }
       const button = element(title.id === store.worn ? 'info-title-row chosen' : 'info-title-row', list, 'button') as HTMLButtonElement;
       button.type = 'button';
-      element('info-title-name', button, 'span').textContent = title.name;
+      paintTitleChip(element('', button, 'span'), 'info-title-name info-title-chip', { id: title.id, name: title.name, rich: false });
       if (effect) element('info-title-effect', button, 'span').textContent = effect;
       button.addEventListener('click', () => choose(title.id));
     }

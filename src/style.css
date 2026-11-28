@@ -1063,15 +1063,7 @@ canvas {
   color: var(--text-dim);
 }
 
-/* 정보창 칭호 줄과 가진 칭호 목록(2026-11-28). 목록 줄은 버튼, 갑부는 고를 수 없는 글 줄이다. */
-.info-title-button {
-  min-width: 0;
-  max-width: 70%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* 정보창 가진 칭호 목록(2026-11-28). 목록 줄은 버튼, 갑부는 고를 수 없는 글 줄이다. 단 칭호 카드와 칭호 칸은 맨 끝 '칭호 꾸밈' */
 .info-titles {
   display: grid;
   gap: 4px;
@@ -1080,7 +1072,7 @@ canvas {
 
 .info-title-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   width: 100%;
@@ -1280,13 +1272,6 @@ canvas {
   font-weight: 700;
 }
 
-/* 채팅 칭호 "[명장 · 갑부]"(2026-11-28) */
-.chat-title {
-  margin-right: 4px;
-  color: #f3dd94;
-  font-weight: 700;
-}
-
 .chat-entry {
   display: flex;
   pointer-events: auto;
@@ -1358,20 +1343,6 @@ canvas {
   background: rgb(31 21 16 / 62%);
   font-size: 14px;
   font-weight: 700;
-}
-
-/* 이름 바로 위 칭호 줄(2026-11-28, 제가 정한 것): 이름보다 작은 옅은 금색 */
-.player-title {
-  padding: 0 5px;
-  color: #f3dd94;
-  background: rgb(31 21 16 / 52%);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.player-title[hidden] {
-  display: none;
 }
 
 .bubble {
@@ -1497,21 +1468,9 @@ canvas {
   border: 2px solid var(--slot-sunken);
 }
 
-/* 명예의 전당 탭(2026-11-28): 탭은 게시판 탭 모양. 줄의 칭호는 이름 앞, 좁으면 칭호만 줄임표로 잘린다. */
+/* 명예의 전당 탭(2026-11-28): 탭은 게시판 탭 모양. 줄의 칭호(이름 앞)와 1·2·3위 줄은 맨 끝 '칭호 꾸밈' */
 .fame .board-tabs {
   margin: 8px 0 0;
-}
-
-.fame .rank-title {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 45%;
-  overflow: hidden;
-  color: #7a4a17;
-  font-size: 14px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .fame .rank-name {
@@ -6942,4 +6901,352 @@ canvas {
 
 .modal.villa-claim .modal-button {
   white-space: nowrap;
+}
+
+/* ───────── 칭호 꾸밈(2026-11-28, 디자인 세션 title-look.md: 모양·색·움직임은 디자인 세션이 정한 것) ─────────
+ * 칭호 앞 등급 도트 아이콘(src/ui/title/, 미리 2배·4배로 키운 시트라 칠할 때 늘리지 않음), 등급마다 금속 색 글자와 빛 테두리,
+ * 윗등급 이름표만 반짝임 띠. 명예의 전당 1·2·3위 줄은 금·은·동 바탕과 메달, 정보창은 단 칭호 카드.
+ * 성능(title-look.md 7절): 움직이는 것은 ::after(반짝임 띠)와 ::before(작은 별)의 transform·opacity뿐이다. 그라데이션 글자·테두리는
+ * 멈춘 그림이라 바뀔 때만 칠한다. 이름표·채팅에는 블러 빛을 쓰지 않는다(사람이 걸으면 이름표를 매 프레임 다시 칠함). 블러 빛은 정보창 카드·명예의 전당에만. */
+
+/* 등급을 모르는 칸(칭호 표를 받기 전의 채팅 줄 등): 옅은 금색, 아이콘 없음(제가 정한 것). :where라 아래 등급 class가 늘 이긴다 */
+:where(.player-title, .chat-title, .rank-title, .info-title-chip, .info-title-card) {
+  --t1: #fff3c8;
+  --t2: #f3dd94;
+  --t3: #d8b45c;
+  --edge: #9a7a48;
+  --glow: rgb(243 221 148 / 30%);
+}
+
+/* 등급 색: --t1~3 글자 위→아래, --edge 테두리, --glow 빛 */
+.tg-gold { --t1: #fffbe0; --t2: #ffd84a; --t3: #f0a020; --edge: #ffcf40; --glow: rgb(255 196 40 / 75%); }
+.tg-silver { --t1: #ffffff; --t2: #e4eaf4; --t3: #a3b1c6; --edge: #d3dceb; --glow: rgb(205 225 255 / 65%); }
+.tg-bronze { --t1: #ffe9cf; --t2: #f2a868; --t3: #c26c34; --edge: #e08e4e; --glow: rgb(255 150 70 / 60%); }
+.tg-rich { --t1: #fffbd0; --t2: #ffe066; --t3: #86e08e; --edge: #a6e682; --glow: rgb(170 255 140 / 55%); }
+.tg-forge { --t1: #ffecc8; --t2: #ffa64e; --t3: #ff6a36; --edge: #ff8c3e; --glow: rgb(255 120 40 / 60%); }
+.tg-legend { --t1: #ffffff; --t2: #ecceff; --t3: #b27eff; --edge: #cba2ff; --glow: rgb(195 145 255 / 75%); }
+.tg-week { --t1: #f8ffd8; --t2: #c9f08c; --t3: #64cc76; --edge: #93de6c; --glow: rgb(150 240 120 / 60%); }
+
+/* 아이콘: 9×9 칸 일곱(crown_gold·crown_silver·crown_bronze·coin·hammer·hammer_legend·laurel)을 2배(18px)로, 정보창 카드는 4배(36px) */
+.title-icon {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  background: url('./ui/title/title-icons-2x.png') 0 0 no-repeat;
+  image-rendering: pixelated;
+  vertical-align: -4px;
+}
+
+.title-icon.big {
+  width: 36px;
+  height: 36px;
+  background-image: url('./ui/title/title-icons-4x.png');
+}
+
+.ti-crown_gold { background-position: 0 0; }
+.ti-crown_silver { background-position: -18px 0; }
+.ti-crown_bronze { background-position: -36px 0; }
+.ti-coin { background-position: -54px 0; }
+.ti-hammer { background-position: -72px 0; }
+.ti-hammer_legend { background-position: -90px 0; }
+.ti-laurel { background-position: -108px 0; }
+.title-icon.big.ti-crown_gold { background-position: 0 0; }
+.title-icon.big.ti-crown_silver { background-position: -36px 0; }
+.title-icon.big.ti-crown_bronze { background-position: -72px 0; }
+.title-icon.big.ti-coin { background-position: -108px 0; }
+.title-icon.big.ti-hammer { background-position: -144px 0; }
+.title-icon.big.ti-hammer_legend { background-position: -180px 0; }
+.title-icon.big.ti-laurel { background-position: -216px 0; }
+
+/* 그라데이션 글자(멈춘 그림). 이름표·채팅은 블러 없는 1px 어두운 그림자만 */
+.title-text {
+  color: transparent;
+  background: linear-gradient(180deg, var(--t1) 10%, var(--t2) 55%, var(--t3) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 55%);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.info-title-card .title-text,
+.fame .title-text {
+  text-shadow: 0 0 4px var(--glow);
+}
+
+.title-sep {
+  color: rgb(255 255 255 / 55%);
+}
+
+/* 단 칭호 뒤에 붙는 [금화][갑부] */
+.title-rich,
+.info-title-card .card-rich {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ---- 이름표 칭호 칸: 어두운 갈색 바탕, 등급색 1px 테두리, 바깥 1px 빛 테두리(블러 없음), 안쪽 위 1px 밝은 줄 ---- */
+.player-title {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 0 2px;
+  overflow: hidden;
+  color: inherit;
+  background: linear-gradient(180deg, rgb(52 32 18 / 92%), rgb(22 12 8 / 92%));
+  border: 1px solid var(--edge);
+  box-shadow: 0 0 0 1px var(--glow), inset 0 1px 0 rgb(255 255 255 / 22%);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.player-title[hidden] {
+  display: none;
+}
+
+/* 반짝이는 칸만 따로 된 층으로: 이름표가 움직여도 칸을 다시 칠하지 않게 */
+.player-title.shine {
+  will-change: transform;
+}
+
+/* 반짝임 띠: 비스듬한 흰 띠가 왼쪽 → 오른쪽으로 0.9초 지나가고 3.1초 쉰다(4초 한 바퀴). transform만 움직인다.
+ * 이름표는 윗등급(1위 금·갑부·전설 강화·지난주 1위, class shine)만, 시작은 사람마다 엇갈린다(--shine-delay, nametags.ts).
+ * 정보창 카드와 명예의 전당 1위 줄은 늘(창이 열렸을 때만 보인다) */
+.player-title.shine::after,
+.info-title-card::after,
+.fame .rank-row.top-1::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 38%, rgb(255 255 255 / 70%) 50%, transparent 62%);
+  transform: translateX(-110%);
+  animation: title-shine 4s linear infinite;
+  animation-delay: var(--shine-delay, 0s);
+  pointer-events: none;
+  will-change: transform;
+}
+
+@keyframes title-shine {
+  0% { transform: translateX(-110%); }
+  22% { transform: translateX(110%); }
+  100% { transform: translateX(110%); }
+}
+
+/* 작은 별: 정보창 카드의 큰 아이콘 오른쪽 위에서 2초마다 반짝(이름표에는 넣지 않음). transform·opacity만 */
+.twinkle::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  background:
+    linear-gradient(#fff, #fff) center / 1px 100% no-repeat,
+    linear-gradient(#fff, #fff) center / 100% 1px no-repeat;
+  filter: drop-shadow(0 0 1px #fff6b0);
+  opacity: 0;
+  transform: scale(0.2);
+  animation: title-twinkle 2s ease-in-out infinite;
+  animation-delay: var(--twinkle-delay, 0s);
+  will-change: transform, opacity;
+}
+
+.title-icon.big.twinkle::before {
+  top: -3px;
+  right: -5px;
+  width: 11px;
+  height: 11px;
+}
+
+@keyframes title-twinkle {
+  0%, 60%, 100% { opacity: 0; transform: scale(0.2); }
+  72% { opacity: 1; transform: scale(1); }
+  84% { opacity: 0; transform: scale(0.4); }
+}
+
+/* ---- 채팅: 같은 아이콘 + 그라데이션 글자, 대괄호 없음, 움직임 없음 ---- */
+.chat-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+  font-weight: 700;
+}
+
+/* ---- 명예의 전당: 1·2·3위 줄(같은 순위가 둘이면 둘 다)은 금·은·동 바탕, 메달, 굵은 글자. 1위 줄만 반짝임 띠 ---- */
+.fame .rank-row.top-1,
+.fame .rank-row.top-2,
+.fame .rank-row.top-3 {
+  position: relative;
+  overflow: hidden;
+  font-weight: 800;
+}
+
+.fame .rank-row.top-1 {
+  background: linear-gradient(90deg, #fff4bf 0%, #f8d466 45%, #e8ad2e 100%);
+  border-color: #a8700c;
+  box-shadow: inset 0 0 0 1px #fff8d8, 0 0 8px rgb(255 196 40 / 70%);
+}
+
+.fame .rank-row.top-2 {
+  background: linear-gradient(90deg, #ffffff 0%, #e4e9f1 45%, #b9c3d2 100%);
+  border-color: #7c889c;
+  box-shadow: inset 0 0 0 1px #ffffff, 0 0 6px rgb(200 220 255 / 60%);
+}
+
+.fame .rank-row.top-3 {
+  background: linear-gradient(90deg, #ffe7cc 0%, #f0b27a 45%, #c97a42 100%);
+  border-color: #8a4a1c;
+  box-shadow: inset 0 0 0 1px #fff0de, 0 0 6px rgb(255 150 70 / 55%);
+}
+
+/* 순위 숫자 자리에 1·2·3 메달(12×12 칸 셋을 2배, 24px). 숫자 글은 남겨 두고 투명하게 */
+.fame .rank-row.top-1 .rank-place,
+.fame .rank-row.top-2 .rank-place,
+.fame .rank-row.top-3 .rank-place {
+  width: 24px;
+  height: 24px;
+  overflow: hidden;
+  color: transparent;
+  background: url('./ui/title/title-medals-2x.png') 0 0 no-repeat;
+  image-rendering: pixelated;
+}
+
+.fame .rank-row.top-2 .rank-place {
+  background-position: -24px 0;
+}
+
+.fame .rank-row.top-3 .rank-place {
+  background-position: -48px 0;
+}
+
+.fame .rank-row.top-1 .rank-name,
+.fame .rank-row.top-1 .rank-level {
+  color: #3e1f00;
+}
+
+/* 줄의 칭호(이름 앞): 이름표와 같은 칸, 움직임 없음. 좁으면 칭호 칸이 잘린다 */
+.fame .rank-title {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 45%;
+  padding: 0 6px 0 2px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgb(52 32 18 / 94%), rgb(22 12 8 / 94%));
+  border: 1px solid var(--edge);
+  box-shadow: 0 0 4px var(--glow);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+/* ---- 정보창: 단 칭호 카드(누르면 가진 칭호 목록) ---- */
+/* 게임 버튼 그림(#hud button, 누를 때 #hud button:active:not(:disabled))보다 세게 쓴다 */
+#hud .info-title-card,
+#hud .info-title-card:active:not(:disabled) {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  margin: 4px 0 6px;
+  padding: 8px 12px 8px 8px;
+  overflow: hidden;
+  text-align: left;
+  font: inherit;
+  background: linear-gradient(180deg, #3a2414, #1c100a);
+  border: 2px solid var(--edge);
+  border-image: none;
+  box-shadow: 0 0 10px var(--glow), inset 0 1px 0 rgb(255 255 255 / 20%);
+  cursor: pointer;
+}
+
+/* 고를 칭호가 없을 때(갑부만, 또는 없음)도 흐리게 하지 않는다(제가 정한 것) */
+#hud .info-title-card:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+/* 칭호가 없으면 '없음'만: 아이콘·반짝임 없이 옅은 갈색 테두리(제가 정한 것) */
+#hud .info-title-card.empty {
+  grid-template-columns: 1fr;
+  --t1: #efe2c8;
+  --t2: #d8c6a8;
+  --t3: #b49a78;
+  --edge: #8a6e52;
+  --glow: rgb(0 0 0 / 0%);
+}
+
+.info-title-card.empty::after {
+  content: none;
+}
+
+.info-title-card .card-body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.info-title-card .card-label {
+  color: #d8c6a8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.info-title-card .title-text.big {
+  font-size: 20px;
+  line-height: 24px;
+}
+
+.info-title-card .card-rich {
+  margin-left: 6px;
+  font-size: 14px;
+}
+
+.info-title-card .card-effect {
+  color: #f7ecd6;
+  font-size: 13px;
+}
+
+/* 목록 줄의 칭호 이름: 이름표와 같은 칸. 단 칭호 줄은 금색 테두리 */
+.info-title-row .info-title-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 0 2px;
+  background: linear-gradient(180deg, rgb(52 32 18 / 94%), rgb(22 12 8 / 94%));
+  border: 1px solid var(--edge);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.info-title-row.chosen {
+  outline: 2px solid #f2cf6a;
+  outline-offset: -2px;
+}
+
+/* 움직임 줄이기 설정이면 반짝임 띠와 작은 별을 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  .player-title.shine::after,
+  .info-title-card::after,
+  .fame .rank-row.top-1::after,
+  .twinkle::before {
+    display: none;
+    animation: none;
+  }
+
+  .player-title.shine {
+    will-change: auto;
+  }
 }
