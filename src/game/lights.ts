@@ -54,6 +54,12 @@ interface Lit {
   fixedStrength?: number;
 }
 
+/** 늘 켠 고정 빛 하나의 손잡이(Lights.addSteady) */
+export interface SteadyLight {
+  /** 진하기를 바꾼다. 다음 깜빡임 타이머(0.1초)에 반영된다. */
+  setStrength(value: number): void;
+}
+
 interface PlayerLight {
   key: string;
   look: GlowLookId;
@@ -184,6 +190,27 @@ export class Lights {
     }
     this.refresh();
     return made;
+  }
+
+  /**
+   * 늘 켠 고정 빛(캠프파이어 맵, 2026-11-28 디자인 camp-map.json "고정 빛은 늘 세기 1"): 건물 안 맵이어도, 아침이어도 켠다.
+   * 빛 그림은 key 이름으로 따로 만든다(모든 맵이 쓰는 빛 그림 한 장을 키우지 않으려고). at은 빛 자리 땅 점(월드 좌표), 빛무리는 head만큼 위다.
+   * 진하기를 바꿀 손잡이를 돌려준다(장작을 넣으면 1.35배에서 천천히 1로).
+   */
+  addSteady(key: string, look: GlowLook, at: { x: number; y: number }, strength = 1): SteadyLight {
+    ensureLookTexture(this.scene, key, look);
+    const pool = this.scene.add.image(at.x, at.y, key, 'pool').setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_POOL);
+    const halo = this.scene.add.image(at.x, at.y - look.head, key, 'halo').setBlendMode(Phaser.BlendModes.ADD).setDepth(this.haloDepth);
+    const lit: Lit = { look, phase: phaseOf(Math.round(at.x), Math.round(at.y), 0), pool, halo, poolAlpha: 1, level: -1, fixedStrength: strength };
+    this.adventure.push(lit);
+    this.refresh();
+    return {
+      setStrength: (value: number) => {
+        if (lit.fixedStrength === value) return;
+        lit.fixedStrength = value;
+        lit.level = -1;
+      },
+    };
   }
 
   /** 맵을 떠날 때. 고정 등 이미지는 지우고 플레이어 조명 이미지는 숨겨 두었다가 다시 쓴다. */

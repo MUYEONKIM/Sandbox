@@ -1,6 +1,7 @@
 import type { SpriteName } from '../art/sprites';
 import type { Area, MapId, Portal } from './maps';
 import type { Tile } from './world';
+import { CAMP_AREA, CAMP_ARRIVE, CAMP_EXIT, CAMP_PROPS } from './campfire';
 
 /**
  * 아이티공간 건물 안. 9층과 옥상이 있지만 들어갈 수 있는 곳은 1, 4, 7, 8층과 옥상뿐이다.
@@ -29,6 +30,7 @@ export type TowerId =
   | 'villa_lift'
   | 'villa2'
   | 'villa3'
+  | 'campfire'
   | VillaRoomId;
 
 /** 시작마을 빌라 2층 방 열(201~210호, 2026-11-27) */
@@ -430,6 +432,8 @@ const props = (sprite: SpriteName, w: number, d: number, ...cells: [number, numb
  * 건물처럼 바닥 아래 꼭짓점에 맞춰 놓고 지나갈 수 없다. 상점(MART_PROPS)과 대장간(SMITHY_PROPS)은 따로 있다. 7, 8층에는 두지 않았다.
  */
 export const ROOM_PROPS: Partial<Record<TowerId, Prop[]>> = {
+  // 캠프파이어 맵(2026-11-28, campfire.ts): 화덕·통나무·의자·텐트·랜턴·장작더미·석쇠·나가는 아치
+  campfire: CAMP_PROPS,
   casino: [
     ...props('casino-slot-x', 1, 1, [13, 14], [13, 15], [13, 16], [13, 28], [13, 29]),
     ...props('casino-slot', 1, 1, [14, 13]),
@@ -743,6 +747,16 @@ export const FLOORS: Record<TowerId, FloorPlan> = {
     doorways: [],
     // 방으로 들어가는 문(걸어서 지나감). 첫 칸 앞이 쓰러진 뒤 일어나는 칸이다.
     portals: BALCONY_DOOR.map((x): Portal => ({ x, y: BALCONY[1] - 1, to: 'annex', door: true, landing: { x, y: BALCONY[1] } })),
+  },
+  // 캠프파이어 맵(2026-11-28, 디자인 세션 14 camp-map.json): 바닥은 그림 한 장(GameScene.showCampMap). 산길 아치 앞 두 칸이 숨은 포탈이다.
+  // 첫 포탈 앞(CAMP_ARRIVE)이 들어오면 서는 칸이자 쓰러진 뒤 일어나는 칸이다.
+  campfire: {
+    ...plain,
+    number: null,
+    style: 'plain',
+    area: [...CAMP_AREA],
+    doorways: [],
+    portals: CAMP_EXIT.map((at): Portal => ({ ...at, to: 'plains', secret: true, landing: CAMP_ARRIVE })),
   },
   balcony4: {
     ...plain,

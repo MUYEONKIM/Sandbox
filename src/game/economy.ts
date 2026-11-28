@@ -261,6 +261,15 @@ export class Economy {
     this.changed();
   }
 
+  /** 캠프파이어에 태운 장작 누적 수(서버 campfire_stats.total, 정보창 '태운 장작') */
+  campfireLogs = 0;
+
+  setCampfireLogs(total: number) {
+    if (this.campfireLogs === total) return;
+    this.campfireLogs = total;
+    this.changed();
+  }
+
   /** 씨앗 수가 바뀔 때마다 1씩 는다. 작물 곁 안내 창이 매 프레임 이 값만 견준다(2026-11-28 씨앗 고르기). */
   seedVersion = 0;
 

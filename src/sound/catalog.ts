@@ -212,6 +212,8 @@ export function zoneBgm(id: MapId): BgmKey {
  */
 export function bgmForMap(id: MapId, night: boolean): BgmKey | null {
   if (id === 'plains') return night ? 'village_night' : 'village_day';
+  // 캠프파이어 맵은 늘 밤이라 마을 밤 곡(2026-11-28, 제가 정한 것). 캠핑 곡이 생기면 바꾼다(디자인 camp-map.json sounds).
+  if (id === 'campfire') return 'village_night';
   if (SECRET_MAPS.has(id)) return 'secret';
   // 시작마을 빌라(로비·엘리베이터·2층 복도·방 열·옥상)는 건물 안 곡. 옥상도 아이티공간 옥상처럼 같은 곡(PM이 정함).
   if (INDOOR_MAPS.has(id) || id.startsWith('villa')) return 'indoor';

@@ -200,6 +200,30 @@ const NAMES = [
   'villa/tub-red',
   'villa/tub-blue',
   'villa/bench',
+  // 캠프파이어(2026-11-28, 디자인 세션 14 art-source/campfire/final/sprites): 시작마을 2×2칸 모닥불·광장·산길 아치와 캠프파이어 맵 소품.
+  // 맵 밖 하늘·별·산·숲 층과 별똥별은 그 맵에 들어갈 때 따로 읽는다(campfire.ts CampSky).
+  'campfire/pit2',
+  'campfire/flame2',
+  'campfire/log-x2',
+  'campfire/log-y2',
+  'campfire/plaza2',
+  'campfire/woodpile',
+  'campfire/pit',
+  'campfire/flame',
+  'campfire/flare',
+  'campfire/log-x',
+  'campfire/log-y',
+  'camp/arch-y',
+  'camp/arch-x',
+  'camp/floor',
+  'camp/chair',
+  'camp/chair-x',
+  'camp/tent-a',
+  'camp/tent-b',
+  'camp/lantern',
+  'camp/grill',
+  'camp/log-throw',
+  'camp/sparks',
 ] as const;
 
 export type SpriteName = (typeof NAMES)[number];
@@ -264,7 +288,9 @@ function findGroundPoint(name: SpriteName) {
 export function groundPoint(name: SpriteName) {
   let point = groundPoints.get(name);
   if (!point) {
-    point = findGroundPoint(name);
+    // 캠프파이어 그림은 바닥 아래 꼭짓점 줄이 비어 있어 그림 맨 아래 줄(높이 − 1)이 땅 줄이다(디자인 세션 14 campfire.json groundPointY).
+    const image = name.startsWith('campfire/') || name.startsWith('camp/') ? sprite(name) : null;
+    point = image ? { x: image.width / 2, y: image.height - 1 } : findGroundPoint(name);
     groundPoints.set(name, point);
   }
   return point;

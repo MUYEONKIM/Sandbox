@@ -2,6 +2,7 @@ import { Rng } from '../art/pixels';
 import { BLOCKS, type BlockId } from '../blocks';
 import type { SpriteName } from '../art/sprites';
 import { MAP_SIZE } from '../config';
+import { CAMP_RESERVED, CAMP_TREES } from './campfire';
 import { CASTLE, isAdventure, isDungeon, MAPS, OFFICE, PORTAL_MARGIN, portalsOf, SHOP, type Area, type MapId, type WorkId } from './maps';
 import { layoutDungeon } from './dungeon';
 import { advLamps, advMap, advSize, infernus, decoArt } from './adventureMaps';
@@ -220,6 +221,8 @@ export function generateMap(id: MapId): GameMap {
     // 건물 안 소품(2026-11-16 다시 꾸미기, 노동청·농협 안)
     buildings.push(...(ROOM_PROPS[id] ?? []));
     if (id === 'labor') scenery.trees.push(...LABOR_FURNITURE);
+    // 캠프파이어 맵 뒤쪽 두 변의 나무(2026-11-28, campfire.ts)
+    if (id === 'campfire') scenery.trees.push(...CAMP_TREES);
     if (id === 'exchange') {
       buildings.push({ ...BULL });
       scenery.trees.push(...EXCHANGE_FURNITURE);
@@ -284,8 +287,10 @@ export function generateMap(id: MapId): GameMap {
   // 블록은 어느 맵이든 바닥 전체에 놓는다. 벽, 물, 포탈 둘레처럼 놓을 수 없는 칸은 World.canPlace가 거른다.
   // 던전에는 놓지 않는다(몬스터 길을 막지 않게, 에이전트가 정함). 모험 필드도 블록이 없다(기획 3장).
   // 4층 숨은 방 입구 칸은 숨은 포탈(Portal.secret)이라 포탈 칸·도착 칸 규칙(World.isPortalArea)으로 비운다.
-  const buildZones = isDungeon(id) || isAdventure(id) ? [] : [bounds];
-  const reserved: Tile[] = [];
+  // 캠프파이어 맵도 블록을 못 놓는다(2026-11-28 디자인 camp-map.json blocks: false, 서버 정책도 막음).
+  const buildZones = isDungeon(id) || isAdventure(id) || id === 'campfire' ? [] : [bounds];
+  // 시작마을 캠프파이어 광장 원 32칸과 일어나는 칸은 블록을 못 놓는다(사용자 "광장 원 안에는 블록을 못 놓게", 서버 plains_reserved).
+  const reserved: Tile[] = id === 'plains' ? [...CAMP_RESERVED] : [];
   const fences = id === 'farm' ? farmFences() : [];
   return { ...scenery, size, floor, floorTop, terrain, solid, spots, buildings, buildZones, bounds, railings, walls, partitions, reserved, battleProps, fences, pieces, decoTiles, decoPieces };
 }

@@ -37,6 +37,9 @@ export const GLOW_LOOKS = {
   campfire: { color: 0xff8a3a, pool: 84, halo: 28, head: 16, flicker: 0.2, fire: true },
   // 시작마을 동굴 횃불(2026-11-17): 색과 크기는 등 기둥과 같고, 빛무리를 불꽃 가운데(땅에서 21px)에 두고 불처럼 깜빡인다(에이전트가 정함).
   torch: { color: 0xffc070, pool: 72, halo: 24, head: 21, flicker: 0.15, fire: true },
+  // 시작마을 2×2칸 캠프파이어와 산길 아치 랜턴(2026-11-28, 디자인 세션 14 campfire.json). 캠프파이어 맵 빛은 그 맵에서만 따로 만든다(campfire.ts CAMP_LIGHTS).
+  campfire2: { color: 0xff8a3a, pool: 104, halo: 34, head: 18, flicker: 0.18, fire: true },
+  arch_lantern: { color: 0xffd890, pool: 40, halo: 14, head: 35, flicker: 0.08, fire: false },
 } satisfies Record<string, GlowLook>;
 export type GlowLookId = keyof typeof GLOW_LOOKS;
 
@@ -77,6 +80,9 @@ export const FIXED_LIGHTS: Readonly<Record<string, readonly FixedLight[]>> = {
     { look: 'torch', gx: 3.28, gy: 0.64 },
     { look: 'torch', gx: 3.28, gy: 2.36 },
   ],
+  // 시작마을 캠프파이어 화덕(2×2칸 가운데)과 산길 아치에 매단 랜턴(2026-11-28). 캠프파이어 맵 것은 늘 켜는 빛이라 campfire.ts CAMP_LIGHTS에 따로 둔다.
+  'campfire/pit2': [{ look: 'campfire2', gx: 1, gy: 1 }],
+  'camp/arch-y': [{ look: 'arch_lantern', gx: 0.5, gy: 1.68 }],
 };
 
 export const GLOW_TEXTURE = 'glow-atlas';

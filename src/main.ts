@@ -89,6 +89,8 @@ function enterGame(
   const economy = new Economy(economyData);
   economy.setPotions(potionData.catalog, potionData.counts);
   economy.setFarm(farmData.crops, farmData.stock);
+  // 정보창 '태운 장작'(2026-11-28 캠프파이어): 접속한 뒤 따로 한 번 읽는다(기다리지 않음).
+  void session.campfireLogs().then((total) => economy.setCampfireLogs(total));
   hud.potionCount = (id) => economy.potionCount(id);
   hud.seedCount = (id) => economy.seedCount(cropOfSeed(id));
   const showEconomy = () => {

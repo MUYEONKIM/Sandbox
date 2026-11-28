@@ -201,7 +201,28 @@ import { isMonsterTarget, MonsterField, registerMonsterAnims } from './monsters'
 import type { DungeonWindow } from '../ui/dungeon';
 import type { MonsterMessage } from '../net/session';
 import { isGate } from './farmLayout';
-import { Lights } from './lights';
+import { Lights, type SteadyLight } from './lights';
+import {
+  CAMP_AREA,
+  CAMP_CAMERA_LIFT,
+  CAMP_FIRE,
+  CAMP_FLOOR,
+  CAMP_LIGHTS,
+  CAMP_NIGHT_TINT,
+  CAMP_SIGN,
+  CampSky,
+  FLAME_FLARE,
+  FLAME_MS,
+  FUEL,
+  FUEL_GAP_MS,
+  isFuelTile,
+  propSeatAt,
+  SPARKS,
+  VILLAGE_CAMP_SIGNS,
+  VILLAGE_FIRE,
+  VILLAGE_PLAZA,
+  type FlameArt,
+} from './campfire';
 import { TorchLight, type TorchSpot } from './torches';
 import type { Adventure } from './adventure';
 import { AdventureField } from './adventureField';
@@ -298,6 +319,29 @@ const PLAIN_SIGNS: Partial<Record<string, { name: string; x: number; y: number }
 const EXCHANGE_SIGN = { x: 99, y: 55 };
 /** 층 그림은 바닥보다 위, 블록 설치 범위 표시보다 아래에 그린다. */
 const DEPTH_INTERIOR = 0.5;
+/** 이 폭(px) 이하는 휴대폰 화면으로 본다(조작 안내·창 접기와 같은 620px) */
+const MOBILE_WIDTH = 620;
+/** 캠프파이어 맵에서만 쓰는 그림. 맵을 나가면 GPU에서 뺀다(마을과 같이 쓰는 장작더미·나무·산길 아치는 둠). */
+const CAMP_ONLY_TEXTURES = [
+  'camp/floor',
+  'camp/chair',
+  'camp/chair-x',
+  'camp/tent-a',
+  'camp/tent-b',
+  'camp/lantern',
+  'camp/grill',
+  'camp/arch-x',
+  'camp/log-throw',
+  'camp/sparks',
+  'campfire/pit',
+  'campfire/flame',
+  'campfire/flare',
+  'campfire/log-x',
+  'campfire/log-y',
+  'glow-camp-bonfire',
+  'glow-camp-lantern',
+  'glow-camp-arch',
+] as const;
 /** 밟고 지나가는 꽃과 풀 블록은 바닥 바로 위에 그려 캐릭터를 가리지 않는다. */
 const DEPTH_DECAL = 0.6;
 /** 시간대 색과 전쟁터 어둠은 모든 월드 그림 위에 덮는다(이름표, 창 같은 화면 UI는 그 위의 HTML이라 덮이지 않는다). */
@@ -640,6 +684,22 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
   /** 옥상·바깥 계단·4층 발코니의 도시 풍경 그림(지금 시간대 한 벌만 읽음)과 맵 밖 풍경 층(2026-11-27) */
   private phaseArt!: PhaseArt;
   private skyline!: Skyline;
+  /** 캠프파이어 맵 밖 하늘·별·산·숲과 별똥별(2026-11-28, campfire.ts) */
+  private campSky!: CampSky;
+  /** 지금 맵의 모닥불 불꽃(시작마을 2×2칸, 캠프파이어 맵 큰 불): 120ms마다 다음 장이고, 장작을 넣으면 1.6초 큰 불꽃 */
+  private campFlame: { image: Phaser.GameObjects.Image; base: FlameArt; art: FlameArt; frame: number; at: { x: number; y: number } } | null = null;
+  private campFlameTimer: Phaser.Time.TimerEvent | null = null;
+  /** 캠프파이어 맵 큰 불의 빛(장작을 넣으면 1.35배에서 천천히 1로) */
+  private campFireLight: SteadyLight | null = null;
+  /** 큰 불꽃이 끝나는 때(this.time.now). 그 사이 또 넣으면 다시 1.6초 */
+  private flareUntil = 0;
+  private flareTween: Phaser.Tweens.Tween | null = null;
+  /** 내가 마지막으로 장작을 넣은 때(this.time.now). 1분 안이면 F가 아무것도 하지 않는다(기획 4 "확인 창도 뜨지 않음"). */
+  private lastFuelAt = -Infinity;
+  private fuelModal: Modal | null = null;
+  private fuelBusy = false;
+  /** 방금 떠난 맵이 캠프파이어 맵이었는지(그 맵 그림을 지울지) */
+  private campArtUsed = false;
   /** 시간대 색을 곱하는 층 그림·소품(옥상·바깥 계단) */
   private floorTinted: Phaser.GameObjects.Image[] = [];
   /** 놓인 끼우는 창문(밖 그림을 낮·밤으로 바꿔 끼움): 키 "x,y,z" */
@@ -714,6 +774,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 옥상·바깥 계단·4층 발코니 풍경도 같은 자리에 깐다(cityViews.ts).
     this.phaseArt = new PhaseArt(this, this.daylight.current);
     this.skyline = new Skyline(this, this.phaseArt, DEPTH_GROUND - 1);
+    this.campSky = new CampSky(this, DEPTH_GROUND - 1);
     // 남의 행동 소리는 내 칸과의 거리로 줄인다(소리를 낼 때만 묻는다).
     sound.setListener(() => this.me?.tile ?? null);
     this.workFx.myId = this.session.profile.id;
@@ -752,6 +813,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     });
     const { id, nickname, hp, max_hp: maxHp, skin } = this.session.profile;
     this.me = new Avatar(this, id, this.startTile(), hp, skin, maxHp);
+    if (this.mapId === 'campfire') this.me.setNight(CAMP_NIGHT_TINT);
     this.me.floorLift = this.floorLiftAt;
     this.me.sounds = (key) => sound.play(key);
     this.tags.add(id, nickname);
@@ -777,11 +839,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const cam = this.cameras.main;
     cam.setZoom(savedZoom());
     cam.startFollow(this.me.anchor, true);
+    // startFollow가 따라가는 자리를 0으로 되돌리므로, 캠프파이어 맵에서 접속했으면 다시 올린다.
+    if (this.mapId === 'campfire') this.liftCampCamera();
     // 카메라가 이번 프레임의 화면 범위를 정한 직후, 그리기 전에 화면 밖 블록 덩어리를 숨기거나 보인다.
     // 도시 풍경 층도 이때 카메라 가운데에 맞춘다(움직였을 때만 숫자를 바꿈).
     cam.on(Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE, (camera: Phaser.Cameras.Scene2D.Camera) => {
       this.blockChunks.update(camera.worldView);
       this.skyline.update(camera);
+      this.campSky.update(camera);
     });
     // 마우스 휠로 화면을 넓게 보거나 크게 본다(2026-11-15 사용자 요청). 도트가 뭉개지지 않게 정해 둔 단계로만 바꾸고 이 브라우저에 기억한다.
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
@@ -879,6 +944,11 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       // 모험 맵: 바닥 조각, 일곱 빛, 별, 보스 고리, 떠 있는 몬스터 그림자를 같은 바닥 그림에 한 번 그린다.
       const data = isAdventure(id) ? advMap(id) : undefined;
       if (data) paintAdventureGround(canvas, data, map, monstersOf(id));
+      // 시작마을 캠프파이어 광장 돌바닥(2026-11-28, 디자인 세션 14 campfireSmall.b.plaza): 바닥 그림에 함께 칠한다.
+      if (id === DEFAULT_MAP) {
+        const corner = gridToWorld(VILLAGE_PLAZA.gx, VILLAGE_PLAZA.gy);
+        canvas.getContext('2d')!.drawImage(sprite(VILLAGE_PLAZA.sprite), corner.x + VILLAGE_PLAZA.dx - worldRect(map.size).left, corner.y + VILLAGE_PLAZA.dy);
+      }
       this.textures.addCanvas(key, canvas);
     }
     return key;
@@ -1182,6 +1252,14 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       const plain = PLAIN_SIGNS[building.sprite];
       if (plain && id === DEFAULT_MAP) this.addSign(plain.name, left + plain.x, top + plain.y);
     }
+    // 시작마을 가운데 2×2칸 캠프파이어 불꽃과 이름표('캠프파이어', '산길 ↖')
+    if (id === DEFAULT_MAP) {
+      this.showCampFlame(VILLAGE_FIRE.art, VILLAGE_FIRE.gx, VILLAGE_FIRE.gy, VILLAGE_FIRE.lift);
+      for (const sign of VILLAGE_CAMP_SIGNS) {
+        const at = gridToWorld(sign.gx, sign.gy);
+        this.addSign(sign.text, at.x, at.y - sign.lift);
+      }
+    }
     if (id === 'farm') this.showFences();
     // 옥상 소품(바닥 그림과 같이 시간대 색을 곱함, 디자인 floorTint)
     if (id === 'rooftop' || id === 'villa3') this.floorTinted.push(...this.mapImages.slice(tintFrom));
@@ -1189,6 +1267,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     // 등 빛: 시간대 덮개가 있는 바깥 맵만(건물 안, 전쟁터, 분위기 색 맵은 뺀다, lantern-glow.md 7-5)
     // 건물 안은 플레이어가 놓은 등만 늘 같은 진하기로 켠다(2026-11-27 room-rules.md 6절).
     this.glows.enter(!info.dark && !info.mood, this.world.map.buildings, isTower(id));
+    // 캠프파이어 맵은 늘 밤이라 고정 빛을 늘 세기 1로 켠다(건물 안 꼴 맵이어도, 2026-11-28 camp-map.json fire.lights).
+    if (id === 'campfire') {
+      for (const light of CAMP_LIGHTS) {
+        const handle = this.glows.addSteady(light.key, light.look, gridToWorld(light.gx, light.gy));
+        if (light.fire) this.campFireLight = handle;
+      }
+    }
     if (isAdventure(id)) this.showAdvLamps(id);
     this.showSpots(id);
     this.showWalls();
@@ -1198,6 +1283,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       if (info.dark) tree.setTint(BURNT_TINT);
       if (sprite === 'board') boards.push(tree);
     }
+    // 캠프파이어 맵: 소품·나무에도 밤 색을 곱한다(바닥은 showCampMap에서 넣음, 불꽃·빛·하늘은 그대로).
+    if (id === 'campfire') {
+      this.floorTinted.push(...this.mapImages.slice(tintFrom).filter((image) => image !== this.campFlame?.image));
+      this.tintFloor();
+    }
+    // 사람에게도 밤 색(캠프파이어 맵만, 다른 맵으로 가면 푼다). 처음 접속할 때는 캐릭터를 맵을 그린 뒤 만들어 거기서 입힌다.
+    this.me?.setNight(id === 'campfire' ? CAMP_NIGHT_TINT : null);
     for (const { tile, x, y } of this.world.map.props) this.addTileProp(tile, x, y);
     this.showPieces(this.world.map);
     for (const { kind, x, y } of this.world.map.battleProps) {
@@ -1316,6 +1408,10 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 아이티공간 층 그림: 바닥과 뒤쪽 벽을 한 장에 담았다. 층마다 처음 들어갈 때 한 번만 그린다. */
   private showInterior(id: TowerId) {
+    if (id === 'campfire') {
+      this.showCampMap();
+      return;
+    }
     const [x0, y0] = FLOORS[id].area;
     const { left, top } = interiorOrigin(id, gridToWorld(x0, y0));
     if (id === 'balcony' || id === 'balcony4') {
@@ -1695,6 +1791,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.blockExtras.clear();
     this.city.hide();
     this.skyline.hide();
+    this.leaveCamp();
     this.floorTinted = [];
     this.doors.clear();
     this.walkDoors = [];
@@ -1734,6 +1831,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.groundUi.setHint(null);
     this.groundUi.setTip(null);
     this.hideFarmPanel();
+    this.dropCampTextures();
   }
 
   update(time: number) {
@@ -1814,7 +1912,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
     // F는 발밑에 주울 것이 있으면 줍고, 없으면 일을 시작하거나 멈춘다.
     // 맞닿은 칸에 쓸 수 있는 가구가 있으면 쓴다(앉기·눕기, 등 켜고 끄기, 커튼, 상자, 2026-11-27).
-    if (this.keys.takeWork() && this.canAct && !this.tryPickUp() && !this.farmKey() && !this.useFurniture()) this.toggleWork();
+    if (this.keys.takeWork() && this.canAct && !this.tryPickUp() && !this.campFuelKey() && !this.farmKey() && !this.useFurniture()) this.toggleWork();
 
     if (this.keys.takeJump() && this.canAct && !this.me.jumping) {
       if (this.seated) this.standUp();
@@ -1993,6 +2091,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     if (inReach(this.me.tile, goal) && this.useFurniture(goal)) return;
+    // 캠프파이어 맵: 고리 칸에 서서 불(화덕)을 누르면 장작 넣기(기획 4 "휴대폰은 불을 누름")
+    if (this.mapId === 'campfire' && goal.x >= 22 && goal.x <= 24 && goal.y >= 22 && goal.y <= 24 && this.campFuelKey()) return;
     this.workGoal = null;
     if (this.tapWalkDoor(wx, wy)) return;
     if (!this.tapJump(goal)) this.walkTo(goal);
@@ -4296,7 +4396,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       this.standUp();
       return true;
     }
-    if (this.me.moving || !isTower(this.mapId)) return false;
+    if (this.me.moving) return false;
     const me = this.me.tile;
     const face = this.me.gridFacing;
     const tiles: Tile[] = [];
@@ -4308,6 +4408,13 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return 1 + Math.abs(dx) + Math.abs(dy);
     };
     tiles.sort((a, b) => rank(a) - rank(b));
+    // 맵 소품 자리(시작마을 캠프파이어 통나무, 캠프파이어 맵 통나무·의자, 2026-11-28): 블록이 아니라 맵 자료로 앉는다. 남이 앉은 자리는 건너뛴다.
+    for (const tile of only ? [only] : tiles) {
+      if (!propSeatAt(this.mapId, tile.x, tile.y)) continue;
+      if ([...this.others.values()].some((other) => other.tile.x === tile.x && other.tile.y === tile.y)) continue;
+      return this.sitOn(tile, 'sit');
+    }
+    if (!isTower(this.mapId)) return false;
     for (const tile of only ? [only] : tiles) {
       const use = this.usableAt(tile);
       if (!use) continue;
@@ -4408,6 +4515,27 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     const covered = this.world.ownerOf(x, y);
     const owner = covered && this.world.isFlatStack(x, y) ? covered : { x, y, z: height - 1 };
     const id = this.world.blockAtLevel(owner.x, owner.y, owner.z);
+    // 맵 소품 자리(통나무·캠핑 의자): 소품 바닥 가운데에서 dx·dy, 앉는 면 높이 z. 깊이는 앉은 칸 깊이 ± 0.5(디자인 campfireSmall.common.seatsRule).
+    const prop = id ? undefined : propSeatAt(this.mapId, x, y);
+    if (prop) {
+      const back = prop.face === 'NW' || prop.face === 'NE';
+      const propPose = `sit${prop.z <= 5 ? 'Floor' : ''}${back ? 'Back' : ''}` as const;
+      const propFlip = prop.face === 'SE' || prop.face === 'NE';
+      const c = gridToWorld(prop.cx, prop.cy);
+      const skinAt = Math.min(POSE_FRAMES.length - 1, avatar.skinIndex);
+      const [, , pw, ph, pax, pay] = POSE_FRAMES[skinAt][propPose];
+      avatar.setPosture({
+        kind,
+        frame: `${skinAt}:${propPose}`,
+        x: Math.round(c.x + prop.dx),
+        y: Math.round(c.y + prop.dy - prop.z),
+        originX: (propFlip ? pw - pax : pax) / pw,
+        originY: pay / ph,
+        flip: propFlip,
+        depth: depthOf(x, y) + (back ? -0.5 : 0.5),
+      });
+      return;
+    }
     const seat = id ? USE_SEATS[id] : undefined;
     const furnitureDepth = this.blockImages.get(`${owner.x},${owner.y},${owner.z}`)?.depth ?? depthOf(x, y);
     let pose = kind === 'lie' ? 'lieHeadDown' : 'sit';
@@ -4445,7 +4573,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
 
   /** 앉은 칸의 가구가 치워졌으면 일어난다(나와 남 모두 자세를 푼다). */
   private checkSeats() {
-    const gone = (tile: Tile) => !this.world.isOccupied(tile.x, tile.y);
+    const gone = (tile: Tile) => !this.world.isOccupied(tile.x, tile.y) && !propSeatAt(this.mapId, tile.x, tile.y);
     if (this.seated && gone(this.seated.seat)) this.standUp();
     for (const [id] of this.otherPoses) {
       const avatar = this.others.get(id);
@@ -4796,6 +4924,7 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     this.otherRuns.set(id, run);
     if (!avatar) {
       avatar = new Avatar(this, id, { x, y }, hp, skin, maxHp);
+      if (this.mapId === 'campfire') avatar.setNight(CAMP_NIGHT_TINT);
       avatar.floorLift = this.floorLiftAt;
       avatar.setTorch(torch && MAPS[this.mapId].dark !== true);
       this.others.set(id, avatar);
@@ -5434,6 +5563,208 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
     else target = onHotbar ? inv.selected : 0;
     inv.put(target, id);
     inv.select(target);
+  }
+
+  // ───────── 캠프파이어(2026-11-28, campfire.ts, 기획 4 life-1127.md 4-1) ─────────
+
+  /** 모닥불 불꽃 한 장을 (gx, gy) 땅 점에서 lift px 위에 세우고 120ms마다 다음 장으로 넘긴다(프레임이 바뀔 때만 setFrame). */
+  private showCampFlame(art: FlameArt, gx: number, gy: number, lift: number) {
+    this.ensureFrames(art);
+    const ground = gridToWorld(gx, gy);
+    const at = { x: ground.x, y: ground.y - lift };
+    const image = this.add
+      .image(at.x, at.y, art.sprite, '0')
+      .setOrigin(art.ax / art.w, art.ay / art.h)
+      .setDepth(depthOf(24, 24) + 0.01);
+    this.mapImages.push(image);
+    this.campFlame = { image, base: art, art, frame: 0, at };
+    this.campFlameTimer?.remove();
+    this.campFlameTimer = this.time.addEvent({
+      delay: FLAME_MS,
+      loop: true,
+      callback: () => {
+        const flame = this.campFlame;
+        if (!flame) return;
+        // 큰 불꽃이 끝나면 보통 불꽃으로 돌아온다.
+        if (flame.art !== flame.base && this.time.now >= this.flareUntil) this.setFlameArt(flame.base);
+        flame.frame = (flame.frame + 1) % flame.art.frames;
+        flame.image.setFrame(String(flame.frame));
+      },
+    });
+  }
+
+  /** 가로로 늘어선 프레임 그림에 '0'~'n−1' 프레임을 만든다(처음 한 번). */
+  private ensureFrames(art: FlameArt) {
+    this.spriteTexture(art.sprite);
+    const texture = this.textures.get(art.sprite);
+    for (let i = 0; i < art.frames; i++) if (!texture.has(String(i))) texture.add(String(i), 0, i * art.w, 0, art.w, art.h);
+  }
+
+  private setFlameArt(art: FlameArt) {
+    const flame = this.campFlame;
+    if (!flame) return;
+    this.ensureFrames(art);
+    flame.art = art;
+    flame.frame = flame.frame % art.frames;
+    flame.image.setTexture(art.sprite, String(flame.frame)).setOrigin(art.ax / art.w, art.ay / art.h);
+  }
+
+  /**
+   * 캠프파이어 맵(디자인 세션 14 camp-map.json): 바닥 그림 한 장(밤 색을 곱함), 가운데 큰 불꽃, 맵 밖 하늘 층, 카메라를 캐릭터보다 위로.
+   * 소품·나무는 showMap의 건물·나무 반복문이 놓고 밤 색을 곱한다.
+   */
+  private showCampMap() {
+    const [x0, y0, x1] = CAMP_AREA;
+    this.spriteTexture(CAMP_FLOOR);
+    const floor = this.add
+      .image(gridToWorld(x0, x1 + 1).x, gridToWorld(x0, y0).y, CAMP_FLOOR)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH_INTERIOR);
+    this.mapImages.push(floor);
+    this.floorTinted.push(floor);
+    this.showCampFlame(CAMP_FIRE.art, CAMP_FIRE.gx, CAMP_FIRE.gy, CAMP_FIRE.lift);
+    this.campSky.show(gridToWorld(x0, y0).y);
+    const sign = gridToWorld(CAMP_SIGN.gx, CAMP_SIGN.gy);
+    this.addSign(CAMP_SIGN.text, sign.x, sign.y - CAMP_SIGN.lift);
+    this.liftCampCamera();
+  }
+
+  /** 캠프파이어 맵: 카메라가 캐릭터보다 위를 보게 해 하늘을 넓힌다(데스크톱 70px, 폭 620px 이하 100px). */
+  private liftCampCamera() {
+    const cam = this.cameras.main;
+    cam.setFollowOffset(0, cam.width <= MOBILE_WIDTH ? CAMP_CAMERA_LIFT.mobile : CAMP_CAMERA_LIFT.desktop);
+  }
+
+  /** 맵을 떠날 때: 불꽃 타이머·하늘 층·확인 창을 치우고, 캠프파이어 맵에서만 쓰는 그림을 GPU에서 뺀다. */
+  private leaveCamp() {
+    this.campFlameTimer?.remove();
+    this.campFlameTimer = null;
+    this.campFlame = null;
+    this.campFireLight = null;
+    this.flareTween?.remove();
+    this.flareTween = null;
+    this.flareUntil = 0;
+    this.fuelModal?.close();
+    this.fuelModal = null;
+    this.campArtUsed = this.campSky.active;
+    this.campSky.hide();
+  }
+
+  /** 캠프파이어 맵에서만 쓴 그림을 GPU에서 뺀다. 그 그림을 쓴 물체를 모두 지운 뒤(clearMap 끝)에 부른다. */
+  private dropCampTextures() {
+    if (!this.campArtUsed) return;
+    this.campArtUsed = false;
+    for (const name of CAMP_ONLY_TEXTURES) if (this.textures.exists(name)) this.textures.remove(name);
+  }
+
+  /**
+   * 캠프파이어 맵 고리 16칸에서 F(휴대폰은 불을 누름): 확인 창 "당신의 고민도 함께 태우십니까?" [확인] [취소].
+   * 1분 안에 다시 누르면 아무 일도 없다(확인 창도 뜨지 않음). 그런 칸이면 true(F로 다른 일을 하지 않음).
+   */
+  private campFuelKey() {
+    if (this.mapId !== 'campfire' || !this.canAct || !isFuelTile(this.me.tile.x, this.me.tile.y)) return false;
+    if (this.fuelBusy || this.time.now - this.lastFuelAt < FUEL_GAP_MS) return true;
+    const root = document.getElementById('hud');
+    if (!root) return true;
+    const modal = new Modal(root, 'camp-fuel', '당신의 고민도 함께 태우십니까?');
+    this.fuelModal = modal;
+    modal.button('확인', () => void this.throwLog(), true);
+    modal.button('취소', () => undefined);
+    modal.whenClosed(() => {
+      if (this.fuelModal === modal) this.fuelModal = null;
+    });
+    return true;
+  }
+
+  /** 서버에 장작을 넣고(throw_log) 던지기·큰 불꽃을 보이고 같은 맵 사람에게 알린다. 골드는 숫자만 바뀐다. */
+  private async throwLog() {
+    if (this.fuelBusy) return;
+    this.fuelBusy = true;
+    const result = await this.session.throwLog();
+    this.fuelBusy = false;
+    if (result === 'too soon') {
+      this.lastFuelAt = this.time.now;
+      return;
+    }
+    if (typeof result === 'string') {
+      if (result === 'failed') this.notice('넣지 못했습니다', '잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    this.lastFuelAt = this.time.now;
+    this.economy.setGold(result.gold);
+    this.economy.setCampfireLogs(result.total);
+    if (this.mapId !== 'campfire') return;
+    this.playFuel(this.me);
+    this.session.sendFuel();
+  }
+
+  /** 다른 사람이 장작을 넣었다: 그 사람 자리에서 던지기와 큰 불꽃 */
+  onFuel(id: string) {
+    if (this.mapId !== 'campfire') return;
+    const avatar = this.others.get(id);
+    if (avatar) this.playFuel(avatar, id);
+  }
+
+  /**
+   * 장작 넣기 연출(camp-map.json fuel.sequence): 손 높이(발에서 20px 위)에서 장작 한 장이 불꽃 아래(화덕 가운데에서 10px 위)까지
+   * 0.4초 포물선(가운데 26px 솟음) → 불꽃이 1.6초 큰 불꽃, 불티 여섯 장 한 번, 불빛 1.35배에서 천천히 1로.
+   */
+  private playFuel(from: Avatar, who?: string) {
+    const flame = this.campFlame;
+    if (!flame) return;
+    const start = { x: from.sprite.x, y: from.sprite.y - FUEL.hand };
+    const end = { x: flame.at.x, y: flame.at.y + CAMP_FIRE.lift - FUEL.target };
+    this.spriteTexture('camp/log-throw');
+    const log = this.add.image(start.x, start.y, 'camp/log-throw').setDepth(flame.image.depth + 0.001);
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: FUEL.throwMs,
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        log.setPosition(start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t - Math.sin(t * Math.PI) * FUEL.arc);
+        log.setRotation(t * Math.PI * 1.5);
+      },
+      onComplete: () => {
+        log.destroy();
+        this.flare(end);
+      },
+    });
+    sound.play('strike_wood', who ? { at: from.tile, who } : {});
+  }
+
+  private flare(at: { x: number; y: number }) {
+    if (!this.campFlame) return;
+    this.flareUntil = this.time.now + FUEL.flareMs;
+    this.setFlameArt(FLAME_FLARE);
+    sound.play('torch_on', { at: { x: 23, y: 23 } });
+    // 불티 여섯 장(80ms) 한 번
+    this.ensureFrames(SPARKS);
+    const sparks = this.add
+      .image(at.x, at.y, SPARKS.sprite, '0')
+      .setOrigin(SPARKS.ax / SPARKS.w, SPARKS.ay / SPARKS.h)
+      .setDepth((this.campFlame?.image.depth ?? 0) + 0.002);
+    let frame = 0;
+    this.time.addEvent({
+      delay: FUEL.sparkMs,
+      repeat: SPARKS.frames - 1,
+      callback: () => {
+        frame++;
+        if (frame >= SPARKS.frames) sparks.destroy();
+        else sparks.setFrame(String(frame));
+      },
+    });
+    // 불빛 1.35배에서 1.6초 동안 1로
+    const light = this.campFireLight;
+    if (light) {
+      this.flareTween?.remove();
+      this.flareTween = this.tweens.addCounter({
+        from: FUEL.boost,
+        to: 1,
+        duration: FUEL.flareMs,
+        onUpdate: (tween) => light.setStrength(Math.round((tween.getValue() ?? 1) * 20) / 20),
+      });
+    }
   }
 
   onConnection(connected: boolean, reason: string | null) {

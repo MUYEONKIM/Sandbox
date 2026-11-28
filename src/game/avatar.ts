@@ -351,8 +351,19 @@ export class Avatar {
   private flash() {
     this.image.setTint(0xff6b5e);
     this.scene.time.delayedCall(HIT_FLASH_MS, () => {
-      if (this.image.active) this.image.setTint(0xffffff);
+      if (this.image.active) this.image.setTint(this.night);
     });
+  }
+
+  /** 늘 밤인 맵(캠프파이어 맵, 2026-11-28)에서 사람과 손에 든 것에 곱하는 색. 흰색이면 그대로다. */
+  private night = 0xffffff;
+
+  setNight(tint: number | null) {
+    const next = tint ?? 0xffffff;
+    if (next === this.night) return;
+    this.night = next;
+    this.image.setTint(next);
+    this.gun.setTint(next);
   }
 
   update(delta: number) {

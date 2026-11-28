@@ -278,6 +278,8 @@ export const MAPS: Record<MapId, MapInfo> = {
       { name: `${room}호`, floor: [], floorTop: BLOCK_TOP, color: 0xd9d4c8, accent: 0xffb37a, links: {}, safe: true },
     ]),
   ) as Record<VillaRoomId, MapInfo>),
+  // 캠프파이어 맵(2026-11-28, 디자인 세션 14 camp-map.json): 산속 밤하늘 아래 모닥불. 마을 광장 옆 산길 아치로 간다. 공격·블록이 막힌다.
+  campfire: { name: '캠프파이어', floor: [], floorTop: BLOCK_TOP, color: 0x3a3226, accent: 0xffb36a, background: '#050817', links: {}, safe: true },
   // 4층 발코니(2026-11-27, 비밀 아님). 맵 밖은 시간대마다 바뀌는 도시 풍경이다(src/game/cityViews.ts).
   balcony4: {
     name: '아이티공간 4층 발코니',
@@ -533,15 +535,18 @@ export const OFFICE = {
   accent: 0xffd84d,
 };
 
-/** 평원 한가운데의 아이티공간. 정문 앞 칸이 포탈이고, 타면 건물 1층으로 들어간다. */
+/**
+ * 시작마을 왼쪽 위의 아이티공간. 정문 앞 칸이 포탈이고, 타면 건물 1층으로 들어간다.
+ * 2026-11-28 마을 가운데(18, 18)에서 옮김(사용자 "후보 2에서 왼쪽 위로 살짝, 노동청이랑 겹치지 않게", 디자인 세션 14 campfire.json chosen.castle). 안의 층은 그대로다.
+ */
 export const CASTLE = {
   sprite: 'castle' as const,
-  x: 18,
-  y: 18,
+  x: 0,
+  y: 11,
   w: 11,
   d: 11,
-  door: { x: 29, y: 23 },
-  landing: { x: 31, y: 24 },
+  door: { x: 11, y: 16 },
+  landing: { x: 13, y: 17 },
   name: '아이티공간',
   accent: 0xff7ad9,
 };
@@ -553,11 +558,11 @@ export const CASTLE = {
 export const SHOP = {
   sprite: 'villa' as const,
   x: 3,
-  y: 16,
+  y: 30,
   w: 6,
   d: 8,
-  door: { x: 3, y: 24 },
-  landing: { x: 4, y: 26 },
+  door: { x: 3, y: 38 },
+  landing: { x: 4, y: 40 },
   name: '상점',
   accent: 0xb58cff,
 };
@@ -649,13 +654,26 @@ export const BOARD = {
  */
 export const EXCHANGE = {
   sprite: 'exchange' as const,
-  x: 4,
-  y: 32,
+  x: 26,
+  y: 34,
   w: 6,
   d: 6,
-  door: { x: 6, y: 38 },
-  landing: { x: 7, y: 40 },
+  door: { x: 28, y: 40 },
+  landing: { x: 29, y: 42 },
   name: '증권거래소',
+};
+
+/**
+ * 캠프파이어 맵으로 가는 산길 입구(2026-11-28 사용자 "광장 옆 산길 입구 (추천)", 디자인 세션 14 campfire.json chosen.trail).
+ * 아치(1×2칸, 막음) 바로 앞 두 칸이 숨은 포탈이고, 맵에서 돌아오면 오솔길 위 back에 선다.
+ */
+export const CAMP_TRAIL = {
+  arch: { x: 17, y: 20 },
+  triggers: [
+    { x: 18, y: 20 },
+    { x: 18, y: 21 },
+  ],
+  back: { x: 20, y: 21 },
 };
 
 /**
@@ -755,6 +773,8 @@ export function portalsOf(id: MapId): Portal[] {
     portals.push({ ...COOP.door, to: 'farmcoop', landing: COOP.landing });
     portals.push({ ...SMITHY.door, to: 'smithy', landing: SMITHY.landing });
     portals.push({ ...VILLA.door, to: 'villa1', label: VILLA.name, landing: VILLA.landing });
+    // 캠프파이어 맵으로 가는 산길 아치 앞 두 칸(숨은 포탈: 그림·이름표·미니맵 점 없음, 밟으면 넘어감)
+    for (const at of CAMP_TRAIL.triggers) portals.push({ ...at, to: 'campfire', secret: true, landing: CAMP_TRAIL.back });
   }
   return portals;
 }
@@ -800,8 +820,13 @@ export function arrivalFor(to: MapId, from: MapId) {
   return back ? back.landing : OFFICE.landing;
 }
 
+/**
+ * 시작마을에서 쓰러진 뒤 일어나는 칸(2026-11-28 캠프파이어 동쪽 길, 디자인 세션 14 chosen.respawn). 블록을 못 놓는 칸이다(village.ts의 CAMP_RESERVED, SQL plains_reserved).
+ */
+export const PLAINS_RESPAWN = { x: 30, y: 23 };
+
 /** 쓰러진 뒤 일어나는 칸. 블록을 놓을 수 없는 칸이라 갇힐 일이 없다. 모험 맵은 입구 칸이다(나가는 포탈이 없음). */
 export function respawnTile(id: MapId) {
   if (isAdventure(id)) return advEntry(id);
-  return id === DEFAULT_MAP ? CASTLE.landing : portalsOf(id)[0].landing;
+  return id === DEFAULT_MAP ? PLAINS_RESPAWN : portalsOf(id)[0].landing;
 }

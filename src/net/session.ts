@@ -318,6 +318,8 @@ export interface SessionEvents {
   onHarvest(id: string, rare: boolean): void;
   /** 같은 모험 필드의 다른 사람이 전투를 시작하거나(on) 끝냈다. 머리 위 칼 표시에 쓴다(2026-11-17). 끝날 때는 바뀐 판 레벨도 온다. */
   onFight(id: string, on: boolean, run: string | null): void;
+  /** 같은 맵 사람이 캠프파이어에 장작을 넣었다(2026-11-28). 그 사람 자리에서 던지기와 큰 불꽃을 보인다. */
+  onFuel(id: string): void;
   /** 서버가 알려 주는 레벨과 경험치 변화 */
   onLevel(id: string, level: bigint, exp: number): void;
   /** 지금 같은 맵에 접속 중인 플레이어 id 목록 */
@@ -681,6 +683,9 @@ export class GameSession {
       .on('broadcast', { event: 'fight' }, ({ payload }) => {
         if (current() && typeof payload?.id === 'string' && payload.id !== this.profile.id) events.onFight(payload.id, payload.on === true, parseRun(payload.run));
       })
+      .on('broadcast', { event: 'fuel' }, ({ payload }) => {
+        if (current() && typeof payload?.id === 'string' && payload.id !== this.profile.id) events.onFuel(payload.id);
+      })
       .on('broadcast', { event: 'mstate' }, ({ payload }) => this.monsterIn(current, 'mstate', payload))
       .on('broadcast', { event: 'mhit' }, ({ payload }) => this.monsterIn(current, 'mhit', payload))
       .on('broadcast', { event: 'mdead' }, ({ payload }) => this.monsterIn(current, 'mdead', payload))
@@ -859,6 +864,29 @@ export class GameSession {
   }
 
   /** 모험 전투를 시작했다(on)거나 끝냈다고 같은 맵 사람들에게 알린다. 머리 위 칼 표시와, 끝날 때 바뀐 판 레벨(이름표)에 쓴다. */
+  /** 캠프파이어에 장작을 넣었다고 같은 맵 사람에게 알린다. 혼자면 보내지 않는다(서버 간격 1분이라 사람마다 1분에 1개까지). 골드는 알리지 않는다. */
+  sendFuel() {
+    if (!this.joined || !this.channel || this.others === 0) return;
+    void this.channel.send({ type: 'broadcast', event: 'fuel', payload: { id: this.profile.id } });
+  }
+
+  /**
+   * 캠프파이어에 장작을 넣는다(SQL throw_log, 2026-11-28 기획 4 life-1127.md 4-1). 1분 안이면 'too soon', 캠프파이어 맵이 아니면 'not here'.
+   * total은 태운 장작 누적 수(하루 첫 번만 늘어남), gold는 넣은 뒤 골드(그날 10번까지 100G씩).
+   */
+  async throwLog(): Promise<{ total: number; gold: Gold } | 'too soon' | 'not here' | 'failed'> {
+    const { data, error } = await supabase.rpc('throw_log');
+    if (error) return error.message.includes('too soon') ? 'too soon' : error.message.includes('not here') ? 'not here' : 'failed';
+    const d = data as { total: unknown; gold: unknown };
+    return { total: Number(d.total) || 0, gold: toGold(d.gold) };
+  }
+
+  /** 내 태운 장작 누적 수. 줄이 없거나 읽지 못하면 0 */
+  async campfireLogs(): Promise<number> {
+    const { data, error } = await supabase.from('campfire_stats').select('total').eq('player', this.profile.id).maybeSingle();
+    return error || !data ? 0 : Number(data.total) || 0;
+  }
+
   sendFight(on: boolean) {
     if (!this.joined || !this.channel || this.others === 0) return;
     void this.channel.send({ type: 'broadcast', event: 'fight', payload: { id: this.profile.id, on, run: this.events.currentRun() } });

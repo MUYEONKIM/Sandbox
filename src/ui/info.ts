@@ -66,6 +66,8 @@ export class InfoView {
     line('경험치', `${exp.toLocaleString()} / ${levelNeed(level).toLocaleString()}`);
     line('HP', `${hp.toLocaleString()} / ${maxHp.toLocaleString()}`);
     line('골드', goldText(this.economy.gold));
+    // 캠프파이어에 태운 장작 누적 수(2026-11-28 사용자 "정보창에 태운 장작 누적 수가 남고", 하루 첫 번만 1씩 늘어남)
+    line('태운 장작', `${this.economy.campfireLogs.toLocaleString()}개`);
 
     element('info-section', this.root).textContent = '스텟';
     const stats = element('info-stats', this.root);
@@ -95,7 +97,7 @@ export class InfoView {
     const cropValue = crops.reduce((sum, row) => sum + row.value, 0);
     cropTitle.textContent = crops.length ? `거둔 작물 · 농협에 팔면 ${goldText(cropValue)}` : '거둔 작물';
     const cropList = element('info-list', this.root);
-    if (!crops.length) element('info-empty', cropList).textContent = '거둔 작물이 없습니다. 농장의 내 땅에 씨앗을 심어 거둡니다.';
+    if (!crops.length) element('info-empty', cropList).textContent = '거둔 작물이 없습니다.';
     for (const { crop, grade, count, value } of crops) {
       const row = element('info-row', cropList);
       element('info-row-name', row, 'span').textContent = `${GRADE_NAME[grade]}${crop.name}`;

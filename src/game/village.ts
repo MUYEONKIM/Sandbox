@@ -4,6 +4,7 @@ import { MAP_SIZE } from '../config';
 import type { Building } from './map';
 import { BOARD, CASTLE, CAVE, COOP, EXCHANGE, GUIDEPOSTS, PORTAL_MARGIN, FAME, isInside, OFFICE, portalsOf, SHOP, SMITHY, TAVERN, VILLA, type Area } from './maps';
 import type { Tile } from './world';
+import { CAMP_RESERVED, CAMP_ROADS, TRAIL_AREA, TRAIL_TILES, VILLAGE_CAMP_PROPS } from './campfire';
 
 /** tiles.png의 타일 번호 */
 const PAVING = [63, 63, 63, 63, 61];
@@ -37,8 +38,12 @@ const OAK_LINE = 30;
  * 자리는 에이전트가 정했다.
  */
 const STONE_ROADS: Area[] = [
-  // 성문 앞 광장
-  [29, 19, 33, 28],
+  // 2026-11-28 아이티공간을 왼쪽 위로 옮기며 성문 앞 광장 [29, 19, 33, 28]과 옛 상점 길 [3, 25, 13, 26]을 뺐다(디자인 세션 14 chosen.roads).
+  // 아이티공간 정문 앞에서 링 도로 왼쪽까지, 상점 문 앞
+  [11, 15, 13, 17],
+  [3, 39, 4, 40],
+  // 가운데 캠프파이어로 이어지는 네 길
+  ...CAMP_ROADS,
   // 명예의 전당과 게시판 간판 앞으로
   [34, 21, 37, 22],
   [34, 26, 37, 27],
@@ -50,9 +55,7 @@ const STONE_ROADS: Area[] = [
   // 노동청: 성을 두르는 길 왼쪽 위 귀퉁이에서 위로, 다시 왼쪽으로
   [14, 6, 15, 13],
   [10, 6, 13, 7],
-  // 상점: 왼쪽 변에서 왼쪽으로
-  [3, 25, 13, 26],
-  // 증권거래소: 전쟁터 길에서 왼쪽으로
+  // 상점(2026-11-28부터 왼쪽 아래): 전쟁터 길에서 왼쪽으로(예전 증권거래소 길)
   [5, 39, 13, 40],
   // 농협: 농장 길에서 오른쪽으로
   [34, 10, 40, 11],
@@ -81,12 +84,14 @@ const BUILDINGS: Building[] = [
   { sprite: SMITHY.sprite, x: SMITHY.x, y: SMITHY.y, w: SMITHY.w, d: SMITHY.d },
   { sprite: CAVE.sprite, x: CAVE.x, y: CAVE.y, w: CAVE.w, d: CAVE.d },
   { sprite: VILLA.sprite, x: VILLA.x, y: VILLA.y, w: VILLA.w, d: VILLA.d },
+  // 가운데 2×2칸 캠프파이어와 산길 아치(2026-11-28, campfire.ts)
+  ...VILLAGE_CAMP_PROPS,
 ];
 
 const FIXED_TREES: Tree[] = [
-  // 성문 양옆
+  // 옛 성문 양옆. (30, 27)은 캠프파이어 통나무·불을 가려 2026-11-28 (18, 17)로 옮겼다(디자인 세션 14 chosen.trees).
   { sprite: 'pinetree', x: 30, y: 20 },
-  { sprite: 'pinetree', x: 30, y: 27 },
+  { sprite: 'pinetree', x: 18, y: 17 },
   // 광장 오른쪽 잔디밭의 명예의 전당 간판과 게시판
   { sprite: FAME.sprite, x: FAME.x, y: FAME.y },
   { sprite: BOARD.sprite, x: BOARD.x, y: BOARD.y },
@@ -96,7 +101,7 @@ const FIXED_TREES: Tree[] = [
   // 2026-11-27 빌라 자리라 뺐다(사용자 "둘 다 빼고 그 자리에").
   { sprite: 'firtree', x: 39, y: 17 },
   { sprite: 'pinetree', x: 41, y: 33 },
-  { sprite: 'firtree', x: 6, y: 13 },
+  // 전나무 (6, 13)은 2026-11-28 아이티공간 바닥이라 뺐다.
   { sprite: 'firtree', x: 21, y: 43 },
   // 빌라 앞뜰 벤치 둘(장식, 칸 하나를 막음, 앉기 없음, 디자인 세션 11)
   { sprite: 'villa/bench-out', x: 22, y: 11 },
@@ -216,6 +221,14 @@ export function layoutVillage(): Village {
       mark(x, y);
     });
   }
+
+  // 캠프파이어 산길 흙 오솔길(아치 칸 아래까지)
+  eachTile([...TRAIL_AREA], (x, y) => {
+    floorTiles.set(tileIndex(x, y), TRAIL_TILES[(x * 3 + y * 5) % TRAIL_TILES.length]);
+    mark(x, y);
+  });
+  // 캠프파이어 광장 원(돌바닥 그림이 덮음)과 일어나는 칸에는 꽃을 두지 않는다.
+  for (const { x, y } of CAMP_RESERVED) mark(x, y);
 
   for (const { x, y, w, d } of [OFFICE, CASTLE, SHOP, ...BUILDINGS]) eachTile([x, y, x + w - 1, y + d - 1], mark);
 
