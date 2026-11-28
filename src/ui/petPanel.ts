@@ -2,8 +2,8 @@ import './pet.css';
 import { spriteUrl } from '../art/sprites';
 import type { Grade } from '../game/farm';
 import { formatNumber } from '../game/level';
-import { CHANCE_LINE, careLine, isPraiseText, REARM_LINE, replyTo, talkLine, ZERO_LINES, type TalkContext } from '../game/petLines';
-import { PET_KINDS, PET_MOODS, PET_NAMES, PET_STAGES, type PetFood, type PetKind, type PetMood } from '../game/pets';
+import { CARE_LINES, CHANCE_LINE, careLine, isPraiseText, JOY_LINE, REARM_LINE, replyTo, talkLine, ZERO_LINES, type TalkContext } from '../game/petLines';
+import { PET_KINDS, PET_MOODS, PET_STAGES, petNameOf, type PetFood, type PetKind, type PetMood } from '../game/pets';
 import type { PetCare } from '../game/petCare';
 import type { PetAct, PetActResult } from '../net/pets';
 import { sound } from '../sound/engine';
@@ -12,7 +12,8 @@ import { foldButton, showFoldButton } from './fold';
 
 /**
  * 펫 상태 창(오른쪽 아래, 디자인 세션 12 시안 pets.md 8-5·9-3·9-5, 규칙 pet-care-1127.md 3·4·8·9장).
- * 얼굴·종류 이름·친밀도 하트·단계 숫자·기회 발바닥·막대 넷·돌보기 넷·마지막 말·말 칸. 접으면 얼굴·행복·작은 발바닥. 잃은 뒤에는 빈 방석과 [입양하기].
+ * 얼굴·이름(누르면 이름 바꾸기)·친밀도 하트·단계 숫자·기회 발바닥·막대 넷·돌보기 넷·마지막 말·말 칸.
+ * 접으면 얼굴·이름·단계와 친밀도·작은 막대 셋(배부름·기운·함께함, 2026-11-28 코드 묶음 7-1). 잃은 뒤에는 빈 방석과 [입양하기].
  * 얼굴은 부드러운 그림(⑦), 처음 모양은 PC 펼침·휴대폰 접음(⑧) — 2026-11-28 사용자 결정.
  * DOM은 값이 바뀔 때만 고친다(put이 앞 값과 견줌). 매 프레임 하는 일은 없다.
  */
@@ -41,6 +42,10 @@ export interface PetPanelHost {
   fed(food: PetFood, grade: Grade | null, left: number | null): void;
   /** [입양하기] */
   adopt(): void;
+  /** 이름을 눌렀다(이름 바꾸기 창) */
+  rename(): void;
+  /** 그 종류가 좋아하는 먹이의 보이는 이름(감자, 말 안 듣는 붕어 …) */
+  favorites(kind: PetKind): string[];
 }
 
 const FOLD_KEY = 'pet-folded';
@@ -61,16 +66,21 @@ const BARS = [
 ] as const;
 
 let varsSet = false;
-/** 그림 주소(배포마다 바뀌는 ?v=)를 :root 변수로 넣는다. 처음 한 번 */
+/**
+ * 그림 주소(배포마다 바뀌는 ?v=)를 :root 변수로 넣는다. 처음 한 번.
+ * 주소는 문서 기준 절대 주소로 바꿔 넣는다: CSS 변수 속 상대 url()은 그 변수를 쓰는 CSS 파일 자리(배포 사이트의 /Sandbox/assets/)에서
+ * 풀려 그림을 못 찾는다(2026-11-28 실제 사이트에서 고르는 창·접은 칸 그림이 비었던 까닭, 개발 서버는 CSS가 문서 안이라 드러나지 않음).
+ */
 export function setPetArtVars() {
   if (varsSet) return;
   varsSet = true;
   const style = document.documentElement.style;
-  style.setProperty('--pet-sheet', `url("${spriteUrl('pets/pets')}")`);
-  style.setProperty('--pet-faces', `url("${spriteUrl('pets/faces-soft')}")`);
-  style.setProperty('--pet-chance', `url("${spriteUrl('pets/pet-chance')}")`);
-  style.setProperty('--pet-cushion', `url("${spriteUrl('pets/pet-cushion-soft')}")`);
-  style.setProperty('--pet-cushion-icon', `url("${spriteUrl('pets/pet-cushion-32')}")`);
+  const url = (name: string) => `url("${new URL(spriteUrl(name), document.baseURI).href}")`;
+  style.setProperty('--pet-sheet', url('pets/pets'));
+  style.setProperty('--pet-faces', url('pets/faces-soft'));
+  style.setProperty('--pet-chance', url('pets/pet-chance'));
+  style.setProperty('--pet-cushion', url('pets/pet-cushion-soft'));
+  style.setProperty('--pet-cushion-icon', url('pets/pet-cushion-32'));
 }
 
 /** 얼굴 칸(시트 줄 = 종류, 칸 = 표정) */
@@ -113,10 +123,12 @@ export class PetPanel {
   private readonly hearts: HTMLElement[] = [];
   private readonly bondNum: HTMLElement;
   private readonly paws: HTMLElement[] = [];
-  private readonly chipPaws: HTMLElement[] = [];
   private readonly bars = new Map<string, { fill: HTMLElement; num: HTMLElement }>();
   private readonly buttons = new Map<PetAct, HTMLButtonElement>();
-  private readonly chipNum: HTMLElement;
+  private readonly favorite: HTMLElement;
+  private readonly chipName: HTMLElement;
+  private readonly chipBond: HTMLElement;
+  private readonly chipBars = new Map<string, { fill: HTMLElement; label: HTMLElement }>();
   private readonly log: HTMLElement;
   private readonly input: HTMLInputElement;
   private readonly talkButton: HTMLButtonElement;
@@ -149,6 +161,7 @@ export class PetPanel {
     const right = element('', head);
     const top = element('pet-bond', right);
     this.name = element('pet-name', top);
+    this.name.addEventListener('click', () => this.host.rename());
     const hearts = element('pet-hearts', top);
     for (let i = 0; i < 5; i++) this.hearts.push(element('', hearts, 'i'));
     this.bondNum = element('pet-bond-num', right);
@@ -165,6 +178,8 @@ export class PetPanel {
       const num = element('num', bars, 'span');
       this.bars.set(key, { fill, num });
     }
+    // 좋아하는 음식(2026-11-28 사용자 "펫 상태창에 좋아하는 음식 : 감자, 가지 처럼 상태창에 적어줘", 펼친 창에만)
+    this.favorite = element('pet-favorite', this.box);
     const acts = element('pet-acts', this.box);
     for (const [act, label] of ACTS) {
       const button = noFocus(element('', acts, 'button') as HTMLButtonElement);
@@ -195,16 +210,30 @@ export class PetPanel {
     this.food = element('pet-skin pet-food', this.box);
     this.food.hidden = true;
 
-    // ── 접은 칸 ──
+    // ── 접은 칸(2026-11-28 사용자 "+ 버튼과 함께 내 펫의 사진, 친밀도, 펫 상태 간략히"): 얼굴 · 이름과 단계·친밀도 · 작은 막대 셋 ──
+    // 얼굴을 누르면 쓰다듬기, 그 밖을 누르면 펼친다.
     this.chip = element('pet-skin pet-chip', root);
     const chipFold = foldButton(this.chip, () => this.setFolded(false));
     showFoldButton(chipFold, true);
-    this.chipFace = petFace(this.chip, 48);
-    this.chipFace.addEventListener('click', () => void this.doAct('pat'));
+    this.chip.addEventListener('click', () => this.setFolded(false));
+    this.chipFace = petFace(this.chip, 44);
+    this.chipFace.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void this.doAct('pat');
+    });
     const col = element('pet-chip-col', this.chip);
-    this.chipNum = element('pet-chip-num', col, 'span');
-    const chipPaws = element('pet-chances', col, 'span');
-    for (let i = 0; i < 2; i++) this.chipPaws.push(element('', chipPaws, 'i'));
+    this.chipName = element('pet-chip-name', col);
+    const chipBars = element('pet-chip-bars', col);
+    element('label', chipBars, 'span').textContent = '친밀도';
+    this.chipBond = element('pet-chip-bond', chipBars, 'span');
+    for (const [key, label, color] of BARS) {
+      if (key === 'happy') continue;
+      const name = element('label', chipBars, 'span');
+      name.textContent = label;
+      const fill = element('', element('bar', chipBars, 'span'), 'b');
+      fill.style.background = color;
+      this.chipBars.set(key, { fill, label: name });
+    }
     this.chipRing = element('pet-warn-ring', this.chip);
 
     // ── 펫을 잃은 뒤: 빈 방석 + [입양하기] / 접으면 빈 방석만 ──
@@ -276,13 +305,24 @@ export class PetPanel {
     });
     this.put('paws', String(s.chances), () => {
       this.paws.forEach((p, i) => p.classList.toggle('off', i >= s.chances));
-      this.chipPaws.forEach((p, i) => p.classList.toggle('off', i >= s.chances));
     });
+    const name = petNameOf(kind, s.name);
     if (this.folded) {
-      this.put('chipNum', String(v.happy), () => (this.chipNum.textContent = String(v.happy)));
+      this.put('chipName', name, () => (this.chipName.textContent = name));
+      const chipBond = `${PET_STAGES[stage - 1].name} ${formatNumber(s.bond)}`;
+      this.put('chipBond', chipBond, () => (this.chipBond.textContent = chipBond));
+      for (const [key, bar] of this.chipBars) {
+        const value = v[key as keyof typeof v];
+        this.put(`chipBar:${key}`, String(value), () => {
+          bar.fill.style.transform = `scaleX(${value / 100})`;
+          bar.label.classList.toggle('low', value < 30);
+        });
+      }
       return;
     }
-    this.put('name', kind, () => (this.name.textContent = PET_NAMES[kind]));
+    this.put('name', name, () => (this.name.textContent = name));
+    const favorite = `좋아하는 음식 : ${this.host.favorites(kind).join(', ')}`;
+    this.put('favorite', favorite, () => (this.favorite.textContent = favorite));
     this.put('hearts', String(stage), () => this.hearts.forEach((h, i) => h.classList.toggle('on', i < stage)));
     const next = PET_STAGES[stage]?.min;
     const bondText = `${PET_STAGES[stage - 1].name} ${formatNumber(s.bond)}${next !== undefined ? ` / ${formatNumber(next)}` : ''}`;
@@ -301,10 +341,10 @@ export class PetPanel {
       this.buttons.get('feed')!.disabled = asleep;
       this.buttons.get('play')!.disabled = asleep || zero;
     });
-    this.put('log', this.lastLine, () => {
+    this.put('log', `${name}|${this.lastLine}`, () => {
       this.log.replaceChildren();
       if (!this.lastLine) return;
-      element('', this.log, 'b').textContent = PET_NAMES[kind];
+      element('', this.log, 'b').textContent = name;
       this.log.append(`: ${this.lastLine}`);
       this.log.title = this.lastLine;
     });
@@ -358,10 +398,10 @@ export class PetPanel {
     if (!r.ok) {
       if (r.reason === 'full') {
         this.host.playCare('shake', false);
-        this.say('배불러요.');
+        this.say(CARE_LINES.full);
       } else if (r.reason === 'tired') {
         this.host.playCare('shakeOnly', false);
-        this.say('지쳤어요..');
+        this.say(CARE_LINES.tired);
       } else if (r.reason === 'zero') this.say(ZERO_LINES[2]);
       else if (r.reason === 'food') this.render();
       return;
@@ -490,7 +530,7 @@ export class PetPanel {
     this.big?.remove();
     const big = element('pet-joy', this.root);
     setFace(petFace(big, 160), kind, 'joy');
-    element('say', big).textContent = '헤헤..';
+    element('say', big).textContent = JOY_LINE;
     if (stage) element('stage', big).textContent = PET_STAGES[stage - 1].name;
     this.big = big;
     this.bigTimer = window.setTimeout(() => {

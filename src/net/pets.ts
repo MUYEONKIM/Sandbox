@@ -9,6 +9,8 @@ import { supabase } from './supabase';
  */
 export interface PetServerState {
   pet: PetKind | null;
+  /** 지어 준 이름(SQL 20261128500000_pet_names.sql). null이면 종류 이름. 잃은 뒤에도 남아 작별 창에 쓴다. */
+  name: string | null;
   lostCount: number;
   lostAt: string | null;
   /** 잃은 펫의 종류(작별 창) */
@@ -60,6 +62,7 @@ function parseState(value: unknown): PetServerState | null {
   }
   return {
     pet: isPetKind(d.pet) ? d.pet : null,
+    name: typeof d.name === 'string' && d.name !== '' ? d.name : null,
     lostCount: num(d.lostCount),
     lostAt: typeof d.lostAt === 'string' ? d.lostAt : null,
     lostKind: isPetKind(d.lostKind) ? d.lostKind : null,
@@ -118,23 +121,36 @@ export async function petTick(walked: number, restS: number, campS: number): Pro
   return { ...state, newStage: n === null || n === undefined ? null : num(n) };
 }
 
-/** 처음 한 마리(무료). 이미 정했으면 'already', 잃은 적이 있으면 'adopt' */
-export async function setPet(kind: PetKind): Promise<PetServerState | 'already' | 'adopt' | 'failed'> {
-  const { data, error } = await supabase.rpc('set_pet', { p: kind });
-  if (error) return error.message.includes('already') ? 'already' : error.message.includes('adopt') ? 'adopt' : 'failed';
+/** 처음 한 마리(무료)와 이름. 이미 정했으면 'already', 잃은 적이 있으면 'adopt', 쓸 수 없는 이름이면 'bad name' */
+export async function setPet(kind: PetKind, name: string): Promise<PetServerState | 'already' | 'adopt' | 'bad name' | 'failed'> {
+  const { data, error } = await supabase.rpc('set_pet', { p: kind, pet_name: name });
+  if (error) {
+    const m = error.message;
+    return m.includes('already') ? 'already' : m.includes('bad name') ? 'bad name' : m.includes('adopt') ? 'adopt' : 'failed';
+  }
   return parseState(data) ?? 'failed';
 }
 
-/** 입양(잃은 뒤에만, 골드). 펫이 있으면 'has pet', 골드가 모자라면 'gold' */
-export async function adoptPet(kind: PetKind): Promise<{ state: PetServerState; gold: Gold } | 'has pet' | 'first' | 'gold' | 'failed'> {
-  const { data, error } = await supabase.rpc('adopt_pet', { p: kind });
+/** 입양(잃은 뒤에만, 골드)과 이름. 펫이 있으면 'has pet', 골드가 모자라면 'gold', 쓸 수 없는 이름이면 'bad name' */
+export async function adoptPet(kind: PetKind, name: string): Promise<{ state: PetServerState; gold: Gold } | 'has pet' | 'first' | 'gold' | 'bad name' | 'failed'> {
+  const { data, error } = await supabase.rpc('adopt_pet', { p: kind, pet_name: name });
   if (error) {
     const m = error.message;
-    return m.includes('has pet') ? 'has pet' : m.includes('first') ? 'first' : m.includes('gold') ? 'gold' : 'failed';
+    return m.includes('has pet') ? 'has pet' : m.includes('first') ? 'first' : m.includes('bad name') ? 'bad name' : m.includes('gold') ? 'gold' : 'failed';
   }
   const state = parseState(data);
   if (!state) return 'failed';
   return { state, gold: toGold((data as Record<string, unknown>).gold) };
+}
+
+/** 이름 바꾸기(값 없음). 펫이 없으면 'no pet', 쓸 수 없는 이름이면 'bad name' */
+export async function renamePet(name: string): Promise<PetServerState | 'no pet' | 'bad name' | 'failed'> {
+  const { data, error } = await supabase.rpc('rename_pet', { pet_name: name });
+  if (error) {
+    const m = error.message;
+    return m.includes('bad name') ? 'bad name' : m.includes('no pet') ? 'no pet' : 'failed';
+  }
+  return parseState(data) ?? 'failed';
 }
 
 /** 펫 간식 사기(1~100개) */

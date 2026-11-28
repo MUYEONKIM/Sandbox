@@ -2,21 +2,22 @@ import type { CropId } from './farm';
 
 /**
  * 펫(2026-11-28 코드 묶음 7). 그림·움직임은 디자인 세션 12(공유 노트 pets.md), 규칙은 기획 세션 4(docs/balance/pet-care-1127.md).
- * 7종, 처음 한 마리 무료(한 번 고르면 못 바꿈), 꾸밈만(능력 없음). 서버 profiles.pet과 pet_care가 기준이다(SQL 20261128400000_pets.sql).
+ * 8종(2026-11-28 7-2에서 갈색 강아지 dog_brown, 강아지 dog는 '황토색 강아지'), 처음 한 마리 무료(한 번 고르면 못 바꿈), 꾸밈만(능력 없음). 서버 profiles.pet과 pet_care가 기준이다(SQL 20261128400000_pets.sql).
  */
-export type PetKind = 'dog' | 'cat' | 'rabbit' | 'fox' | 'panda' | 'penguin' | 'blackcat';
+export type PetKind = 'dog' | 'cat' | 'rabbit' | 'fox' | 'panda' | 'penguin' | 'blackcat' | 'dog_brown';
 /** 그림 시트(public/sprites/pets/pets.png, 얼굴 시트)의 줄 차례 */
-export const PET_KINDS: readonly PetKind[] = ['dog', 'cat', 'rabbit', 'fox', 'panda', 'penguin', 'blackcat'];
-/** 고르는 창에 놓는 차례(pets.md 4절: 검은 고양이는 고양이 옆) */
-export const PET_PICK_ORDER: readonly PetKind[] = ['dog', 'cat', 'blackcat', 'rabbit', 'fox', 'panda', 'penguin'];
+export const PET_KINDS: readonly PetKind[] = ['dog', 'cat', 'rabbit', 'fox', 'panda', 'penguin', 'blackcat', 'dog_brown'];
+/** 고르는 창에 놓는 차례(pets.md 4절: 검은 고양이는 고양이 옆, 10-8: 강아지 둘이 앞, 4 × 2) */
+export const PET_PICK_ORDER: readonly PetKind[] = ['dog', 'dog_brown', 'cat', 'blackcat', 'rabbit', 'fox', 'panda', 'penguin'];
 export const PET_NAMES: Record<PetKind, string> = {
-  dog: '강아지',
+  dog: '황토색 강아지',
   cat: '고양이',
   rabbit: '토끼',
   fox: '여우',
   panda: '판다',
   penguin: '펭귄',
   blackcat: '검은 고양이',
+  dog_brown: '갈색 강아지',
 };
 
 export function isPetKind(value: unknown): value is PetKind {
@@ -90,6 +91,21 @@ export function stageOf(bond: number) {
   return stage;
 }
 
+/** 펫 이름 길이(서버 pet_clean_name: 앞뒤 빈칸을 지운 뒤 1~8자, 제어 문자 안 됨) */
+export const PET_NAME_MAX = 8;
+
+/** 이름 칸 글을 서버 규칙대로 다듬는다. 쓸 수 없으면 null */
+export function cleanPetName(text: string) {
+  const name = text.trim();
+  const length = [...name].length;
+  return length >= 1 && length <= PET_NAME_MAX && !/[\u0000-\u001f\u007f-\u009f]/.test(name) ? name : null;
+}
+
+/** 보이는 이름: 지어 준 이름, 없으면 종류 이름 */
+export function petNameOf(kind: PetKind, name: string | null | undefined) {
+  return name || PET_NAMES[kind];
+}
+
 /** 끝 글자 받침에 따라 조사를 고른다(펭귄이·펭귄을, 강아지가·강아지를). */
 export function josa(word: string, plain: string, batchim: string) {
   const code = word.charCodeAt(word.length - 1) - 0xac00;
@@ -101,6 +117,7 @@ export type PetFood = 'treat' | Exclude<CropId, 'onion'> | 'rebel_carp' | 'roads
 export const PET_FOODS: readonly PetFood[] = ['treat', 'carrot', 'potato', 'tomato', 'eggplant', 'corn', 'rebel_carp', 'roadside_grass'];
 const FAVORITES: Record<PetKind, readonly PetFood[]> = {
   dog: ['potato'],
+  dog_brown: ['potato'],
   cat: ['rebel_carp'],
   blackcat: ['rebel_carp'],
   rabbit: ['carrot', 'roadside_grass'],
@@ -110,6 +127,11 @@ const FAVORITES: Record<PetKind, readonly PetFood[]> = {
 };
 
 /** 그 펫이 먹는지, 배부름 +값과 좋아하는지(기획 3.3). 먹지 않으면 null */
+/** 그 종류가 좋아하는 먹이(서버 pet_food_value와 같은 목록, 상태 창 '좋아하는 음식' 줄) */
+export function favoriteFoods(kind: PetKind): readonly PetFood[] {
+  return FAVORITES[kind];
+}
+
 export function foodValue(kind: PetKind, food: PetFood): { full: number; favorite: boolean } | null {
   if (food === 'treat') return { full: 50, favorite: false };
   if (food === 'roadside_grass' && kind !== 'rabbit' && kind !== 'panda') return null;

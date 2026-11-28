@@ -1,6 +1,6 @@
-import { adoptPet, buyPetTreats, petAct, petState, petTick, setPet, type PetAct, type PetActResult, type PetServerState } from '../net/pets';
+import { adoptPet, buyPetTreats, petAct, petState, petTick, renamePet, setPet, type PetAct, type PetActResult, type PetServerState } from '../net/pets';
 import type { Gold } from './gold';
-import { stageOf, type PetFood, type PetKind, type PetMood, type SentMood } from './pets';
+import { petNameOf, stageOf, type PetFood, type PetKind, type PetMood, type SentMood } from './pets';
 
 /**
  * 내 펫 상태(2026-11-28 코드 묶음 7, 기획 pet-care-1127.md 2·6·10장). 서버(pet_state 등)가 기준이고, 화면은 받은 값에서 같은 속도로 줄여 보인다.
@@ -66,8 +66,8 @@ export class PetCare {
   onChange: (() => void) | null = null;
   /** 기회가 줄었다. online이면 접속해 있는 동안 줄었다. */
   onChanceLost: ((left: number, online: boolean) => void) | null = null;
-  /** 펫을 잃었다(kind: 잃은 종류). alive면 이번 접속에서 그 펫을 보고 있었다(작별 연출 뒤 창, 아니면 창만). */
-  onLost: ((kind: PetKind | null, alive: boolean) => void) | null = null;
+  /** 펫을 잃었다(kind: 잃은 종류, name: 그 펫의 이름). alive면 이번 접속에서 그 펫을 보고 있었다(작별 연출 뒤 창, 아니면 창만). */
+  onLost: ((kind: PetKind | null, name: string | null, alive: boolean) => void) | null = null;
   /** 펫이 생김(처음 고름·입양) 또는 사라짐 */
   onPet: ((kind: PetKind | null) => void) | null = null;
   /** 처음 닿은 단계(큰 화면) */
@@ -110,6 +110,12 @@ export class PetCare {
     return this.state?.pet ?? null;
   }
 
+  /** 지금 펫의 보이는 이름(지어 준 이름, 없으면 종류 이름). 펫이 없으면 null */
+  get name() {
+    const kind = this.kind;
+    return kind ? petNameOf(kind, this.state?.name) : null;
+  }
+
   /** 펫을 고른 적이 없음(처음 고르는 창) */
   get needsPick() {
     return !!this.state && !this.state.pet && this.state.lostCount === 0;
@@ -142,7 +148,8 @@ export class PetCare {
     // 잃음: 작별 창은 잃은 때마다 한 번(이 기기에 본 것을 적어 둠). 작별 연출이 펫 그림을 쓰므로 onPet보다 먼저 알린다.
     if (!s.pet && s.lostCount > 0 && s.lostAt && load(this.farewellKey) !== s.lostAt) {
       save(this.farewellKey, s.lostAt);
-      this.onLost?.(s.lostKind ?? prev?.pet ?? null, online && !!prev?.pet);
+      const lostKind = s.lostKind ?? prev?.pet ?? null;
+      this.onLost?.(lostKind, lostKind ? petNameOf(lostKind, s.name) : null, online && !!prev?.pet);
     }
     if (prev?.pet !== s.pet) this.onPet?.(s.pet);
     // 기회: 이 기기에 마지막으로 본 수보다 적으면 한 칸씩 흐려지는 움직임(펫이 바뀌었으면 새로 셈)
@@ -298,8 +305,8 @@ export class PetCare {
     return true;
   }
 
-  async pick(kind: PetKind) {
-    const result = await setPet(kind);
+  async pick(kind: PetKind, name: string) {
+    const result = await setPet(kind, name);
     if (typeof result === 'string') {
       if (result === 'already') await this.refresh();
       return result;
@@ -309,12 +316,20 @@ export class PetCare {
     return null;
   }
 
-  async adopt(kind: PetKind) {
-    const result = await adoptPet(kind);
+  async adopt(kind: PetKind, name: string) {
+    const result = await adoptPet(kind, name);
     if (typeof result === 'string') return result;
     save(this.chancesKey, String(result.state.chances));
     this.apply(result.state, true);
     return result.gold;
+  }
+
+  /** 이름 바꾸기. 바꿨으면 null, 아니면 까닭 */
+  async rename(name: string) {
+    const result = await renamePet(name);
+    if (typeof result === 'string') return result;
+    this.apply(result, true);
+    return null;
   }
 
   async buyTreats(amount: number) {

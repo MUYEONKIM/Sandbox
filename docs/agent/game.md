@@ -44,6 +44,12 @@
   - 앉는 가구를 더하면 `USE_SEATS` 자리로 펫 자리도 저절로 정해진다. 무릎에 안 오르는 가구·침대에 안 오르는 눕는 가구는 `pets.ts`의 `NO_LAP`·`NO_BED`.
   - 렌더링: 펫 그림 칸·뒤집기·깊이는 바뀔 때만, 걷는 동안만 자리, 화면 밖이면 숨기고 칸을 고르지 않음. 상태 창은 바뀐 칸만 DOM을 고친다(가만히 0번).
   - 모달 `locked`: 펫 처음 고르는 창처럼 닫히면 안 되는 창(Esc·closeTopModal이 건너뜀).
+  - 종류 8(2026-11-28 7-2, 디자인 `pets.md` 10절): `dog`는 이름만 '황토색 강아지'(그림은 손 도트로 바뀜, 이미 고른 사람 그대로), 새 `dog_brown` '갈색 강아지'(시트 8번째 줄, 좋아하는 먹이 감자). 종류를 더하면 함께 바꿀 곳: `pets.ts` PetKind·PET_KINDS(시트 줄 차례)·PET_PICK_ORDER·PET_NAMES·FAVORITES, `pet.css` `--pet-sh`와 얼굴 `background-size` 줄 수, 서버 `profiles_pet_kind` check·`set_pet`·`adopt_pet` 목록·`pet_food_value`. 받는 쪽 종류 확인은 `isPetKind`(PET_KINDS) 하나다. 고르는 창은 4 × 2, 폭 520px.
+  - 좋아하는 음식(2026-11-28 사용자 요청): 펼친 상태 창 막대 아래 "좋아하는 음식 : 감자"(`favoriteFoods` = FAVORITES, 이름은 서버 이름표, 12px 한 줄). 좋아하는 먹이를 바꾸면 `pets.ts` FAVORITES와 서버 `pet_food_value`를 같이 고친다.
+  - 말투(2026-11-28 사용자 "펫들의 말투는 모두다 …! 또는 ! 을 붙인다"): 펫 말은 모두 `petLines.ts`에 있고 끝이 '!'·'..!'·'?!'·'..!!'이다(괄호 몸짓만 예외). 새 말을 더할 때도 같은 끝으로 쓰고, 다른 파일에 펫 말을 따로 적지 않는다.
+  - 이름(2026-11-28 7-1, SQL `20261128500000_pet_names.sql`): `pet_care.name`(null이면 종류 이름, `petNameOf`). 고르기·입양 확인 창의 이름 칸, 상태 창 이름을 누르면 `openPetRename`(값 없음, `rename_pet`). 1~8자, 앞뒤 빈칸 지움, 제어 문자 안 됨(화면 `cleanPetName`, 서버 `pet_clean_name`). 내 화면(상태 창·접은 칸·I 정보창·작별 창·말 줄)에만 쓰고 이동 신호에 싣지 않는다.
+  - 접은 칸(7-1): 얼굴 44px, 이름, 표 넷(친밀도 단계와 숫자, 배부름·기운·함께함 작은 막대, 30 아래면 글자 빨강). 얼굴은 쓰다듬기, 나머지를 누르면 펼침. 폭 약 220px라 아래 막대와 겹치는 1500px 이하에서는 펼친 창처럼 막대 위로 오르고, 손가락 화면에서는 '인벤토리' 단추 위로 10px 띄운다.
+  - 그림 주소: 펫 창 그림은 CSS 변수(`--pet-sheet` 등, `setPetArtVars`)로 넣는데, 변수 속 상대 `url()`은 그 변수를 쓰는 CSS 파일 자리(배포 사이트 `/Sandbox/assets/`)에서 풀린다. 그래서 `new URL(…, document.baseURI)`로 절대 주소를 넣는다(첫 배포에서 고르는 창·접은 칸이 비었던 까닭, 개발 서버는 CSS가 문서 안이라 드러나지 않음). 새로 CSS 변수에 그림 주소를 넣을 때도 같이 한다.
 - 소리(2026-11-27): `src/sound/engine.ts`(Web Audio 소리 장치 `sound`: `playBgm`, `play(키, { at, who, rate })`, `click`, `enterGame`), `src/sound/catalog.ts`(BGM 14곡 이름, 맵 → 곡 `bgmForMap`, 효과음 96키 규칙 `SFX`, 무기 → 소리), `src/sound/settings.ts`(설정 저장), `src/ui/soundPanel.ts`(계정 줄 '소리' 판). 파일은 `public/sound/`(BGM 반복 구간은 `bgm/bgm.json`, 효과음은 `sfx/sfx.json` 스프라이트). 새 맵은 `bgmForMap`에 곡을 정하고(없으면 조용함), 새 창은 open·close에 `ui_open`·`ui_close`, 남의 행동 소리는 `at`(칸)과 `who`(사람)를 준다. 버튼 소리는 `main.ts`가 문서 클릭 하나로 내고 탭·고르기 버튼(`TAB_BUTTONS`)은 `ui_tab`이다. 매 프레임 도는 곳에서 `sound.play`를 부르지 않는다(바뀐 때만).
 - `src/game/keepClear.ts`: 플레이어 블록이 포탈이나 안내판 그림을 덮으면 그 블록을 늘 반투명하게 그린다(2026-11-16).
 - 블록이 많은 맵의 렉 고치기(2026-11-16 사용자 "이번 배포에 넣기"). 바꿀 때 지킬 것:

@@ -250,6 +250,7 @@ import { byInput } from '../ui/touch';
 import { sound } from '../sound/engine';
 import { bgmForMap, isBossYard, toggleSfx, weaponSfx, zoneBgm, type SfxKey } from '../sound/catalog';
 import { BGM_FADE } from '../sound/engine';
+import { FAREWELL_LINE } from './petLines';
 
 /** 창을 내리거나 다른 탭으로 가도 작업을 이어 가도록 확인하는 간격 */
 const WORK_TICK_MS = 250;
@@ -6132,8 +6133,8 @@ export class GameScene extends Phaser.Scene implements SessionEvents {
       return;
     }
     this.farewelling = true;
-    // 0.3초 뒤 일어나 돌아보며 "......"(9-4)
-    this.time.delayedCall(300, () => this.petSay('......'));
+    // 0.3초 뒤 일어나 돌아보며 말없음(9-4, 2026-11-28 말투 "..!!")
+    this.time.delayedCall(300, () => this.petSay(FAREWELL_LINE));
     pet.farewell(() => {
       this.farewelling = false;
       this.syncMyPet();

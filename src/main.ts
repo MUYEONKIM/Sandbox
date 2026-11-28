@@ -36,12 +36,12 @@ import { Adventure } from './game/adventure';
 import { AdventureWindow } from './ui/adventure';
 import { cropOfSeed, paintItem, WEAPONS } from './items';
 import { PetCare } from './game/petCare';
-import { foodValue, PET_FOODS, type PetFood, type PetKind } from './game/pets';
+import { favoriteFoods, foodValue, PET_FOODS, type PetFood, type PetKind } from './game/pets';
 import { isCropId } from './game/farm';
 import { spriteUrl } from './art/sprites';
 import { PLACE_ICONS } from './ui/office';
 import { PetPanel, type PetFoodRow } from './ui/petPanel';
-import { openFarewell, PetPickWindow } from './ui/petWindows';
+import { BAD_NAME, openFarewell, openPetRename, PetPickWindow } from './ui/petWindows';
 import { ForgeWindow } from './ui/forge';
 import { CoopWindow } from './ui/coop';
 import { OfficeWindow } from './ui/office';
@@ -533,17 +533,17 @@ function wirePets(root: HTMLElement, scene: GameScene, hud: Hud, economy: Econom
     if (pick?.isOpen) return;
     pick = new PetPickWindow(root, {
       adopt: adopt ? { price: petCare.adoptPrice, gold: () => economy.gold } : null,
-      choose: async (kind) => {
+      choose: async (kind, name) => {
         if (adopt) {
-          const result = await petCare.adopt(kind);
-          if (typeof result === 'string') return result === 'gold' ? '골드가 모자랍니다' : '입양하지 못했습니다. 잠시 후 다시 해 주세요';
+          const result = await petCare.adopt(kind, name);
+          if (typeof result === 'string') return result === 'gold' ? '골드가 모자랍니다' : result === 'bad name' ? BAD_NAME : '입양하지 못했습니다. 잠시 후 다시 해 주세요';
           economy.setGold(result);
           return null;
         }
-        const result = await petCare.pick(kind);
+        const result = await petCare.pick(kind, name);
         // 다른 창·기기에서 먼저 정했으면 서버 값을 쓰고 창을 닫는다(pets.md 5-4).
         if (result === null || result === 'already') return null;
-        return '정하지 못했습니다. 잠시 후 다시 해 주세요';
+        return result === 'bad name' ? BAD_NAME : '정하지 못했습니다. 잠시 후 다시 해 주세요';
       },
     });
   };
@@ -563,6 +563,19 @@ function wirePets(root: HTMLElement, scene: GameScene, hud: Hud, economy: Econom
       hud.refreshPetBag();
     },
     adopt: () => openPick(true),
+    favorites: (kind) => favoriteFoods(kind).map(foodName),
+    rename: () => {
+      const current = petCare.name;
+      if (!current || anyModalOpen()) return;
+      openPetRename(root, current, async (name) => {
+        const result = await petCare.rename(name);
+        if (result === null) {
+          hud.refreshInfo();
+          return null;
+        }
+        return result === 'bad name' ? BAD_NAME : '바꾸지 못했습니다. 잠시 후 다시 해 주세요';
+      });
+    },
   });
   scene.onPetClick = () => panel.pat();
 
@@ -580,12 +593,16 @@ function wirePets(root: HTMLElement, scene: GameScene, hud: Hud, economy: Econom
     else if (pick?.isOpen && petCare.kind) pick.close();
   };
   petCare.onChanceLost = (left, online) => panel.loseChance(left, online);
-  petCare.onLost = (kind, alive) => {
-    if (alive) scene.petFarewell(() => openFarewell(root, kind));
-    else openFarewell(root, kind);
+  petCare.onLost = (kind, name, alive) => {
+    if (alive) scene.petFarewell(() => openFarewell(root, kind, name));
+    else openFarewell(root, kind, name);
   };
   petCare.onStage = (stage) => panel.showBig(stage);
-  info.pet = () => (petCare.unavailable || !petCare.state ? undefined : petCare.kind);
+  info.pet = () => {
+    if (petCare.unavailable || !petCare.state) return undefined;
+    const kind = petCare.kind;
+    return kind ? { kind, name: petCare.name ?? '' } : null;
+  };
 
   // 인벤토리 '펫' 탭: 펫 간식(늘)과 지금 펫이 먹는 먹이(가진 것만)
   hud.setPetRenderer((pane) => {
